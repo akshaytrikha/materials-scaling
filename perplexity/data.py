@@ -16,11 +16,7 @@ def setup_dataset(dataset_name: str):
         tokenizer (transformers.GPT2Tokenizer): The GPT2 tokenizer
     """
     # Load the wikitext dataset
-    
     dataset = load_dataset("wikitext", dataset_name)
-
-    # Load dataset
-    dataset = load_dataset("wikitext", "wikitext-2-v1")
 
     # Load tokenizer
     tokenizer = GPT2Tokenizer.from_pretrained("gpt2")

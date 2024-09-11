@@ -18,7 +18,7 @@ if __name__ == "__main__":
     # Setup Dataset
     subset_dataset = "wikitext-2-v1"
     full_dataset = "wikitext-103-v1"
-    dataset, tokenizer = setup_dataset(subset_dataset)
+    dataset, tokenizer = setup_dataset(full_dataset)
 
     # Init Model
     model = FullyConnectedModel(vocab_size=len(tokenizer))
