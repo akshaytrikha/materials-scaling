@@ -3,3 +3,4 @@
 wandb
 *.pyc
 materials-scaling-venv
+*.png
