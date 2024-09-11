@@ -11,7 +11,13 @@ from constants import *
 from model import FullyConnectedModel
 from train_utils import train_epoch, evaluate_perplexity
 
-WANDB_LOG = True
+WANDB_LOG = False
+SEED = 1000  # Set random seed for reproducibility
+torch.manual_seed(SEED)  # cpu
+if DEVICE == torch.device("cuda"):
+    torch.cuda.manual_seed_all(SEED)
+if DEVICE == torch.device("mps"):
+    torch.mps.manual_seed(SEED)  # Set seed for MPS
 
 
 if __name__ == "__main__":
@@ -26,6 +32,8 @@ if __name__ == "__main__":
     loss_fn = nn.CrossEntropyLoss()
     optimizer = optim.Adam(model.parameters(), lr=LR)
 
+    print("Model is on device: {DEVICE}")
+
     # Scaling Experiments
     for fraction in [0.01, 0.05, 0.1, 0.2, 0.4, 0.6, 0.8, 1]:
         # Create a subset of the dataset
@@ -36,7 +44,7 @@ if __name__ == "__main__":
         if WANDB_LOG:
             run = wandb.init(
                 project="wikitext-scaling",
-                name=f"{subset_dataset}_{int(fraction*100)}%",
+                name=f"{full_dataset}_{int(fraction*100)}%",
                 config={
                     "learning_rate": LR,
                     "num_epochs": NUM_EPOCHS,
