@@ -1,5 +1,6 @@
 import torch.nn as nn
 
+
 class FullyConnectedModel(nn.Module):
     def __init__(self, vocab_size, embedding_dim=512):
         super(FullyConnectedModel, self).__init__()

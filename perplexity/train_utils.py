@@ -1,5 +1,6 @@
 import torch
 
+
 def train_epoch(model, data_loader, optimizer, loss_fn, device):
     model.train()
     total_loss = 0

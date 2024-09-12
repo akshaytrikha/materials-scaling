@@ -22,11 +22,23 @@ else:
 if __name__ == "__main__":
     # Parse Arguments
     parser = argparse.ArgumentParser(description="Training script for the model.")
-    parser.add_argument('--batch_size', type=int, default=64, help='Batch size for training')
-    parser.add_argument('--num_epochs', type=int, default=5, help='Number of epochs for training')
-    parser.add_argument('--lr', type=float, default=0.001, help='Learning rate')
-    parser.add_argument('--dataset_size', type=str, choices=['small', 'large'], default='small', help='Dataset size to use: "small" or "big"')
-    parser.add_argument('--wandb_log', action='store_true', help='Enable Weights and Biases logging')
+    parser.add_argument(
+        "--batch_size", type=int, default=64, help="Batch size for training"
+    )
+    parser.add_argument(
+        "--num_epochs", type=int, default=5, help="Number of epochs for training"
+    )
+    parser.add_argument("--lr", type=float, default=0.001, help="Learning rate")
+    parser.add_argument(
+        "--dataset_size",
+        type=str,
+        choices=["small", "large"],
+        default="small",
+        help='Dataset size to use: "small" or "big"',
+    )
+    parser.add_argument(
+        "--wandb_log", action="store_true", help="Enable Weights and Biases logging"
+    )
     args = parser.parse_args()
 
     # Setup Dataset
@@ -53,8 +65,8 @@ if __name__ == "__main__":
         if args.wandb_log:
             run = wandb.init(
                 project="wikitext-scaling",
-                # name=f"{full_dataset}_{int(fraction*100)}%",
-                name=f"test_{fraction}",
+                name=f"{dataset}_{int(fraction*100)}%",
+                group=dataset,
                 config={
                     "learning_rate": args.lr,
                     "num_epochs": args.num_epochs,
@@ -67,7 +79,9 @@ if __name__ == "__main__":
         for epoch in range(args.num_epochs):
             train_loss = train_epoch(model, train_loader, optimizer, loss_fn, DEVICE)
 
-            print(f"Dataset Size: {int(fraction*100)}%, Epoch: {epoch+1}, Loss: {train_loss}")
+            print(
+                f"Dataset Size: {int(fraction*100)}%, Epoch: {epoch+1}, Loss: {train_loss}"
+            )
             if args.wandb_log:
                 wandb.log({"loss": train_loss})
 

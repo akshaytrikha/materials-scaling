@@ -8,3 +8,8 @@
 
 ### Running training
 `python3 train.py --batch_size=64 --num_epochs=5 --lr=0.001 --dataset_size=small --wandb_log`
+
+### Black formatting setup
+1. Open VSCode settings and search for `editor: default formatter`
+2. Select `Black Formatter`
+2. Select `Format on Save` right below

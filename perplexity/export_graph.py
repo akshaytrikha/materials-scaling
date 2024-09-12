@@ -30,34 +30,62 @@ runs_df = pd.DataFrame(
 
 
 # Extract perplexity and run names
-perplexity_values = [summary.get('perplexity', None) for summary in summary_list]
+perplexity_values = [summary.get("perplexity", None) for summary in summary_list]
 run_names = name_list
 
 # Separate the data based on run names
-wikitext_2_v1_perplexity = [summary.get('perplexity', None) for summary, name in zip(summary_list, run_names) if name.startswith('wikitext-2-v1')]
-wikitext_2_v1_names = [name for name in run_names if name.startswith('wikitext-2-v1')]
+wikitext_2_v1_perplexity = [
+    summary.get("perplexity", None)
+    for summary, name in zip(summary_list, run_names)
+    if name.startswith("wikitext-2-v1")
+]
+wikitext_2_v1_names = [name for name in run_names if name.startswith("wikitext-2-v1")]
 
-wikitext_103_v1_perplexity = [summary.get('perplexity', None) for summary, name in zip(summary_list, run_names) if name.startswith('wikitext-103-v1')]
-wikitext_103_v1_names = [name for name in run_names if name.startswith('wikitext-103-v1')]
+wikitext_103_v1_perplexity = [
+    summary.get("perplexity", None)
+    for summary, name in zip(summary_list, run_names)
+    if name.startswith("wikitext-103-v1")
+]
+wikitext_103_v1_names = [
+    name for name in run_names if name.startswith("wikitext-103-v1")
+]
 
 # Extract the percentage part of the run names and convert to numbers
-wikitext_2_v1_labels = [int(name.split('_')[-1].replace('%', '')) for name in wikitext_2_v1_names]
-wikitext_103_v1_labels = [int(name.split('_')[-1].replace('%', '')) for name in wikitext_103_v1_names]
+wikitext_2_v1_labels = [
+    int(name.split("_")[-1].replace("%", "")) for name in wikitext_2_v1_names
+]
+wikitext_103_v1_labels = [
+    int(name.split("_")[-1].replace("%", "")) for name in wikitext_103_v1_names
+]
 
 # Create a figure
 fig, ax = plt.subplots(figsize=(10, 5))
 
 # Plot the line chart for wikitext-2-v1
-ax.plot(wikitext_2_v1_labels, wikitext_2_v1_perplexity, marker='o', linestyle='-', color='b', label='wikitext-2-v1')
+ax.plot(
+    wikitext_2_v1_labels,
+    wikitext_2_v1_perplexity,
+    marker="o",
+    linestyle="-",
+    color="b",
+    label="wikitext-2-v1",
+)
 
 # Plot the line chart for wikitext-103-v1
-ax.plot(wikitext_103_v1_labels, wikitext_103_v1_perplexity, marker='o', linestyle='-', color='g', label='wikitext-103-v1')
+ax.plot(
+    wikitext_103_v1_labels,
+    wikitext_103_v1_perplexity,
+    marker="o",
+    linestyle="-",
+    color="g",
+    label="wikitext-103-v1",
+)
 
 # Set labels and title
-ax.set_xlabel('Percentage')
-ax.set_ylabel('Perplexity')
-ax.set_title('Perplexity vs Percentage')
-ax.tick_params(axis='x', rotation=45)
+ax.set_xlabel("Percentage")
+ax.set_ylabel("Perplexity")
+ax.set_title("Perplexity vs Percentage")
+ax.tick_params(axis="x", rotation=45)
 
 # Add legend
 ax.legend()
@@ -65,4 +93,4 @@ ax.legend()
 plt.tight_layout()
 
 # Save the plot as an image file
-plt.savefig('perplexity_vs_percentage.png')
+plt.savefig("perplexity_vs_percentage.png")
