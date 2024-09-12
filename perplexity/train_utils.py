@@ -6,9 +6,16 @@ def train_epoch(model, data_loader, optimizer, loss_fn, device):
     total_loss = 0
     for batch in data_loader:
         inputs = batch["input_ids"].to(device)  # Keep inputs as Long for embedding
-        labels = torch.roll(
-            inputs, -1, dims=1
-        )  # Shift inputs for next-token prediction
+        # Shift inputs to create labels for next-token prediction, but set the last token to a special padding token (e.g., -100)
+        labels = inputs.clone()  # Clone inputs to create labels
+        labels[:, :-1] = inputs[
+            :, 1:
+        ]  # Shift inputs left by one for next-token prediction
+        labels[:, -1] = (
+            -100
+        )  # Use -100 to ignore the last token in the loss computation
+
+        # Pass inputs to the model
         outputs = model(inputs)
 
         # Adjust labels for loss calculation (assuming single token prediction for simplification)

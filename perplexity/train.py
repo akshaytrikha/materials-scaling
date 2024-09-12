@@ -7,7 +7,7 @@ import wandb
 
 # Internal
 from data import setup_dataset
-from model import FullyConnectedModel
+from model import FullyConnectedModel, VanillaTransformer
 from train_utils import train_epoch, evaluate_perplexity
 
 
@@ -49,9 +49,10 @@ if __name__ == "__main__":
     dataset, tokenizer = setup_dataset(dataset)
 
     # Init Model, Loss, Optimizer
-    model = FullyConnectedModel(vocab_size=len(tokenizer))
+    # model = FullyConnectedModel(vocab_size=len(tokenizer))
+    model = VanillaTransformer(vocab_size=len(tokenizer))
     model.to(DEVICE)
-    print(f"Model is on device: {DEVICE}")
+    print(f"Model is on device: {DEVICE} and has {model.num_params} parameters")
     loss_fn = nn.CrossEntropyLoss()
     optimizer = optim.Adam(model.parameters(), lr=args.lr)
 
@@ -66,7 +67,7 @@ if __name__ == "__main__":
             run = wandb.init(
                 project="wikitext-scaling",
                 name=f"{dataset}_{int(fraction*100)}%",
-                group=dataset,
+                group=f"{dataset}_transformer",
                 config={
                     "learning_rate": args.lr,
                     "num_epochs": args.num_epochs,
