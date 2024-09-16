@@ -23,6 +23,13 @@ if __name__ == "__main__":
     # Parse Arguments
     parser = argparse.ArgumentParser(description="Training script for the model.")
     parser.add_argument(
+        "--architecture",
+        type=str,
+        choices=["FullyConnected", "VanillaTransformer"],
+        default="FullyConnected",
+        help='Model architecture to use: "FullyConnected" or "VanillaTransformer"',
+    )
+    parser.add_argument(
         "--batch_size", type=int, default=64, help="Batch size for training"
     )
     parser.add_argument(
@@ -49,8 +56,12 @@ if __name__ == "__main__":
     dataset, tokenizer = setup_dataset(dataset)
 
     # Init Model, Loss, Optimizer
-    # model = FullyConnectedModel(vocab_size=len(tokenizer))
-    model = VanillaTransformer(vocab_size=len(tokenizer))
+    if args.model_architecture == "FullyConnected":
+        model = FullyConnectedModel(vocab_size=len(tokenizer))
+    elif args.model_architecture == "VanillaTransformer":
+        model = VanillaTransformer(vocab_size=len(tokenizer))
+
+    breakpoint()
     model.to(DEVICE)
     print(f"Model is on device: {DEVICE} and has {model.num_params} parameters")
     loss_fn = nn.CrossEntropyLoss()
