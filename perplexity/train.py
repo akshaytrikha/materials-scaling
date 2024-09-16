@@ -4,6 +4,10 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader, Subset
 import wandb
+import pprint
+import warnings
+
+warnings.filterwarnings("ignore", category=FutureWarning)
 
 # Internal
 from data import setup_dataset
@@ -25,9 +29,9 @@ if __name__ == "__main__":
     parser.add_argument(
         "--architecture",
         type=str,
-        choices=["FullyConnected", "VanillaTransformer"],
-        default="FullyConnected",
-        help='Model architecture to use: "FullyConnected" or "VanillaTransformer"',
+        choices=["FCN", "VanillaTransformer"],
+        default="FCN",
+        help='Model architecture to use: "FCN" or "VanillaTransformer"',
     )
     parser.add_argument(
         "--batch_size", type=int, default=64, help="Batch size for training"
@@ -37,7 +41,7 @@ if __name__ == "__main__":
     )
     parser.add_argument("--lr", type=float, default=0.001, help="Learning rate")
     parser.add_argument(
-        "--dataset_size",
+        "--dataset_version",
         type=str,
         choices=["small", "large"],
         default="small",
@@ -49,23 +53,25 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     # Setup Dataset
-    if args.dataset_size == "small":
+    if args.dataset_version == "small":
         dataset = "wikitext-2-v1"
-    elif args.dataset_size == "large":
+    elif args.dataset_version == "large":
         dataset = "wikitext-103-v1"
     dataset, tokenizer = setup_dataset(dataset)
 
     # Init Model, Loss, Optimizer
-    if args.model_architecture == "FullyConnected":
+    if args.architecture == "FCN":
         model = FullyConnectedModel(vocab_size=len(tokenizer))
-    elif args.model_architecture == "VanillaTransformer":
+    elif args.architecture == "VanillaTransformer":
         model = VanillaTransformer(vocab_size=len(tokenizer))
-
-    breakpoint()
     model.to(DEVICE)
-    print(f"Model is on device: {DEVICE} and has {model.num_params} parameters")
     loss_fn = nn.CrossEntropyLoss()
     optimizer = optim.Adam(model.parameters(), lr=args.lr)
+
+    # User Feedback
+    print(f"\nModel is on device: {DEVICE} and has {model.num_params} parameters")
+    pprint.pprint(vars(args))
+    print()
 
     # Scaling Experiments
     for fraction in [0.01, 0.05, 0.1, 0.2, 0.4, 0.6, 0.8, 1]:
@@ -73,6 +79,9 @@ if __name__ == "__main__":
         size = int(len(dataset["train"]) * fraction)
         subset = Subset(dataset["train"], indices=range(size))
         train_loader = DataLoader(subset, batch_size=args.batch_size, shuffle=True)
+
+        # model name schema
+        model_name = f"{args.architecture}_dv={args.dataset_version}_df={fraction}_p={model.num_params}"
 
         if args.wandb_log:
             run = wandb.init(
