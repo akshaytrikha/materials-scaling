@@ -2,7 +2,6 @@ import argparse
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from torch.utils.data import DataLoader, Subset
 import wandb
 import pprint
 import warnings
@@ -47,13 +46,10 @@ if __name__ == "__main__":
     print()
 
     # Scaling Experiments
-    for fraction in [0.01, 0.05, 0.1, 0.2, 0.4, 0.6, 0.8, 1]:
-        train_loader, val_loader = get_dataloaders(dataset, fraction, args.batch_size)
-
-        # Create a subset of the dataset
-        size = int(len(dataset["train"]) * fraction)
-        subset = Subset(dataset["train"], indices=range(size))
-        train_loader = DataLoader(subset, batch_size=args.batch_size, shuffle=True)
+    for data_fraction in [0.01, 0.05, 0.1, 0.2, 0.4, 0.6, 0.8, 1]:
+        train_loader, val_loader = get_dataloaders(
+            dataset, data_fraction, args.batch_size
+        )
 
         for model in models:
             model.to(DEVICE)
@@ -63,7 +59,7 @@ if __name__ == "__main__":
             optimizer = optim.Adam(model.parameters(), lr=args.lr)
 
             # Model Name Schema
-            model_name = f"{args.architecture}_dv={args.dataset_version}_df={fraction}_p={model.num_params}"
+            model_name = f"{args.architecture}_dv={args.dataset_version}_df={data_fraction}_p={model.num_params}"
 
             # Initialize Logging
             if args.wandb_log:
@@ -75,7 +71,7 @@ if __name__ == "__main__":
                         "learning_rate": args.lr,
                         "num_epochs": args.num_epochs,
                         "batch_size": args.batch_size,
-                        "fraction": f"{int(fraction*100)}%",
+                        "fraction": f"{int(data_fraction*100)}%",
                     },
                 )
 
@@ -86,14 +82,16 @@ if __name__ == "__main__":
                 )
 
                 print(
-                    f"Dataset Size: {int(fraction*100)}%, Epoch: {epoch+1}, Loss: {train_loss}"
+                    f"Dataset Size: {int(data_fraction*100)}%, Epoch: {epoch+1}, Loss: {train_loss}"
                 )
                 if args.wandb_log:
                     wandb.log({"loss": train_loss})
 
             # Evaluate Perplexity
             perplexity = evaluate_perplexity(model, train_loader, loss_fn, DEVICE)
-            print(f"Dataset Size: {int(fraction*100)}%, Perplexity: {perplexity}\n")
+            print(
+                f"Dataset Size: {int(data_fraction*100)}%, Perplexity: {perplexity}\n"
+            )
             if args.wandb_log:
-                wandb.log({"loss": train_loss, "perplexity": perplexity})
+                wandb.log({"perplexity": perplexity})
                 wandb.finish()
