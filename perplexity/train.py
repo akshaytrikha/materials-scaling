@@ -54,10 +54,10 @@ if __name__ == "__main__":
 
     # Setup Dataset
     if args.dataset_version == "small":
-        dataset = "wikitext-2-v1"
+        dataset_name = "wikitext-2-v1"
     elif args.dataset_version == "large":
-        dataset = "wikitext-103-v1"
-    dataset, tokenizer = setup_dataset(dataset)
+        dataset_name = "wikitext-103-v1"
+    dataset, tokenizer = setup_dataset(dataset_name)
 
     # Init Model, Loss, Optimizer
     if args.architecture == "FCN":
@@ -86,8 +86,8 @@ if __name__ == "__main__":
         if args.wandb_log:
             run = wandb.init(
                 project="wikitext-scaling",
-                name=f"{dataset}_{int(fraction*100)}%",
-                group=f"{dataset}_transformer",
+                name=f"{dataset_name}_{int(fraction*100)}%",
+                group=f"{dataset_name}_transformer",
                 config={
                     "learning_rate": args.lr,
                     "num_epochs": args.num_epochs,
