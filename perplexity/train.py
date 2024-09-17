@@ -48,6 +48,9 @@ if __name__ == "__main__":
         help='Dataset size to use: "small" or "big"',
     )
     parser.add_argument(
+        "--seq_max_length", type=int, default=512, help="Maximum sequence length"
+    )
+    parser.add_argument(
         "--wandb_log", action="store_true", help="Enable Weights and Biases logging"
     )
     args = parser.parse_args()
