@@ -2,11 +2,12 @@ from datasets import load_dataset
 from transformers import GPT2Tokenizer
 
 
-def setup_dataset(dataset_name: str):
+def setup_dataset(dataset_name: str, seq_max_length: int = 512):
     """Load the wikitext dataset and encode it using the GPT2 tokenizer.
 
     Args:
         dataset_name (str): small is "wikitext-2-v1", large is "wikitext-103-v1" which is 50x bigger
+        seq_max_length (int): Maximum sequence length for the tokenizer
     Returns:
         dataset (datasets.Dataset): The encoded wikitext dataset
         tokenizer (transformers.GPT2Tokenizer): The GPT2 tokenizer
@@ -24,7 +25,10 @@ def setup_dataset(dataset_name: str):
     # Function to encode examples using the tokenizer
     def encode(examples):
         return tokenizer(
-            examples["text"], truncation=True, padding="max_length", max_length=512
+            examples["text"],
+            truncation=True,
+            padding="max_length",
+            max_length=seq_max_length,
         )
 
     # Encode the dataset

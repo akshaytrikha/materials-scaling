@@ -48,6 +48,9 @@ if __name__ == "__main__":
         help='Dataset size to use: "small" or "big"',
     )
     parser.add_argument(
+        "--seq_max_length", type=int, default=512, help="Maximum sequence length"
+    )
+    parser.add_argument(
         "--wandb_log", action="store_true", help="Enable Weights and Biases logging"
     )
     args = parser.parse_args()
@@ -57,7 +60,7 @@ if __name__ == "__main__":
         dataset = "wikitext-2-v1"
     elif args.dataset_version == "large":
         dataset = "wikitext-103-v1"
-    dataset, tokenizer = setup_dataset(dataset)
+    dataset, tokenizer = setup_dataset(dataset, seq_max_length=args.seq_max_length)
 
     # Init Model, Loss, Optimizer
     if args.architecture == "FCN":
