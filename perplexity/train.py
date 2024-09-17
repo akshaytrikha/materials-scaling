@@ -11,7 +11,7 @@ warnings.filterwarnings("ignore", category=FutureWarning)
 
 # Internal
 from data import setup_dataset
-from model import FullyConnectedModel, VanillaTransformer
+from model import *
 from train_utils import train_epoch, evaluate_perplexity
 
 
@@ -62,56 +62,62 @@ if __name__ == "__main__":
         dataset = "wikitext-103-v1"
     dataset, tokenizer = setup_dataset(dataset, seq_max_length=args.seq_max_length)
 
-    # Init Model, Loss, Optimizer
+    # Models, Loss, Optimizer
     if args.architecture == "FCN":
-        model = FullyConnectedModel(vocab_size=len(tokenizer))
+        models = MetaFullyConnectedModel(vocab_size=len(tokenizer))
     elif args.architecture == "VanillaTransformer":
-        model = VanillaTransformer(vocab_size=len(tokenizer))
-    model.to(DEVICE)
+        models = MetaVanillaTransformer(vocab_size=len(tokenizer))
     loss_fn = nn.CrossEntropyLoss()
     optimizer = optim.Adam(model.parameters(), lr=args.lr)
 
     # User Feedback
-    print(f"\nModel is on device: {DEVICE} and has {model.num_params} parameters")
     pprint.pprint(vars(args))
     print()
 
     # Scaling Experiments
     for fraction in [0.01, 0.05, 0.1, 0.2, 0.4, 0.6, 0.8, 1]:
-        # Create a subset of the dataset
-        size = int(len(dataset["train"]) * fraction)
-        subset = Subset(dataset["train"], indices=range(size))
-        train_loader = DataLoader(subset, batch_size=args.batch_size, shuffle=True)
-
-        # model name schema
-        model_name = f"{args.architecture}_dv={args.dataset_version}_df={fraction}_p={model.num_params}"
-
-        if args.wandb_log:
-            run = wandb.init(
-                project="wikitext-scaling",
-                name=f"{dataset}_{int(fraction*100)}%",
-                group=f"{dataset}_transformer",
-                config={
-                    "learning_rate": args.lr,
-                    "num_epochs": args.num_epochs,
-                    "batch_size": args.batch_size,
-                    "fraction": f"{int(fraction*100)}%",
-                },
-            )
-
-        # Train the model
-        for epoch in range(args.num_epochs):
-            train_loss = train_epoch(model, train_loader, optimizer, loss_fn, DEVICE)
-
+        for model in models:
+            model.to(DEVICE)
             print(
-                f"Dataset Size: {int(fraction*100)}%, Epoch: {epoch+1}, Loss: {train_loss}"
+                f"\nModel is on device: {DEVICE} and has {model.num_params} parameters"
             )
-            if args.wandb_log:
-                wandb.log({"loss": train_loss})
 
-        # Evaluate Perplexity
-        perplexity = evaluate_perplexity(model, train_loader, loss_fn, DEVICE)
-        print(f"Dataset Size: {int(fraction*100)}%, Perplexity: {perplexity}\n")
-        if args.wandb_log:
-            wandb.log({"loss": train_loss, "perplexity": perplexity})
-            wandb.finish()
+            # Create a subset of the dataset
+            size = int(len(dataset["train"]) * fraction)
+            subset = Subset(dataset["train"], indices=range(size))
+            train_loader = DataLoader(subset, batch_size=args.batch_size, shuffle=True)
+
+            # model name schema
+            model_name = f"{args.architecture}_dv={args.dataset_version}_df={fraction}_p={model.num_params}"
+
+            if args.wandb_log:
+                run = wandb.init(
+                    project="wikitext-scaling",
+                    name=f"{dataset}_{int(fraction*100)}%",
+                    group=f"{dataset}_transformer",
+                    config={
+                        "learning_rate": args.lr,
+                        "num_epochs": args.num_epochs,
+                        "batch_size": args.batch_size,
+                        "fraction": f"{int(fraction*100)}%",
+                    },
+                )
+
+            # Train the model
+            for epoch in range(args.num_epochs):
+                train_loss = train_epoch(
+                    model, train_loader, optimizer, loss_fn, DEVICE
+                )
+
+                print(
+                    f"Dataset Size: {int(fraction*100)}%, Epoch: {epoch+1}, Loss: {train_loss}"
+                )
+                if args.wandb_log:
+                    wandb.log({"loss": train_loss})
+
+            # Evaluate Perplexity
+            perplexity = evaluate_perplexity(model, train_loader, loss_fn, DEVICE)
+            print(f"Dataset Size: {int(fraction*100)}%, Perplexity: {perplexity}\n")
+            if args.wandb_log:
+                wandb.log({"loss": train_loss, "perplexity": perplexity})
+                wandb.finish()
