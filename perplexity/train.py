@@ -13,6 +13,7 @@ warnings.filterwarnings("ignore", category=FutureWarning)
 from data import setup_dataset
 from model import *
 from train_utils import train_epoch, evaluate_perplexity
+from arg_parser import get_args
 
 
 if torch.cuda.is_available():
@@ -25,50 +26,21 @@ else:
 
 if __name__ == "__main__":
     # Parse Arguments
-    parser = argparse.ArgumentParser(description="Training script for the model.")
-    parser.add_argument(
-        "--architecture",
-        type=str,
-        choices=["FCN", "VanillaTransformer"],
-        default="FCN",
-        help='Model architecture to use: "FCN" or "VanillaTransformer"',
-    )
-    parser.add_argument(
-        "--batch_size", type=int, default=64, help="Batch size for training"
-    )
-    parser.add_argument(
-        "--num_epochs", type=int, default=5, help="Number of epochs for training"
-    )
-    parser.add_argument("--lr", type=float, default=0.001, help="Learning rate")
-    parser.add_argument(
-        "--dataset_version",
-        type=str,
-        choices=["small", "large"],
-        default="small",
-        help='Dataset size to use: "small" or "big"',
-    )
-    parser.add_argument(
-        "--seq_max_length", type=int, default=512, help="Maximum sequence length"
-    )
-    parser.add_argument(
-        "--wandb_log", action="store_true", help="Enable Weights and Biases logging"
-    )
-    args = parser.parse_args()
+    args = get_args()
 
     # Setup Dataset
     if args.dataset_version == "small":
-        dataset = "wikitext-2-v1"
+        dataset_name = "wikitext-2-v1"
     elif args.dataset_version == "large":
-        dataset = "wikitext-103-v1"
-    dataset, tokenizer = setup_dataset(dataset, seq_max_length=args.seq_max_length)
+        dataset_name = "wikitext-103-v1"
+    dataset, tokenizer = setup_dataset(dataset_name, seq_max_length=args.seq_max_length)
 
-    # Models, Loss, Optimizer
+    # Models, Loss
     if args.architecture == "FCN":
-        models = MetaFullyConnectedModel(vocab_size=len(tokenizer))
+        models = MetaFullyConnectedModels(vocab_size=len(tokenizer))
     elif args.architecture == "VanillaTransformer":
-        models = MetaVanillaTransformer(vocab_size=len(tokenizer))
+        models = MetaVanillaTransformers(vocab_size=len(tokenizer))
     loss_fn = nn.CrossEntropyLoss()
-    optimizer = optim.Adam(model.parameters(), lr=args.lr)
 
     # User Feedback
     pprint.pprint(vars(args))
@@ -76,25 +48,27 @@ if __name__ == "__main__":
 
     # Scaling Experiments
     for fraction in [0.01, 0.05, 0.1, 0.2, 0.4, 0.6, 0.8, 1]:
+        # Create a subset of the dataset
+        size = int(len(dataset["train"]) * fraction)
+        subset = Subset(dataset["train"], indices=range(size))
+        train_loader = DataLoader(subset, batch_size=args.batch_size, shuffle=True)
+
         for model in models:
             model.to(DEVICE)
             print(
                 f"\nModel is on device: {DEVICE} and has {model.num_params} parameters"
             )
+            optimizer = optim.Adam(model.parameters(), lr=args.lr)
 
-            # Create a subset of the dataset
-            size = int(len(dataset["train"]) * fraction)
-            subset = Subset(dataset["train"], indices=range(size))
-            train_loader = DataLoader(subset, batch_size=args.batch_size, shuffle=True)
-
-            # model name schema
+            # Model Name Schema
             model_name = f"{args.architecture}_dv={args.dataset_version}_df={fraction}_p={model.num_params}"
 
+            # Initialize Logging
             if args.wandb_log:
                 run = wandb.init(
                     project="wikitext-scaling",
-                    name=f"{dataset}_{int(fraction*100)}%",
-                    group=f"{dataset}_transformer",
+                    name=model_name,
+                    group=f"{dataset_name}_fcn",
                     config={
                         "learning_rate": args.lr,
                         "num_epochs": args.num_epochs,
