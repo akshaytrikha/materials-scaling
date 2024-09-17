@@ -36,6 +36,7 @@ class VanillaTransformer(nn.Module):
             torch.zeros(1, 1000, d_model)
         )  # Simple positional encoding
 
+        # Use Transformer Encoder instead of full Transformer
         encoder_layer = nn.TransformerEncoderLayer(
             d_model=d_model,
             nhead=nhead,
@@ -52,15 +53,20 @@ class VanillaTransformer(nn.Module):
         self.num_params = sum(p.numel() for p in self.parameters())
 
     def forward(self, src, src_mask=None):
+        # src shape: (batch_size, seq_len)
         src = self.embedding(src) * (
             self.d_model**0.5
         )  # Embed and scale by sqrt(d_model)
         src = src + self.pos_encoder[:, : src.size(1), :]  # Add positional encoding
 
+        # src shape: (seq_len, batch_size, d_model)
         src = src.transpose(0, 1)
 
+        # Transformer Encoder (no tgt needed)
         output = self.transformer_encoder(src, src_mask)
         output = self.fc_out(output)  # Project back to vocabulary size
 
-        output = output.mean(dim=0)  # Average over the sequence dimension
-        return output  # Output shape: (batch_size, vocab_size)
+        # output shape: (seq_len, batch_size, vocab_size)
+        return output.transpose(
+            0, 1
+        )  # Transpose back to (batch_size, seq_len, vocab_size)
