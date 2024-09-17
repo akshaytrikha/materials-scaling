@@ -10,7 +10,7 @@ import warnings
 warnings.filterwarnings("ignore", category=FutureWarning)
 
 # Internal
-from data import setup_dataset
+from data import setup_dataset, get_dataloaders
 from model import *
 from train_utils import train_epoch, evaluate_perplexity
 from arg_parser import get_args
@@ -48,6 +48,8 @@ if __name__ == "__main__":
 
     # Scaling Experiments
     for fraction in [0.01, 0.05, 0.1, 0.2, 0.4, 0.6, 0.8, 1]:
+        train_loader, val_loader = get_dataloaders(dataset, fraction, args.batch_size)
+
         # Create a subset of the dataset
         size = int(len(dataset["train"]) * fraction)
         subset = Subset(dataset["train"], indices=range(size))
