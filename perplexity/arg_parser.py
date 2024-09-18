@@ -28,6 +28,13 @@ def get_args():
         "--seq_max_length", type=int, default=512, help="Maximum sequence length"
     )
     parser.add_argument(
+        "--data_fraction",
+        type=float,
+        nargs="+",
+        default=[0.01, 0.05, 0.1, 0.2, 0.4, 0.6, 0.8, 1],
+        help="List of data fractions to use for training",
+    )
+    parser.add_argument(
         "--wandb_log", action="store_true", help="Enable Weights and Biases logging"
     )
     return parser.parse_args()

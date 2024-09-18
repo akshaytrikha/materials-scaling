@@ -4,6 +4,7 @@ import torch.nn as nn
 import torch.optim as optim
 import wandb
 import pprint
+from tqdm.auto import tqdm
 import warnings
 
 warnings.filterwarnings("ignore", category=FutureWarning)
@@ -46,7 +47,9 @@ if __name__ == "__main__":
     print()
 
     # Scaling Experiments
-    for data_fraction in [0.01, 0.05, 0.1, 0.2, 0.4, 0.6, 0.8, 1]:
+    for data_fraction in tqdm(
+        args.data_fraction, desc="Data Iteration", leave=True, ncols=100
+    ):
         train_loader, val_loader = get_dataloaders(
             dataset, data_fraction, args.batch_size
         )
@@ -54,7 +57,7 @@ if __name__ == "__main__":
         for model in models:
             model.to(DEVICE)
             print(
-                f"\nModel is on device: {DEVICE} and has {model.num_params} parameters"
+                f"\nModel is on device {DEVICE} and has {model.num_params} parameters"
             )
             optimizer = optim.Adam(model.parameters(), lr=args.lr)
 

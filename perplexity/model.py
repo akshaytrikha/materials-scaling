@@ -10,9 +10,11 @@ class MetaFullyConnectedModels:
         self.vocab_size = vocab_size
 
         # Generate all combinations of embedding_dims and hidden_dims
-        self.configurations = zip(
-            self.embedding_dims * len(self.hidden_dims),
-            self.hidden_dims * len(self.embedding_dims),
+        self.configurations = list(
+            zip(
+                self.embedding_dims,
+                self.hidden_dims,
+            )
         )
 
     def __iter__(self):
@@ -20,6 +22,9 @@ class MetaFullyConnectedModels:
             yield FullyConnectedModel(
                 self.vocab_size, embedding_dim=emb_dim, hidden_dim=hid_dim
             )
+
+    def __len__(self):
+        return len(self.configurations)
 
 
 class FullyConnectedModel(nn.Module):
