@@ -35,7 +35,9 @@ class FullyConnectedModel(nn.Module):
         self.relu = nn.ReLU()
         self.fc2 = nn.Linear(hidden_dim, vocab_size)
 
-        self.num_params = sum(p.numel() for p in self.parameters())
+        total_params = sum(p.numel() for p in self.parameters())
+        embedding_params = sum(p.numel() for p in self.embedding.parameters())
+        self.num_params = total_params - embedding_params
 
     def forward(self, x):
         x = self.embedding(x)  # x needs to be long here
@@ -75,7 +77,9 @@ class VanillaTransformer(nn.Module):
         self.fc_out = nn.Linear(d_model, vocab_size)
         self.d_model = d_model
 
-        self.num_params = sum(p.numel() for p in self.parameters())
+        total_params = sum(p.numel() for p in self.parameters())
+        embedding_params = sum(p.numel() for p in self.embedding.parameters())
+        self.num_params = total_params - embedding_params
 
     def forward(self, src, src_mask=None):
         # src shape: (batch_size, seq_len)
