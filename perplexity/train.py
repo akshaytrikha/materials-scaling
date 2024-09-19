@@ -7,6 +7,7 @@ import wandb
 import matplotlib.pyplot as plt
 import pprint
 from tqdm.auto import tqdm
+import pickle as pkl
 import warnings
 
 warnings.filterwarnings("ignore", category=FutureWarning)
@@ -48,72 +49,65 @@ if __name__ == "__main__":
     pprint.pprint(vars(args))
     print()
 
-    # Scaling Experiments
-    data_and_perplexities = []
-    for data_fraction in tqdm(args.data_fraction, desc="Data Iteration"):
-        train_loader, val_loader = get_dataloaders(
-            dataset, data_fraction, args.batch_size
-        )
+# Scaling Experiments
+data_and_perplexities = []
+for data_fraction in tqdm(args.data_fractions, desc="Data Iteration"):
+    train_loader, val_loader = get_dataloaders(dataset, data_fraction, args.batch_size)
 
-        for model in models:
-            model.to(DEVICE)
-            print(
-                f"\nModel is on device {DEVICE} and has {model.num_params} parameters"
+    for model in models:
+        model.to(DEVICE)
+        print(f"\nModel is on device {DEVICE} and has {model.num_params} parameters")
+        optimizer = optim.Adam(model.parameters(), lr=args.lr)
+
+        # name schemas
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        model_name = f"{args.architecture}_dv={args.dataset_version}_df={data_fraction}_p={model.num_params}"
+        group_name = f"{dataset_name}_{args.architecture}_ts={timestamp}"
+
+        if args.wandb_log:
+            run = wandb.init(
+                project="wikitext-scaling",
+                name=model_name,
+                group=group_name,
+                config={
+                    "learning_rate": args.lr,
+                    "num_epochs": args.num_epochs,
+                    "batch_size": args.batch_size,
+                    "fraction": f"{int(data_fraction*100)}%",
+                },
             )
-            optimizer = optim.Adam(model.parameters(), lr=args.lr)
 
-            # name schemas
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            model_name = f"{args.architecture}_dv={args.dataset_version}_df={fraction}_p={model.num_params}"
-            group_name = f"{dataset_name}_{args.architecture}_ts={timestamp}"
+        # Train the model
+        for epoch in range(args.num_epochs):
+            train_loss = train_epoch(model, train_loader, optimizer, loss_fn, DEVICE)
 
-            if args.wandb_log:
-                run = wandb.init(
-                    project="wikitext-scaling",
-                    name=model_name,
-                    group=group_name,
-                    config={
-                        "learning_rate": args.lr,
-                        "num_epochs": args.num_epochs,
-                        "batch_size": args.batch_size,
-                        "fraction": f"{int(fraction*100)}%",
-                    },
-                )
-
-            # Train the model
-            for epoch in range(args.num_epochs):
-                train_loss = train_epoch(
-                    model, train_loader, optimizer, loss_fn, DEVICE
-                )
-
-                print(
-                    f"Dataset Size: {int(data_fraction*100)}%, Epoch: {epoch+1}, Loss: {train_loss}"
-                )
-                if args.wandb_log:
-                    wandb.log({"loss": train_loss})
-
-            # Evaluate Perplexity
-            perplexity = evaluate_perplexity(model, train_loader, loss_fn, DEVICE)
             print(
-                f"Dataset Size: {int(data_fraction*100)}%, Perplexity: {perplexity}\n"
+                f"Dataset Size: {int(data_fraction*100)}%, Epoch: {epoch+1}, Loss: {train_loss}"
             )
             if args.wandb_log:
                 wandb.log({"loss": train_loss})
 
         # Evaluate Perplexity
+        perplexity = evaluate_perplexity(model, train_loader, loss_fn, DEVICE)
+        print(f"Dataset Size: {int(data_fraction*100)}%, Perplexity: {perplexity}\n")
+        if args.wandb_log:
+            wandb.log({"loss": train_loss})
+
+        # Evaluate Perplexity
         train_perplexity = evaluate_perplexity(model, train_loader, loss_fn, DEVICE)
-        validation_perplexity = evaluate_perplexity(
-            model, validation_loader, loss_fn, DEVICE
-        )
+        validation_perplexity = evaluate_perplexity(model, val_loader, loss_fn, DEVICE)
         data_and_perplexities.append(
-            (
-                args.batch_size * len(train_loader) * args.seq_max_length,
-                train_perplexity,
-                validation_perplexity,
-            )
+            {
+                "dataset_size": args.batch_size
+                * len(train_loader)
+                * args.seq_max_length,
+                "train_perplexity": train_perplexity,
+                "validation_perplexity": validation_perplexity,
+                "num_params": model.num_params,
+            }
         )
         print(
-            f"Dataset Size: {int(fraction*100)}%, Train Loss: {train_loss}, Train Perplexity: {train_perplexity}, Validation Perplexity: {validation_perplexity}\n"
+            f"Dataset Size: {int(data_fraction*100)}%, Train Loss: {train_loss}, Train Perplexity: {train_perplexity}, Validation Perplexity: {validation_perplexity}\n"
         )
         if args.wandb_log:
             wandb.log(
@@ -124,17 +118,48 @@ if __name__ == "__main__":
                 }
             )
         wandb.finish()
-    data_sizes = [entry[0] for entry in data_and_perplexities]
-    train_perplexities = [entry[1] for entry in data_and_perplexities]
-    validation_perplexities = [entry[2] for entry in data_and_perplexities]
-    plt.figure(figsize=(8, 6))
-    plt.loglog(data_sizes, train_perplexities, marker="o", linestyle="-", color="blue")
+
+# Save data_and_perplexities to a pickle file
+with open("data_and_perplexities.pkl", "wb") as f:
+    pkl.dump(data_and_perplexities, f)
+
+plt.figure(figsize=(8, 6))
+
+# Iterate over models and plot perplexities
+for model in models:
+    # Filter data for the current model's number of parameters
+    model_data = [
+        entry
+        for entry in data_and_perplexities
+        if entry["num_params"] == model.num_params
+    ]
+
+    # Extract dataset sizes, train perplexities, and validation perplexities
+    data_sizes = [entry["dataset_size"] for entry in model_data]
+    train_perplexities = [entry["train_perplexity"] for entry in model_data]
+    validation_perplexities = [entry["validation_perplexity"] for entry in model_data]
+
+    # Plot train perplexity for this model
     plt.loglog(
-        data_sizes, validation_perplexities, marker="o", linestyle="-", color="green"
+        data_sizes,
+        train_perplexities,
+        marker="o",
+        linestyle="-",
+        label=f"Train Perplexity - {model.num_params} params",
     )
-    plt.legend()
-    plt.xlabel("Data Set Size")
-    plt.ylabel("Validation Loss")
-    plt.title(model_name)
-    plt.grid(True, which="both", ls="--")
-    plt.show()
+
+    # Plot validation perplexity for this model
+    plt.loglog(
+        data_sizes,
+        validation_perplexities,
+        marker="o",
+        linestyle="--",
+        label=f"Validation Perplexity - {model.num_params} params",
+    )
+
+plt.legend()
+plt.xlabel("Dataset Size")
+plt.ylabel("Perplexity")
+plt.title("Perplexity Scaling with Dataset Size and Model Parameters")
+plt.grid(True, which="both", ls="--")
+plt.savefig("plot.png")

@@ -28,7 +28,7 @@ def get_args():
         "--seq_max_length", type=int, default=512, help="Maximum sequence length"
     )
     parser.add_argument(
-        "--data_fraction",
+        "--data_fractions",
         type=float,
         nargs="+",
         default=[0.01, 0.05, 0.1, 0.2, 0.4, 0.6, 0.8, 1],

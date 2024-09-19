@@ -5,8 +5,10 @@ import torch.nn as nn
 class MetaFullyConnectedModels:
     def __init__(self, vocab_size):
         # Parameter Scaling Constants
-        self.embedding_dims = [128, 256, 512, 1024]
-        self.hidden_dims = [128, 256, 512, 1024]
+        # self.embedding_dims = [128, 256, 512, 1024]
+        # self.hidden_dims = [128, 256, 512, 1024]
+        self.embedding_dims = [32, 64, 128]
+        self.hidden_dims = [32, 64, 128]
         self.vocab_size = vocab_size
 
         # Generate all combinations of embedding_dims and hidden_dims
@@ -40,7 +42,7 @@ class FullyConnectedModel(nn.Module):
         self.num_params = total_params - embedding_params
 
     def forward(self, x):
-        x = self.embedding(x)  # x needs to be long here
+        x = self.embedding(x)
         x = x.mean(dim=1)  # Sum or average embeddings
         x = self.relu(self.fc1(x))
         x = self.fc2(x)

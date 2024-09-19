@@ -5,3 +5,4 @@ wandb
 materials-scaling-venv
 *.png
 .env
+*.pkl

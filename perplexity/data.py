@@ -51,7 +51,7 @@ def get_dataloaders(dataset: datasets.Dataset, data_fraction: float, batch_size:
         val_loader (torch.utils.data.DataLoader): Dataloader for the validation subset
     """
     # Create a subset of the dataset
-    train_size = int(len(dataset["train"]) * fraction)
+    train_size = int(len(dataset["train"]) * data_fraction)
 
     train_subset = Subset(dataset["train"], indices=range(train_size))
 
