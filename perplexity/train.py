@@ -1,4 +1,5 @@
 import argparse
+from datetime import datetime
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -95,8 +96,9 @@ if __name__ == "__main__":
         )
 
         # name schemas
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         model_name = f"{args.architecture}_dv={args.dataset_version}_df={fraction}_p={model.num_params}"
-        group_name = f"{dataset_name}_{args.architecture}"
+        group_name = f"{dataset_name}_{args.architecture}_ts={timestamp}"
 
         if args.wandb_log:
             run = wandb.init(
