@@ -82,7 +82,7 @@ if __name__ == "__main__":
     for fraction in [0.01, 0.05, 0.1, 0.2, 0.4, 0.6, 0.8, 1]:
         # Create a subset of the dataset
         train_size = int(len(dataset["train"]) * fraction)
-        validation_size = int(len(dataset["validation"]) * fraction)
+        validation_size = len(dataset["validation"])
         train_subset = Subset(dataset["train"], indices=range(train_size))
         validation_subset = Subset(dataset["validation"], indices=range(validation_size))
         train_loader = DataLoader(train_subset, batch_size=args.batch_size, shuffle=True)
