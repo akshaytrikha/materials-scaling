@@ -149,10 +149,8 @@ if __name__ == "__main__":
     train_perplexities = [entry[1] for entry in data_and_perplexities]
     validation_perplexities = [entry[2] for entry in data_and_perplexities]
     plt.figure(figsize=(8, 6))
-    plt.loglog(data_sizes, train_perplexities, marker="o", linestyle="-", color="blue")
-    plt.loglog(
-        data_sizes, validation_perplexities, marker="o", linestyle="-", color="green"
-    )
+    plt.loglog(data_sizes, train_perplexities, marker="o", linestyle="-", color="blue", label="Train Perplexity")
+    plt.loglog(data_sizes, validation_perplexities, marker="o", linestyle="-", color="green", label="Validation Perplexity")
     plt.legend()
     plt.xlabel("Data Set Size")
     plt.ylabel("Validation Loss")
