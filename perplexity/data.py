@@ -1,5 +1,6 @@
-from datasets import load_dataset
+import datasets
 from transformers import GPT2Tokenizer
+from torch.utils.data import DataLoader, Subset
 
 
 def setup_dataset(dataset_name: str, seq_max_length: int = 512):
@@ -13,7 +14,7 @@ def setup_dataset(dataset_name: str, seq_max_length: int = 512):
         tokenizer (transformers.GPT2Tokenizer): The GPT2 tokenizer
     """
     # Load the wikitext dataset
-    dataset = load_dataset("wikitext", dataset_name)
+    dataset = datasets.load_dataset("wikitext", dataset_name)
 
     # Load tokenizer
     tokenizer = GPT2Tokenizer.from_pretrained("gpt2")
@@ -36,3 +37,25 @@ def setup_dataset(dataset_name: str, seq_max_length: int = 512):
     dataset.set_format(type="torch", columns=["input_ids"])
 
     return dataset, tokenizer
+
+
+def get_dataloaders(dataset: datasets.Dataset, data_fraction: float, batch_size: int):
+    """Create train and validation dataloaders for a subset of the dataset.
+
+    Args:
+        dataset (datasets.Dataset): The dataset to create dataloaders from
+        data_fraction (float): Fraction of the dataset to use
+        batch_size (int): Batch size for the dataloaders
+    Returns:
+        train_loader (torch.utils.data.DataLoader): Dataloader for the training subset
+        val_loader (torch.utils.data.DataLoader): Dataloader for the validation subset
+    """
+    # Create a subset of the dataset
+    train_size = int(len(dataset["train"]) * data_fraction)
+
+    train_subset = Subset(dataset["train"], indices=range(train_size))
+
+    train_loader = DataLoader(train_subset, batch_size=batch_size, shuffle=True)
+    val_loader = DataLoader(dataset["validation"], batch_size=batch_size, shuffle=True)
+
+    return train_loader, val_loader
