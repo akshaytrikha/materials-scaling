@@ -16,7 +16,7 @@ warnings.filterwarnings("ignore", category=FutureWarning)
 # Internal
 from data import setup_dataset, get_dataloaders
 from model import FullyConnectedModel, VanillaTransformer
-from train_utils import train_epoch, evaluate_perplexity
+from train_utils import train_epoch
 from arg_parser import get_args
 
 
@@ -81,17 +81,16 @@ if __name__ == "__main__":
 
         # Train the model
         for epoch in range(args.num_epochs):
-            train_loss = train_epoch(model, train_loader, optimizer, loss_fn, DEVICE)
-
-            print(
-                f"Dataset Size: {int(data_fraction*100)}%, Epoch: {epoch+1}, Loss: {train_loss}"
+            train_loss, val_loss = train_epoch(
+                model, train_loader, val_loader, optimizer, loss_fn, DEVICE
             )
-            if args.wandb_log:
-                wandb.log({"loss": train_loss})
+            print(
+                f"Dataset Size: {int(data_fraction*100)}%, Epoch: {epoch+1}, Train Loss: {train_loss}, Val Loss: {val_loss}"
+            )
 
         # Evaluate Perplexity
-        train_perplexity = evaluate_perplexity(model, train_loader, loss_fn, DEVICE)
-        val_perplexity = evaluate_perplexity(model, val_loader, loss_fn, DEVICE)
+        train_perplexity = torch.exp(torch.tensor(train_loss)).item()
+        val_perplexity = torch.exp(torch.tensor(val_loss)).item()
         data_and_perplexities.append(
             (
                 args.batch_size * len(train_loader) * args.seq_max_length,
@@ -100,17 +99,20 @@ if __name__ == "__main__":
             )
         )
         print(
-            f"Dataset Size: {int(data_fraction*100)}%, Train Loss: {train_loss}, Train Perplexity: {train_perplexity}, Val Perplexity: {val_perplexity}\n"
+            f"Dataset Size: {int(data_fraction*100)}%, Train Perplexity: {train_perplexity}, Val Perplexity: {val_perplexity}\n"
         )
         if args.wandb_log:
             wandb.log(
                 {
                     "train_loss": train_loss,
                     "train_perplexity": train_perplexity,
+                    "val_loss": val_loss,
                     "val_perplexity": val_perplexity,
+                    "num_params": model.num_params,
                 }
             )
         wandb.finish()
+
     data_sizes = [entry[0] for entry in data_and_perplexities]
     train_perplexities = [entry[1] for entry in data_and_perplexities]
     val_perplexities = [entry[2] for entry in data_and_perplexities]
