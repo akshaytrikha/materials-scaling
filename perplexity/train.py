@@ -111,7 +111,9 @@ for data_fraction in tqdm(args.data_fractions, desc="Data Iteration"):
                 {
                     "train_loss": train_loss,
                     "train_perplexity": train_perplexity,
+                    "val_loss": val_loss,
                     "validation_perplexity": validation_perplexity,
+                    "num_params": model.num_params,
                 }
             )
         wandb.finish()
