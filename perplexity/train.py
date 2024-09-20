@@ -15,7 +15,7 @@ warnings.filterwarnings("ignore", category=FutureWarning)
 # Internal
 from data import setup_dataset, get_dataloaders
 from model import *
-from train_utils import train_epoch, evaluate_perplexity
+from train_utils import train_epoch
 from arg_parser import get_args
 
 
@@ -79,23 +79,20 @@ for data_fraction in tqdm(args.data_fractions, desc="Data Iteration"):
 
         # Train the model
         for epoch in range(args.num_epochs):
-            train_loss = train_epoch(model, train_loader, optimizer, loss_fn, DEVICE)
+            train_loss, val_loss = train_epoch(
+                model, train_loader, val_loader, optimizer, loss_fn, DEVICE
+            )
 
             print(
-                f"Dataset Size: {int(data_fraction*100)}%, Epoch: {epoch+1}, Loss: {train_loss}"
+                f"Dataset Size: {int(data_fraction*100)}%, Epoch: {epoch+1}, Train Loss: {train_loss}, Val Loss: {val_loss}"
             )
             if args.wandb_log:
                 wandb.log({"loss": train_loss})
 
         # Evaluate Perplexity
-        perplexity = evaluate_perplexity(model, train_loader, loss_fn, DEVICE)
-        print(f"Dataset Size: {int(data_fraction*100)}%, Perplexity: {perplexity}\n")
-        if args.wandb_log:
-            wandb.log({"loss": train_loss})
-
-        # Evaluate Perplexity
-        train_perplexity = evaluate_perplexity(model, train_loader, loss_fn, DEVICE)
-        validation_perplexity = evaluate_perplexity(model, val_loader, loss_fn, DEVICE)
+        train_perplexity = torch.exp(torch.tensor(train_loss)).item()
+        validation_perplexity = torch.exp(torch.tensor(val_loss)).item()
+        # validation_perplexity = evaluate_perplexity(model, val_loader, loss_fn, DEVICE)
         data_and_perplexities.append(
             {
                 "dataset_size": args.batch_size
@@ -107,7 +104,7 @@ for data_fraction in tqdm(args.data_fractions, desc="Data Iteration"):
             }
         )
         print(
-            f"Dataset Size: {int(data_fraction*100)}%, Train Loss: {train_loss}, Train Perplexity: {train_perplexity}, Validation Perplexity: {validation_perplexity}\n"
+            f"Dataset Size: {int(data_fraction*100)}%, Train Perplexity: {train_perplexity}, Val Perplexity: {validation_perplexity}\n"
         )
         if args.wandb_log:
             wandb.log(
