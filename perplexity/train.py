@@ -1,3 +1,4 @@
+# External
 import argparse
 from datetime import datetime
 import torch
@@ -7,6 +8,7 @@ from torch.utils.data import DataLoader, Subset
 import wandb
 import matplotlib.pyplot as plt
 import pprint
+from tqdm.auto import tqdm
 import warnings
 
 warnings.filterwarnings("ignore", category=FutureWarning)
@@ -15,6 +17,7 @@ warnings.filterwarnings("ignore", category=FutureWarning)
 from data import setup_dataset
 from model import FullyConnectedModel, VanillaTransformer
 from train_utils import train_epoch, evaluate_perplexity
+from arg_parser import get_args
 
 
 if torch.cuda.is_available():
@@ -27,35 +30,7 @@ else:
 
 if __name__ == "__main__":
     # Parse Arguments
-    parser = argparse.ArgumentParser(description="Training script for the model.")
-    parser.add_argument(
-        "--architecture",
-        type=str,
-        choices=["FCN", "VanillaTransformer"],
-        default="FCN",
-        help='Model architecture to use: "FCN" or "VanillaTransformer"',
-    )
-    parser.add_argument(
-        "--batch_size", type=int, default=64, help="Batch size for training"
-    )
-    parser.add_argument(
-        "--num_epochs", type=int, default=5, help="Number of epochs for training"
-    )
-    parser.add_argument("--lr", type=float, default=0.001, help="Learning rate")
-    parser.add_argument(
-        "--dataset_version",
-        type=str,
-        choices=["small", "large"],
-        default="small",
-        help='Dataset size to use: "small" or "big"',
-    )
-    parser.add_argument(
-        "--seq_max_length", type=int, default=512, help="Maximum sequence length"
-    )
-    parser.add_argument(
-        "--wandb_log", action="store_true", help="Enable Weights and Biases logging"
-    )
-    args = parser.parse_args()
+    args = get_args()
 
     # Setup Dataset
     if args.dataset_version == "small":
@@ -80,9 +55,9 @@ if __name__ == "__main__":
 
     # Scaling Experiments
     data_and_perplexities = []
-    for fraction in [0.01, 0.05, 0.1, 0.2, 0.4, 0.6, 0.8, 1]:
+    for data_fraction in tqdm(args.data_fractions, desc="Data Iteration"):
         # Create a subset of the dataset
-        train_size = int(len(dataset["train"]) * fraction)
+        train_size = int(len(dataset["train"]) * data_fraction)
         validation_size = len(dataset["validation"])
         train_subset = Subset(dataset["train"], indices=range(train_size))
         validation_subset = Subset(
@@ -97,7 +72,7 @@ if __name__ == "__main__":
 
         # name schemas
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        model_name = f"{args.architecture}_dv={args.dataset_version}_df={fraction}_p={model.num_params}"
+        model_name = f"{args.architecture}_dv={args.dataset_version}_df={data_fraction}_p={model.num_params}"
         group_name = f"{dataset_name}_{args.architecture}_ts={timestamp}"
 
         if args.wandb_log:
@@ -109,7 +84,7 @@ if __name__ == "__main__":
                     "learning_rate": args.lr,
                     "num_epochs": args.num_epochs,
                     "batch_size": args.batch_size,
-                    "fraction": f"{int(fraction*100)}%",
+                    "data_fraction": f"{int(data_fraction*100)}%",
                 },
             )
 
@@ -118,7 +93,7 @@ if __name__ == "__main__":
             train_loss = train_epoch(model, train_loader, optimizer, loss_fn, DEVICE)
 
             print(
-                f"Dataset Size: {int(fraction*100)}%, Epoch: {epoch+1}, Loss: {train_loss}"
+                f"Dataset Size: {int(data_fraction*100)}%, Epoch: {epoch+1}, Loss: {train_loss}"
             )
             if args.wandb_log:
                 wandb.log({"loss": train_loss})
@@ -136,7 +111,7 @@ if __name__ == "__main__":
             )
         )
         print(
-            f"Dataset Size: {int(fraction*100)}%, Train Loss: {train_loss}, Train Perplexity: {train_perplexity}, Validation Perplexity: {validation_perplexity}\n"
+            f"Dataset Size: {int(data_fraction*100)}%, Train Loss: {train_loss}, Train Perplexity: {train_perplexity}, Validation Perplexity: {validation_perplexity}\n"
         )
         if args.wandb_log:
             wandb.log(
@@ -151,8 +126,22 @@ if __name__ == "__main__":
     train_perplexities = [entry[1] for entry in data_and_perplexities]
     validation_perplexities = [entry[2] for entry in data_and_perplexities]
     plt.figure(figsize=(8, 6))
-    plt.loglog(data_sizes, train_perplexities, marker="o", linestyle="-", color="blue", label="Train Perplexity")
-    plt.loglog(data_sizes, validation_perplexities, marker="o", linestyle="-", color="green", label="Validation Perplexity")
+    plt.loglog(
+        data_sizes,
+        train_perplexities,
+        marker="o",
+        linestyle="-",
+        color="blue",
+        label="Train Perplexity",
+    )
+    plt.loglog(
+        data_sizes,
+        validation_perplexities,
+        marker="o",
+        linestyle="-",
+        color="green",
+        label="Validation Perplexity",
+    )
     plt.legend()
     plt.xlabel("Data Set Size")
     plt.ylabel("Validation Loss")
