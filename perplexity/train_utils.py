@@ -2,6 +2,19 @@ import torch
 
 
 def train_epoch(model, train_loader, val_loader, optimizer, loss_fn, device):
+    """Train model for one epoch and compute the average train * validation loss
+
+    Args:
+        model (torch.nn.Module): Model to train
+        train_loader (torch.utils.data.DataLoader): Training data loader
+        val_loader (torch.utils.data.DataLoader): Validation data loader
+        optimizer (torch.optim.Optimizer): Optimizer for training
+        loss_fn (torch.nn.Module): Loss function to compute loss
+        device (torch.device): Device to run the training on
+    Returns:
+        avg_train_loss (float): Average training loss for the epoch
+        avg_val_loss (float): Average validation loss for the epoch
+    """
     # train loop
     model.train()
     total_train_loss = 0

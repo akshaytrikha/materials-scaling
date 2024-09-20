@@ -55,16 +55,16 @@ if __name__ == "__main__":
 
     # Scaling Experiments
     data_and_perplexities = []
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    group_name = f"{dataset_name}_{args.architecture}_ts={timestamp}"  # for wandb
+
     for data_fraction in tqdm(args.data_fractions, desc="Data Iteration"):
         # Create a subset of the dataset
         train_loader, val_loader = get_dataloaders(
             dataset, data_fraction, args.batch_size
         )
 
-        # name schemas
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         model_name = f"{args.architecture}_dv={args.dataset_version}_df={data_fraction}_p={model.num_params}"
-        group_name = f"{dataset_name}_{args.architecture}_ts={timestamp}"
 
         if args.wandb_log:
             run = wandb.init(
