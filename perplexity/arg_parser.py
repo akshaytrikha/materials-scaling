@@ -1,6 +1,19 @@
 import argparse
 
 
+def float_or_int(value):
+    """Helper function to convert a string to a float or int.
+
+    Useful for parsing --data_fractions as 0.01 0.1 1 or 0.01, 0.1, 1.0"""
+    try:
+        if "." in value:
+            return float(value)
+        else:
+            return int(value)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"Invalid value: {value}")
+
+
 def get_args():
     parser = argparse.ArgumentParser(description="Training script for the model.")
     parser.add_argument(
@@ -29,7 +42,7 @@ def get_args():
     )
     parser.add_argument(
         "--data_fractions",
-        type=float,
+        type=float_or_int,
         nargs="+",
         default=[0.01, 0.05, 0.1, 0.2, 0.4, 0.6, 0.8, 1],
         help="List of data fractions to use for training",
