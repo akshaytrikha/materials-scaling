@@ -1,4 +1,5 @@
 import argparse
+from datetime import datetime
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -82,7 +83,7 @@ if __name__ == "__main__":
     for fraction in [0.01, 0.05, 0.1, 0.2, 0.4, 0.6, 0.8, 1]:
         # Create a subset of the dataset
         train_size = int(len(dataset["train"]) * fraction)
-        validation_size = int(len(dataset["validation"]) * fraction)
+        validation_size = len(dataset["validation"])
         train_subset = Subset(dataset["train"], indices=range(train_size))
         validation_subset = Subset(
             dataset["validation"], indices=range(validation_size)
@@ -95,8 +96,9 @@ if __name__ == "__main__":
         )
 
         # name schemas
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         model_name = f"{args.architecture}_dv={args.dataset_version}_df={fraction}_p={model.num_params}"
-        group_name = f"{dataset_name}_{args.architecture}"
+        group_name = f"{dataset_name}_{args.architecture}_ts={timestamp}"
 
         if args.wandb_log:
             run = wandb.init(
