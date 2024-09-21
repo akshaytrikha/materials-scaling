@@ -94,3 +94,31 @@ plt.tight_layout()
 
 # Save the plot as an image file
 plt.savefig("perplexity_vs_percentage.png")
+
+def create_log_log_perplexity(entity_name, project_name, batch_name):
+    api = wandb.Api()
+    group_filter = {"group": batch_name}
+    runs = api.runs(f"{entity_name}/{project_name}", filters=group_filter)
+    data_proportions = []
+    train_perplexities = []
+    validation_perplexities = []
+    for run in runs:
+        data_proportion = float(run.config.get("fraction"))
+        train_perplexity = float(run.config.get("train_perplexity"))
+        validation_perplexity = float(run.config.get("validation_perplexity"))
+        data_proportions.append(data_proportion)
+        train_perplexities.append(train_perplexity)
+        validation_perplexities.append(validation_perplexity)
+    plt.figure(figsize=(8, 6))
+    plt.loglog(data_proportions, train_perplexities, marker="o", linestyle="-", color="blue")
+    plt.loglog(
+        data_proportions, validation_perplexities, marker="o", linestyle="-", color="green"
+    )
+    plt.legend()
+    plt.xlabel("Data Set Size")
+    plt.ylabel("Validation Loss")
+    plt.title(batch_name)
+    plt.grid(True, which="both", ls="--")
+    plt.savefig(batch_name)
+
+create_log_log_perplexity("material-scaling", "wikitext-scaling", "")
