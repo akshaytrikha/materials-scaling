@@ -145,17 +145,3 @@ if __name__ == "__main__":
                 }
             )
         wandb.finish()
-    data_sizes = [entry[0] for entry in data_and_perplexities]
-    train_perplexities = [entry[1] for entry in data_and_perplexities]
-    validation_perplexities = [entry[2] for entry in data_and_perplexities]
-    plt.figure(figsize=(8, 6))
-    plt.loglog(data_sizes, train_perplexities, marker="o", linestyle="-", color="blue")
-    plt.loglog(
-        data_sizes, validation_perplexities, marker="o", linestyle="-", color="green"
-    )
-    plt.legend()
-    plt.xlabel("Data Set Size")
-    plt.ylabel("Validation Loss")
-    plt.title(model_name)
-    plt.grid(True, which="both", ls="--")
-    plt.show()
