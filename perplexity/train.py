@@ -1,4 +1,6 @@
+# External
 import argparse
+from datetime import datetime
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -6,14 +8,16 @@ from torch.utils.data import DataLoader, Subset
 import wandb
 import matplotlib.pyplot as plt
 import pprint
+from tqdm.auto import tqdm
 import warnings
 
 warnings.filterwarnings("ignore", category=FutureWarning)
 
 # Internal
-from data import setup_dataset
-from model import FullyConnectedModel, VanillaTransformer
-from train_utils import train_epoch, evaluate_perplexity
+from data import setup_dataset, get_dataloaders
+from model import *
+from train_utils import train_epoch
+from arg_parser import get_args
 
 
 if torch.cuda.is_available():
@@ -26,35 +30,7 @@ else:
 
 if __name__ == "__main__":
     # Parse Arguments
-    parser = argparse.ArgumentParser(description="Training script for the model.")
-    parser.add_argument(
-        "--architecture",
-        type=str,
-        choices=["FCN", "VanillaTransformer"],
-        default="FCN",
-        help='Model architecture to use: "FCN" or "VanillaTransformer"',
-    )
-    parser.add_argument(
-        "--batch_size", type=int, default=64, help="Batch size for training"
-    )
-    parser.add_argument(
-        "--num_epochs", type=int, default=5, help="Number of epochs for training"
-    )
-    parser.add_argument("--lr", type=float, default=0.001, help="Learning rate")
-    parser.add_argument(
-        "--dataset_version",
-        type=str,
-        choices=["small", "large"],
-        default="small",
-        help='Dataset size to use: "small" or "big"',
-    )
-    parser.add_argument(
-        "--seq_max_length", type=int, default=512, help="Maximum sequence length"
-    )
-    parser.add_argument(
-        "--wandb_log", action="store_true", help="Enable Weights and Biases logging"
-    )
-    args = parser.parse_args()
+    args = get_args()
 
     # Setup Dataset
     if args.dataset_version == "small":
@@ -63,85 +39,72 @@ if __name__ == "__main__":
         dataset_name = "wikitext-103-v1"
     dataset, tokenizer = setup_dataset(dataset_name)
 
-    # Init Model, Loss, Optimizer
+    # Models, Loss
     if args.architecture == "FCN":
-        model = FullyConnectedModel(vocab_size=len(tokenizer))
+        models = MetaFullyConnectedModels(vocab_size=len(tokenizer))
     elif args.architecture == "VanillaTransformer":
-        model = VanillaTransformer(vocab_size=len(tokenizer))
-    model.to(DEVICE)
+        models = MetaVanillaTransformers(vocab_size=len(tokenizer))
     loss_fn = nn.CrossEntropyLoss()
-    optimizer = optim.Adam(model.parameters(), lr=args.lr)
 
-    # User Feedback
-    print(f"\nModel is on device: {DEVICE} and has {model.num_params} parameters")
+    # User Hyperparam Feedback
     pprint.pprint(vars(args))
     print()
 
     # Scaling Experiments
-    data_and_perplexities = []
-    for fraction in [0.01, 0.05, 0.1, 0.2, 0.4, 0.6, 0.8, 1]:
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    group_name = f"{dataset_name}_{args.architecture}_ts={timestamp}"  # for wandb
+
+    for data_fraction in tqdm(args.data_fractions, desc="Data Iteration"):
         # Create a subset of the dataset
-        train_size = int(len(dataset["train"]) * fraction)
-        validation_size = int(len(dataset["validation"]) * fraction)
-        train_subset = Subset(dataset["train"], indices=range(train_size))
-        validation_subset = Subset(
-            dataset["validation"], indices=range(validation_size)
-        )
-        train_loader = DataLoader(
-            train_subset, batch_size=args.batch_size, shuffle=True
-        )
-        validation_loader = DataLoader(
-            validation_subset, batch_size=args.batch_size, shuffle=True
+        train_loader, val_loader = get_dataloaders(
+            dataset, data_fraction, args.batch_size
         )
 
-        # name schemas
-        model_name = f"{args.architecture}_dv={args.dataset_version}_df={fraction}_p={model.num_params}"
-        group_name = f"{dataset_name}_{args.architecture}"
-
-        if args.wandb_log:
-            run = wandb.init(
-                project="wikitext-scaling",
-                name=model_name,
-                group=group_name,
-                config={
-                    "learning_rate": args.lr,
-                    "num_epochs": args.num_epochs,
-                    "batch_size": args.batch_size,
-                    "fraction": f"{int(fraction*100)}%",
-                },
-            )
-
-        # Train the model
-        for epoch in range(args.num_epochs):
-            train_loss = train_epoch(model, train_loader, optimizer, loss_fn, DEVICE)
-
+        for model in models:
+            model.to(DEVICE)
             print(
-                f"Dataset Size: {int(fraction*100)}%, Epoch: {epoch+1}, Loss: {train_loss}"
+                f"\nModel is on device {DEVICE} and has {model.num_params} parameters"
+            )
+            optimizer = optim.Adam(model.parameters(), lr=args.lr)
+
+            model_name = f"{args.architecture}_dv={args.dataset_version}_df={data_fraction}_p={model.num_params}"
+
+            if args.wandb_log:
+                run = wandb.init(
+                    project="wikitext-scaling",
+                    name=model_name,
+                    group=group_name,
+                    config={
+                        "learning_rate": args.lr,
+                        "num_epochs": args.num_epochs,
+                        "batch_size": args.batch_size,
+                        "data_fraction": f"{int(data_fraction*100)}%",
+                    },
+                )
+
+            # Train the model
+            for epoch in range(args.num_epochs):
+                train_loss, val_loss = train_epoch(
+                    model, train_loader, val_loader, optimizer, loss_fn, DEVICE
+                )
+                print(
+                    f"Dataset Size: {int(data_fraction*100)}%, Epoch: {epoch+1}, Train Loss: {train_loss}, Val Loss: {val_loss}"
+                )
+
+            # Evaluate Perplexity
+            train_perplexity = torch.exp(torch.tensor(train_loss)).item()
+            val_perplexity = torch.exp(torch.tensor(val_loss)).item()
+            print(
+                f"Dataset Size: {int(data_fraction*100)}%, Train Perplexity: {train_perplexity}, Val Perplexity: {val_perplexity}\n"
             )
             if args.wandb_log:
-                wandb.log({"loss": train_loss})
-
-        # Evaluate Perplexity
-        train_perplexity = evaluate_perplexity(model, train_loader, loss_fn, DEVICE)
-        validation_perplexity = evaluate_perplexity(
-            model, validation_loader, loss_fn, DEVICE
-        )
-        data_and_perplexities.append(
-            (
-                args.batch_size * len(train_loader) * args.seq_max_length,
-                train_perplexity,
-                validation_perplexity,
-            )
-        )
-        print(
-            f"Dataset Size: {int(fraction*100)}%, Train Loss: {train_loss}, Train Perplexity: {train_perplexity}, Validation Perplexity: {validation_perplexity}\n"
-        )
-        if args.wandb_log:
-            wandb.log(
-                {
-                    "train_loss": train_loss,
-                    "train_perplexity": train_perplexity,
-                    "validation_perplexity": validation_perplexity,
-                }
-            )
-        wandb.finish()
+                wandb.log(
+                    {
+                        "train_loss": train_loss,
+                        "train_perplexity": train_perplexity,
+                        "val_loss": val_loss,
+                        "val_perplexity": val_perplexity,
+                        "num_params": model.num_params,
+                    }
+                )
+            wandb.finish()

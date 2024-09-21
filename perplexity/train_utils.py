@@ -1,76 +1,81 @@
-# train_utils.py
-
 import torch
 
 
-def train_epoch(model, data_loader, optimizer, loss_fn, device):
+def compute_loss(batch, model, loss_fn, device):
+    """Process a batch and compute the loss.
+
+    Args:
+        batch (dict): A batch of data containing 'input_ids'.
+        model (torch.nn.Module): The model to evaluate.
+        loss_fn (torch.nn.Module): The loss function to compute loss.
+        device (torch.device): The device to run computations on.
+
+    Returns:
+        loss (torch.Tensor): The computed loss for the batch.
+    """
+    inputs = batch["input_ids"].to(device)  # Keep inputs as Long for embedding
+    labels = torch.roll(inputs, -1, dims=1)  # Shift inputs for next-token prediction
+
+    # Forward pass
+    outputs = model(inputs)
+
+    # Determine output shape and compute loss accordingly
+    if outputs.dim() == 3:
+        # Sequence-based model (e.g., VanillaTransformer)
+        batch_size, seq_length, vocab_size = outputs.size()
+        outputs = outputs.reshape(-1, vocab_size)  # Flatten for loss computation
+        labels = labels.reshape(-1)  # Flatten labels
+    elif outputs.dim() == 2:
+        # Single token prediction model (e.g., FCN)
+        labels = labels[:, -1]  # Use the last token as the target
+    else:
+        raise ValueError(f"Unsupported output dimension: {outputs.dim()}")
+
+    # Compute loss
+    loss = loss_fn(outputs, labels)
+    return loss
+
+
+def train_epoch(model, train_loader, val_loader, optimizer, loss_fn, device):
+    """
+    Train model for one epoch and compute the average train * validation loss.
+
+    Args:
+        model (torch.nn.Module): Model to train.
+        train_loader (torch.utils.data.DataLoader): Training data loader.
+        val_loader (torch.utils.data.DataLoader): Validation data loader.
+        optimizer (torch.optim.Optimizer): Optimizer for training.
+        loss_fn (torch.nn.Module): Loss function to compute loss.
+        device (torch.device): Device to run the training on.
+
+    Returns:
+        avg_train_loss (float): Average training loss for the epoch.
+        avg_val_loss (float): Average validation loss for the epoch.
+    """
+    # Training loop
     model.train()
-    total_loss = 0
-    for batch in data_loader:
-        inputs = batch["input_ids"].to(device)  # [batch_size, seq_length]
-        labels = inputs.clone()  # [batch_size, seq_length]
-        labels[:, :-1] = inputs[:, 1:]
-        labels[:, -1] = -100  # Ignore the last token
-
-        # Forward pass
-        outputs = model(inputs)  # Output shape depends on the model
-
-        # Determine output shape and compute loss accordingly
-        if outputs.dim() == 3:
-            # Sequence-based model (e.g., VanillaTransformer)
-            batch_size, seq_length, vocab_size = outputs.size()
-            # Reshape outputs and labels to compute loss over all tokens except the last
-            outputs = outputs[:, :-1, :].reshape(-1, vocab_size)  # [(batch_size * (seq_length-1)), vocab_size]
-            labels = labels[:, :-1].reshape(-1)  # [batch_size * (seq_length-1)]
-        elif outputs.dim() == 2:
-            # Single token prediction model (e.g., FCN)
-            batch_size, vocab_size = outputs.size()
-            # Assuming FCN predicts the next token based on the entire sequence
-            # Use the last token as the prediction target
-            labels = labels[:, -2]  # Use the second last token as the target
-            # Adjust based on your specific labeling strategy
-        else:
-            raise ValueError(f"Unsupported output dimension: {outputs.dim()}")
-
+    total_train_loss = 0
+    for batch in train_loader:
         # Compute loss
-        loss = loss_fn(outputs, labels)
+        loss = compute_loss(batch, model, loss_fn, device)
 
         # Backward pass and optimization
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
 
-        total_loss += loss.item()
-    return total_loss / len(data_loader)
+        total_train_loss += loss.item()
 
-
-def evaluate_perplexity(model, data_loader, loss_fn, device):
+    # Validation loop
     model.eval()
-    total_loss = 0
+    total_val_loss = 0
     with torch.no_grad():
-        for batch in data_loader:
-            inputs = batch["input_ids"].to(device)
-            labels = inputs.clone()
-            labels[:, :-1] = inputs[:, 1:]
-            labels[:, -1] = -100  # Ignore the last token
+        for batch in val_loader:
+            # Compute loss
+            loss = compute_loss(batch, model, loss_fn, device)
+            total_val_loss += loss.item()
 
-            outputs = model(inputs)
+    avg_train_loss = total_train_loss / len(train_loader)
+    avg_val_loss = total_val_loss / len(val_loader)
 
-            if outputs.dim() == 3:
-                # Sequence-based model (e.g., VanillaTransformer)
-                batch_size, seq_length, vocab_size = outputs.size()
-                outputs = outputs[:, :-1, :].reshape(-1, vocab_size)
-                labels = labels[:, :-1].reshape(-1)
-            elif outputs.dim() == 2:
-                # Single token prediction model (e.g., FCN)
-                batch_size, vocab_size = outputs.size()
-                labels = labels[:, -2]  # Adjust based on labeling strategy
-            else:
-                raise ValueError(f"Unsupported output dimension: {outputs.dim()}")
-
-            loss = loss_fn(outputs, labels)
-            total_loss += loss.item()
-
-    avg_loss = total_loss / len(data_loader)
-    perplexity = torch.exp(torch.tensor(avg_loss)).item()
-    return perplexity
+    return avg_train_loss, avg_val_loss

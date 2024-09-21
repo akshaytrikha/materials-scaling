@@ -2,18 +2,43 @@ import torch
 import torch.nn as nn
 
 
+class MetaFullyConnectedModels:
+    def __init__(self, vocab_size):
+        # Parameter Scaling Constants
+        self.embedding_dims = [16, 32, 64, 128, 256, 256, 256]
+        self.hidden_dims = [16, 32, 64, 128, 256, 512, 1024]
+        self.vocab_size = vocab_size
+
+        # Generate all combinations of embedding_dims and hidden_dims
+        self.configurations = list(
+            zip(
+                self.embedding_dims,
+                self.hidden_dims,
+            )
+        )
+
+    def __iter__(self):
+        for emb_dim, hid_dim in self.configurations:
+            yield FullyConnectedModel(
+                self.vocab_size, embedding_dim=emb_dim, hidden_dim=hid_dim
+            )
+
+    def __len__(self):
+        return len(self.configurations)
+
+
 class FullyConnectedModel(nn.Module):
-    def __init__(self, vocab_size, embedding_dim=512):
+    def __init__(self, vocab_size, embedding_dim=512, hidden_dim=512):
         super(FullyConnectedModel, self).__init__()
         self.embedding = nn.Embedding(vocab_size, embedding_dim)
-        self.fc1 = nn.Linear(embedding_dim, 512)
+        self.fc1 = nn.Linear(embedding_dim, hidden_dim)
         self.relu = nn.ReLU()
-        self.fc2 = nn.Linear(512, vocab_size)
+        self.fc2 = nn.Linear(hidden_dim, vocab_size)
 
         self.num_params = sum(p.numel() for p in self.parameters())
 
     def forward(self, x):
-        x = self.embedding(x)  # x needs to be long here
+        x = self.embedding(x)
         x = x.mean(dim=1)  # Sum or average embeddings
         x = self.relu(self.fc1(x))
         x = self.fc2(x)
