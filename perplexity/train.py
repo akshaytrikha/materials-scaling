@@ -94,7 +94,7 @@ if __name__ == "__main__":
                     best_val_loss = val_loss
                     os.makedirs(f"saved_models/{group_name}", exist_ok=True)
                     model_save_path = f"saved_models/{group_name}/{model_name}.pt"
-                    torch.save(model.state_dict(), model_save_path)
+                    torch.save(model, model_save_path)
                     print(f"Model saved to {model_save_path}")
 
             # Evaluate Perplexity
