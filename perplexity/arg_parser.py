@@ -1,10 +1,10 @@
 import argparse
 
-
 def float_or_int(value):
     """Helper function to convert a string to a float or int.
 
-    Useful for parsing --data_fractions as 0.01 0.1 1 or 0.01, 0.1, 1.0"""
+    Useful for parsing --data_fractions as 0.01 0.1 1 or 0.01, 0.1, 1.0
+    """
     try:
         if "." in value:
             return float(value)
@@ -27,7 +27,7 @@ def get_args():
         "--batch_size", type=int, default=64, help="Batch size for training"
     )
     parser.add_argument(
-        "--num_epochs", type=int, default=5, help="Number of  epochs for training"
+        "--num_epochs", type=int, default=5, help="Number of epochs for training"
     )
     parser.add_argument("--lr", type=float, default=0.001, help="Learning rate")
     parser.add_argument(
@@ -35,7 +35,7 @@ def get_args():
         type=str,
         choices=["small", "large"],
         default="small",
-        help='Dataset size to use: "small" or "big"',
+        help='Dataset size to use: "small" or "large"',
     )
     parser.add_argument(
         "--seq_max_length", type=int, default=512, help="Maximum sequence length"

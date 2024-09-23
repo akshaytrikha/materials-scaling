@@ -1,81 +1,112 @@
+# train_utils.py
+
 import torch
+import math
+from torch import nn, optim, Tensor
+from typing import Tuple
+
+def get_batch(source: Tensor, i: int, bptt: int = 35) -> Tuple[Tensor, Tensor]:
+    """
+    Args:
+        source: Tensor, shape `[seq_len, batch_size]`
+        i: int
+        bptt: int, sequence length
+
+    Returns:
+        tuple (data, target), where data has shape `[bptt, batch_size]` and
+        target has shape `[bptt * batch_size]`
+    """
+    seq_len = min(bptt, source.size(0) - 1 - i)
+    data = source[i:i+seq_len]
+    target = source[i+1:i+1+seq_len].reshape(-1)
+    return data, target
 
 
-def compute_loss(batch, model, loss_fn, device):
-    """Process a batch and compute the loss.
+def compute_loss(data: Tensor, targets: Tensor, model: nn.Module, loss_fn: nn.Module, device: torch.device) -> Tensor:
+    """Compute the loss for a batch of data.
 
     Args:
-        batch (dict): A batch of data containing 'input_ids'.
-        model (torch.nn.Module): The model to evaluate.
-        loss_fn (torch.nn.Module): The loss function to compute loss.
+        data (Tensor): Input data tensor of shape `[bptt, batch_size]`.
+        targets (Tensor): Target tensor of shape `[bptt * batch_size]`.
+        model (nn.Module): The model to evaluate.
+        loss_fn (nn.Module): The loss function to compute loss.
         device (torch.device): The device to run computations on.
 
     Returns:
-        loss (torch.Tensor): The computed loss for the batch.
+        loss (Tensor): The computed loss for the batch.
     """
-    inputs = batch["input_ids"].to(device)  # Keep inputs as Long for embedding
-    labels = torch.roll(inputs, -1, dims=1)  # Shift inputs for next-token prediction
+    data = data.to(device)
+    targets = targets.to(device)
 
     # Forward pass
-    outputs = model(inputs)
+    outputs = model(data)  # For Transformer: [batch_size, seq_len, vocab_size]
 
-    # Determine output shape and compute loss accordingly
     if outputs.dim() == 3:
-        # Sequence-based model (e.g., VanillaTransformer)
-        batch_size, seq_length, vocab_size = outputs.size()
-        outputs = outputs.reshape(-1, vocab_size)  # Flatten for loss computation
-        labels = labels.reshape(-1)  # Flatten labels
+        # Transformer output: [batch_size, seq_len, vocab_size]
+        batch_size, seq_len, vocab_size = outputs.size()
+        outputs = outputs.reshape(-1, vocab_size)  # [batch_size * seq_len, vocab_size]
     elif outputs.dim() == 2:
-        # Single token prediction model (e.g., FCN)
-        labels = labels[:, -1]  # Use the last token as the target
+        # FCN output: [batch_size, vocab_size]
+        pass  # Targets are already [batch_size]
     else:
         raise ValueError(f"Unsupported output dimension: {outputs.dim()}")
 
     # Compute loss
-    loss = loss_fn(outputs, labels)
+    loss = loss_fn(outputs, targets)
     return loss
 
 
-def train_epoch(model, train_loader, val_loader, optimizer, loss_fn, device):
+def train_epoch(model: nn.Module, train_data: Tensor, val_data: Tensor, optimizer: optim.Optimizer, loss_fn: nn.Module, device: torch.device, bptt: int = 35) -> Tuple[float, float]:
     """
-    Train model for one epoch and compute the average train * validation loss.
+    Train the model for one epoch and evaluate on the validation set.
 
     Args:
-        model (torch.nn.Module): Model to train.
-        train_loader (torch.utils.data.DataLoader): Training data loader.
-        val_loader (torch.utils.data.DataLoader): Validation data loader.
-        optimizer (torch.optim.Optimizer): Optimizer for training.
-        loss_fn (torch.nn.Module): Loss function to compute loss.
+        model (nn.Module): The model to train.
+        train_data (Tensor): Batchified training data tensor.
+        val_data (Tensor): Batchified validation data tensor.
+        optimizer (optim.Optimizer): Optimizer for training.
+        loss_fn (nn.Module): Loss function to compute loss.
         device (torch.device): Device to run the training on.
+        bptt (int): Sequence length for training.
 
     Returns:
-        avg_train_loss (float): Average training loss for the epoch.
-        avg_val_loss (float): Average validation loss for the epoch.
+        Tuple containing average training loss and average validation loss.
     """
     # Training loop
     model.train()
-    total_train_loss = 0
-    for batch in train_loader:
-        # Compute loss
-        loss = compute_loss(batch, model, loss_fn, device)
+    total_train_loss = 0.0
+    train_steps = 0
+
+    # Calculate number of batches based on bptt
+    num_train_batches = train_data.size(0) // bptt
+
+    for i in range(0, train_data.size(0) - 1, bptt):
+        data, targets = get_batch(train_data, i, bptt)
+        loss = compute_loss(data, targets, model, loss_fn, device)
 
         # Backward pass and optimization
         optimizer.zero_grad()
         loss.backward()
+        torch.nn.utils.clip_grad_norm_(model.parameters(), 0.5)
         optimizer.step()
 
         total_train_loss += loss.item()
+        train_steps += 1
+
+    avg_train_loss = total_train_loss / train_steps
 
     # Validation loop
     model.eval()
-    total_val_loss = 0
-    with torch.no_grad():
-        for batch in val_loader:
-            # Compute loss
-            loss = compute_loss(batch, model, loss_fn, device)
-            total_val_loss += loss.item()
+    total_val_loss = 0.0
+    val_steps = 0
 
-    avg_train_loss = total_train_loss / len(train_loader)
-    avg_val_loss = total_val_loss / len(val_loader)
+    with torch.no_grad():
+        for i in range(0, val_data.size(0) - 1, bptt):
+            data, targets = get_batch(val_data, i, bptt)
+            loss = compute_loss(data, targets, model, loss_fn, device)
+            total_val_loss += loss.item()
+            val_steps += 1
+
+    avg_val_loss = total_val_loss / val_steps
 
     return avg_train_loss, avg_val_loss
