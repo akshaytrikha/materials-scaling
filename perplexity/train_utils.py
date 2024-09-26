@@ -62,6 +62,7 @@ def train_epoch(model, train_loader, val_loader, optimizer, loss_fn, device):
         # Backward pass and optimization
         optimizer.zero_grad()
         loss.backward()
+        torch.nn.utils.clip_grad_norm_(model.parameters(), 0.5)
         optimizer.step()
 
         total_train_loss += loss.item()
