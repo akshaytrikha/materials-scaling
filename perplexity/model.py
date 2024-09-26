@@ -272,3 +272,42 @@ class VanillaTransformer(nn.Module):
         return output.transpose(
             0, 1
         )  # Transpose back to (batch_size, seq_len, vocab_size)
+
+def generate(model_save_path, tokenizer, input_text, max_length, device='cpu'):
+    """
+    Generates text from the model given an input prompt.
+    
+    input_text: str, input seed text for generating new text
+    device: torch device (cpu or cuda)
+    
+    Returns:
+    - Generated text as a string
+    """
+    # Step 1: Encode the input text to token indices
+    if device == 'cpu':
+        if torch.backends.mps.is_available():
+            device = torch.device("mps")
+        else:
+            device = torch.device("cpu")
+    input_ids = tokenizer.encode(input_text)
+    input_ids = torch.tensor([input_ids], device=device)  # Make it a batch of 1
+    # Load the model and set it to evaluation mode
+    model = torch.load(model_save_path)
+    model = model.to(device)
+    model.eval()
+    # Initialize the generated sequence with the input ids
+    generated_ids = input_ids
+    for _ in range(max_length):
+        # Step 2: Pass the input through the model
+        with torch.no_grad():
+            logits = model(generated_ids)
+        # Step 3: Sample the next token (using greedy sampling for simplicity)
+        next_token_id = torch.argmax(logits, dim=-1).unsqueeze(0)
+        # Step 4: Append the generated token to the sequence
+        generated_ids = torch.cat((generated_ids, next_token_id), dim=1)
+        # If end-of-sequence token is generated, stop
+        if next_token_id.item() == tokenizer.eos_token_id:
+            break
+    # Step 5: Decode the generated sequence back to text
+    generated_text = tokenizer.decode(generated_ids.squeeze().tolist())
+    return generated_text
