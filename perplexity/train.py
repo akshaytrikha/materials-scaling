@@ -39,7 +39,7 @@ if __name__ == "__main__":
 
     # Models, Loss
     if args.architecture == "FCN":
-        models = MetaFullyConnectedModels(vocab_size=len(tokenizer))
+        models = MetaFullyConnectedModels(vocab_size=len(tokenizer), context_length=512)
     elif args.architecture == "VanillaTransformer":
         models = MetaVanillaTransformers(vocab_size=len(tokenizer))
     loss_fn = nn.CrossEntropyLoss()
@@ -60,57 +60,60 @@ if __name__ == "__main__":
 
         for model in models:
             model.to(DEVICE)
-            print(
-                f"\nModel is on device {DEVICE} and has {model.num_params} parameters"
-            )
-            optimizer = optim.Adam(model.parameters(), lr=args.lr)
+            # print(
+            #     f"\nModel is on device {DEVICE} and has {model.num_params} parameters"
+            # )
 
-            model_name = f"{args.architecture}_dv={args.dataset_version}_df={data_fraction}_p={model.num_params}"
+            # optimizer = optim.Adam(model.parameters(), lr=args.lr)
 
-            if args.wandb_log:
-                run = wandb.init(
-                    project="wikitext-scaling",
-                    name=model_name,
-                    group=group_name,
-                    config={
-                        "learning_rate": args.lr,
-                        "num_epochs": args.num_epochs,
-                        "batch_size": args.batch_size,
-                        "data_fraction": f"{int(data_fraction*100)}%",
-                    },
-                )
+            # model_name = f"{args.architecture}_dv={args.dataset_version}_df={data_fraction}_p={model.num_params}"
 
-            # Train the model
-            best_val_loss = float("inf")
-            for epoch in range(args.num_epochs):
-                train_loss, val_loss = train_epoch(
-                    model, train_loader, val_loader, optimizer, loss_fn, DEVICE
-                )
-                print(
-                    f"Dataset Size: {int(data_fraction*100)}%, Epoch: {epoch+1}, Train Loss: {train_loss}, Val Loss: {val_loss}"
-                )
+            # if args.wandb_log:
+            #     run = wandb.init(
+            #         project="wikitext-scaling",
+            #         name=model_name,
+            #         group=group_name,
+            #         config={
+            #             "learning_rate": args.lr,
+            #             "num_epochs": args.num_epochs,
+            #             "batch_size": args.batch_size,
+            #             "data_fraction": f"{int(data_fraction*100)}%",
+            #         },
+            #     )
 
-                if val_loss < best_val_loss:
-                    best_val_loss = val_loss
-                    os.makedirs(f"saved_models/{group_name}", exist_ok=True)
-                    model_save_path = f"saved_models/{group_name}/{model_name}.pt"
-                    torch.save(model, model_save_path)
-                    print(f"Model saved to {model_save_path}")
+            # # Train the model
+            # best_val_loss = float("inf")
+            # for epoch in range(args.num_epochs):
+            #     train_loss, val_loss = train_epoch(
+            #         model, train_loader, val_loader, optimizer, loss_fn, DEVICE
+            #     )
+            #     print(
+            #         f"Dataset Size: {int(data_fraction*100)}%, Epoch: {epoch+1}, Train Loss: {train_loss}, Val Loss: {val_loss}"
+            #     )
 
-            # Evaluate Perplexity
-            train_perplexity = torch.exp(torch.tensor(train_loss)).item()
-            val_perplexity = torch.exp(torch.tensor(val_loss)).item()
-            print(
-                f"Dataset Size: {int(data_fraction*100)}%, Train Perplexity: {train_perplexity}, Val Perplexity: {val_perplexity}\n"
-            )
-            if args.wandb_log:
-                wandb.log(
-                    {
-                        "train_loss": train_loss,
-                        "train_perplexity": train_perplexity,
-                        "val_loss": val_loss,
-                        "val_perplexity": val_perplexity,
-                        "num_params": model.num_params,
-                    }
-                )
-            wandb.finish()
+            #     if val_loss < best_val_loss:
+            #         best_val_loss = val_loss
+            #         os.makedirs(f"saved_models/{group_name}", exist_ok=True)
+            #         model_save_path = f"saved_models/{group_name}/{model_name}.pt"
+            #         torch.save(model, model_save_path)
+            #         print(f"Model saved to {model_save_path}")
+
+            # # Evaluate Perplexity
+            # train_perplexity = torch.exp(torch.tensor(train_loss)).item()
+            # val_perplexity = torch.exp(torch.tensor(val_loss)).item()
+            # print(
+            #     f"Dataset Size: {int(data_fraction*100)}%, Train Perplexity: {train_perplexity}, Val Perplexity: {val_perplexity}\n"
+            # )
+            # if args.wandb_log:
+            #     wandb.log(
+            #         {
+            #             "train_loss": train_loss,
+            #             "train_perplexity": train_perplexity,
+            #             "val_loss": val_loss,
+            #             "val_perplexity": val_perplexity,
+            #             "num_params": model.num_params,
+            #         }
+            #     )
+            # wandb.finish()
+
+        break
