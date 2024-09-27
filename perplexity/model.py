@@ -117,9 +117,9 @@ class TransformerModel(nn.Module):
         output = output.transpose(0, 1)  # [batch_size, seq_len, ntoken]
 
         if labels is not None:
-            # Debugging: Print shapes before reshaping
-            print(f"Output shape before reshaping: {output.shape}")  # Should be [batch_size, seq_len, ntoken]
-            print(f"Labels shape before reshaping: {labels.shape}")  # Should be [batch_size, seq_len]
+            # # Debugging: Print shapes before reshaping
+            # print(f"Output shape before reshaping: {output.shape}")  # Should be [batch_size, seq_len, ntoken]
+            # print(f"Labels shape before reshaping: {labels.shape}")  # Should be [batch_size, seq_len]
 
             # Use .reshape() instead of .view()
             loss_fn = nn.CrossEntropyLoss()
