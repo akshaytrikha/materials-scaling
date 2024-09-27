@@ -47,6 +47,10 @@ class FullyConnectedModel(nn.Module):
         return x
 
 
+import torch
+import torch.nn as nn
+import math
+
 class PositionalEncoding(nn.Module):
     def __init__(self, d_model: int, dropout: float = 0.1, max_len: int = 5000):
         super().__init__()
@@ -113,10 +117,14 @@ class TransformerModel(nn.Module):
         output = output.transpose(0, 1)  # [batch_size, seq_len, ntoken]
 
         if labels is not None:
-            # Reshape for loss computation
+            # Debugging: Print shapes before reshaping
+            print(f"Output shape before reshaping: {output.shape}")  # Should be [batch_size, seq_len, ntoken]
+            print(f"Labels shape before reshaping: {labels.shape}")  # Should be [batch_size, seq_len]
+
+            # Use .reshape() instead of .view()
             loss_fn = nn.CrossEntropyLoss()
-            # Flatten the tensors: [batch_size * seq_len, ntoken] and [batch_size * seq_len]
-            loss = loss_fn(output.view(-1, output.size(-1)), labels.view(-1))
+            loss = loss_fn(output.reshape(-1, output.size(-1)), labels.reshape(-1))  # [batch_size*seq_len, ntoken], [batch_size*seq_len]
+
             return loss, output
         else:
             return output

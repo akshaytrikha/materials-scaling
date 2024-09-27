@@ -37,7 +37,6 @@ def get_args():
         default="small",
         help='Dataset size to use: "small" or "big"',
     )
-
     parser.add_argument(
         "--data_fractions",
         type=float_or_int,
