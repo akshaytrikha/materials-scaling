@@ -2,6 +2,7 @@
 
 import torch
 import torch.nn as nn
+import math
 from typing import Tuple
 
 class FullyConnectedModel(nn.Module):
@@ -130,7 +131,7 @@ class PositionalEncoding(nn.Module):
 
 class TransformerModel(nn.Module):
     def __init__(self, ntoken: int, d_model: int, nhead: int, d_hid: int,
-                 nlayers: int, dropout: float = 0.5):
+                 nlayers: int, dropout: float = 0.2):
         super().__init__()
         self.model_type = 'Transformer'
         self.pos_encoder = PositionalEncoding(d_model, dropout)

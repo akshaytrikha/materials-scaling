@@ -27,7 +27,7 @@ if __name__ == "__main__":
     args = get_args()
     
     # Constants
-    SEQ_LENGTH = 32
+    SEQ_LENGTH = 64
     STRIDE = 1
 
     # Args

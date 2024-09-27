@@ -25,11 +25,11 @@ def train_model(model, device, train_loader: DataLoader, val_loader: DataLoader,
             labels = batch['labels'].to(device)        # [batch_size, seq_len]
 
             optimizer.zero_grad()
-            loss, logits = model(input_ids=input_ids, labels=labels)  # loss: scalar, logits: [batch_size, seq_len, ntoken]
+            trloss, logits = model(input_ids=input_ids, labels=labels)  # loss: scalar, logits: [batch_size, seq_len, ntoken]
 
-            loss.backward()
+            trloss.backward()
             optimizer.step()
-            total_loss += loss.item()
+            total_loss += trloss.item()
 
         avg_loss = total_loss / len(train_loader)
         train_perplexity = math.exp(avg_loss)
@@ -42,8 +42,8 @@ def train_model(model, device, train_loader: DataLoader, val_loader: DataLoader,
                 input_ids = batch['input_ids'].to(device)
                 labels = batch['labels'].to(device)
 
-                loss, logits = model(input_ids=input_ids, labels=labels)
-                val_loss += loss.item()
+                vloss, logits = model(input_ids=input_ids, labels=labels)
+                val_loss += vloss.item()
 
         avg_val_loss = val_loss / len(val_loader)
         val_perplexity = math.exp(avg_val_loss)
