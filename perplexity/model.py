@@ -290,9 +290,6 @@ class TransformerModel(nn.Module):
         logits = logits.transpose(0, 1)  # [batch_size, seq_len, ntoken]
 
         if labels is not None:
-            # Debugging: Print shapes before reshaping
-            print(f"Logits shape before reshaping: {logits.shape}")    # Expected: [batch_size, seq_len, ntoken]
-            print(f"Labels shape before reshaping: {labels.shape}")    # Expected: [batch_size, seq_len]
 
             # Reshape logits and labels for loss computation
             logits_reshaped = logits.reshape(-1, logits.size(-1))  # [batch_size * seq_len, ntoken]
