@@ -39,7 +39,8 @@ if __name__ == "__main__":
 
     # Models, Loss
     if args.architecture == "FCN":
-        models = MetaFullyConnectedModels(vocab_size=len(tokenizer), context_length=512)
+        # models = MetaFullyConnectedModels(vocab_size=len(tokenizer), context_length=512)
+        models = MetaFullyConnectedModels(int(1e4), context_length=512)
     elif args.architecture == "VanillaTransformer":
         models = MetaVanillaTransformers(vocab_size=len(tokenizer))
     loss_fn = nn.CrossEntropyLoss()
@@ -60,6 +61,9 @@ if __name__ == "__main__":
 
         for model in models:
             model.to(DEVICE)
+
+            print(model.num_params)
+
             # print(
             #     f"\nModel is on device {DEVICE} and has {model.num_params} parameters"
             # )

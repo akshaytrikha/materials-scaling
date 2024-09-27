@@ -5,3 +5,4 @@ wandb==0.17.9
 matplotlib==3.9.2
 black==22.3.0
 tqdm==4.66.5
+tokenizers==0.19.1

@@ -1,5 +1,6 @@
 import datasets
-from transformers import GPT2Tokenizer
+from transformers import GPT2Tokenizer, PreTrainedTokenizerFast
+from tokenizers import ByteLevelBPETokenizer
 from torch.utils.data import DataLoader, Subset
 
 
@@ -17,24 +18,26 @@ def setup_dataset(dataset_name: str, seq_max_length: int = 512):
     dataset = datasets.load_dataset("wikitext", dataset_name)
 
     # Load tokenizer
-    tokenizer = GPT2Tokenizer.from_pretrained("gpt2")
+    # tokenizer = GPT2Tokenizer.from_pretrained("gpt2")
+
+    tokenizer = PreTrainedTokenizerFast.from_pretrained("bpe_tokenizer")
 
     # Set the pad token to the EOS token if it's not already defined
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
 
     # Function to encode examples using the tokenizer
-    def encode(examples):
-        return tokenizer(
-            examples["text"],
-            truncation=True,
-            padding="max_length",
-            max_length=seq_max_length,
-        )
+    # def encode(examples):
+    #     return tokenizer(
+    #         examples["text"],
+    #         truncation=True,
+    #         padding="max_length",
+    #         max_length=seq_max_length,
+    #     )
 
     # Encode the dataset
-    dataset = dataset.map(encode, batched=True)
-    dataset.set_format(type="torch", columns=["input_ids"])
+    # dataset = dataset.map(encode, batched=True)
+    # dataset.set_format(type="torch", columns=["input_ids"])
 
     return dataset, tokenizer
 
