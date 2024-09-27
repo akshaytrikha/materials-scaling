@@ -176,7 +176,7 @@ def get_dataloaders(
     train_loader = DataLoader(
         train_subset,
         batch_size=batch_size,
-        shuffle=False,      # Shuffle for better training
+        shuffle=True,      # Shuffle for better training
         drop_last=True     # Ensures consistent batch sizes
     )
 
