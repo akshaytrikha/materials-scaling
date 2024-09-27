@@ -1,82 +1,59 @@
 import torch
+from torch.utils.data import DataLoader
+import torch.nn as nn
+import torch.optim as optim
+import math
 
-
-def compute_loss(batch, model, loss_fn, device):
-    """Process a batch and compute the loss.
+def train_model(model, device, train_loader: DataLoader, val_loader: DataLoader, epochs: int = 3, lr: float = 5e-5):
+    """
+    Trains a model and tracks perplexity.
 
     Args:
-        batch (dict): A batch of data containing 'input_ids'.
-        model (torch.nn.Module): The model to evaluate.
-        loss_fn (torch.nn.Module): The loss function to compute loss.
-        device (torch.device): The device to run computations on.
-
-    Returns:
-        loss (torch.Tensor): The computed loss for the batch.
+        model: model to train.
+        train_loader (DataLoader): DataLoader for training data.
+        val_loader (DataLoader): DataLoader for validation data.
+        epochs (int): Number of training epochs.
+        lr (float): Learning rate.
     """
-    inputs = batch["input_ids"].to(device)  # Keep inputs as Long for embedding
-    labels = torch.roll(inputs, -1, dims=1)  # Shift inputs for next-token prediction
+    criterion = nn.CrossEntropyLoss()
+    optimizer = optim.AdamW(model.parameters(), lr=lr)
+    
+    for epoch in range(epochs):
+        model.train()
+        total_loss = 0
+        for batch in train_loader:
+            input_ids = batch['input_ids'].to(device)
+            labels = batch['labels'].to(device)
 
-    # Forward pass
-    outputs = model(inputs)
+            outputs = model(input_ids=input_ids)
+            logits = outputs.logits  # Shape: [batch_size, sequence_length, vocab_size]
+            loss = criterion(logits.view(-1, logits.size(-1)), labels.view(-1))
 
-    # Determine output shape and compute loss accordingly
-    if outputs.dim() == 3:
-        # Sequence-based model (e.g., VanillaTransformer)
-        batch_size, seq_length, vocab_size = outputs.size()
-        outputs = outputs.reshape(-1, vocab_size)  # Flatten for loss computation
-        labels = labels.reshape(-1)  # Flatten labels
-    elif outputs.dim() == 2:
-        # Single token prediction model (e.g., FCN)
-        labels = labels[:, -1]  # Use the last token as the target
-    else:
-        raise ValueError(f"Unsupported output dimension: {outputs.dim()}")
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
 
-    # Compute loss
-    loss = loss_fn(outputs, labels)
-    return loss
+            total_loss += loss.item()
 
+        avg_loss = total_loss / len(train_loader)
+        train_perplexity = math.exp(avg_loss)
+        print(f"Epoch {epoch + 1}/{epochs}, Training Loss: {avg_loss:.4f}")
 
-def train_epoch(model, train_loader, val_loader, optimizer, loss_fn, device):
-    """
-    Train model for one epoch and compute the average train * validation loss.
+        # Validation step
+        model.eval()
+        val_loss = 0
+        with torch.no_grad():
+            for batch in val_loader:
+                input_ids = batch['input_ids'].to(device)
+                labels = batch['labels'].to(device)
 
-    Args:
-        model (torch.nn.Module): Model to train.
-        train_loader (torch.utils.data.DataLoader): Training data loader.
-        val_loader (torch.utils.data.DataLoader): Validation data loader.
-        optimizer (torch.optim.Optimizer): Optimizer for training.
-        loss_fn (torch.nn.Module): Loss function to compute loss.
-        device (torch.device): Device to run the training on.
+                outputs = model(input_ids=input_ids)
+                logits = outputs.logits
+                loss = criterion(logits.view(-1, logits.size(-1)), labels.view(-1))
 
-    Returns:
-        avg_train_loss (float): Average training loss for the epoch.
-        avg_val_loss (float): Average validation loss for the epoch.
-    """
-    # Training loop
-    model.train()
-    total_train_loss = 0
-    for batch in train_loader:
-        # Compute loss
-        loss = compute_loss(batch, model, loss_fn, device)
+                val_loss += loss.item()
 
-        # Backward pass and optimization
-        optimizer.zero_grad()
-        loss.backward()
-        torch.nn.utils.clip_grad_norm_(model.parameters(), 0.5)
-        optimizer.step()
-
-        total_train_loss += loss.item()
-
-    # Validation loop
-    model.eval()
-    total_val_loss = 0
-    with torch.no_grad():
-        for batch in val_loader:
-            # Compute loss
-            loss = compute_loss(batch, model, loss_fn, device)
-            total_val_loss += loss.item()
-
-    avg_train_loss = total_train_loss / len(train_loader)
-    avg_val_loss = total_val_loss / len(val_loader)
-
-    return avg_train_loss, avg_val_loss
+        avg_val_loss = val_loss / len(val_loader)
+        val_perplexity = math.exp(avg_val_loss)
+        print(f"Epoch {epoch + 1}/{epochs}, Validation Loss: {avg_val_loss:.4f}")
+        return avg_loss, avg_val_loss, train_perplexity, val_perplexity
