@@ -33,7 +33,6 @@ def train_model(model, device, train_loader: DataLoader, val_loader: DataLoader,
 
         avg_loss = total_loss / len(train_loader)
         train_perplexity = math.exp(avg_loss)
-        print(f"Epoch {epoch + 1}/{epochs}, Training Loss: {avg_loss:.4f}")
 
         # Validation step
         model.eval()
@@ -48,6 +47,6 @@ def train_model(model, device, train_loader: DataLoader, val_loader: DataLoader,
 
         avg_val_loss = val_loss / len(val_loader)
         val_perplexity = math.exp(avg_val_loss)
-        print(f"Epoch {epoch + 1}/{epochs}, Validation Loss: {avg_val_loss:.4f}")
+        print(f"Epoch {epoch + 1}/{epochs}, Training Loss: {avg_loss:.4f}, Validation Loss: {avg_val_loss:.4f}")
     
     return avg_loss, avg_val_loss, train_perplexity, val_perplexity
