@@ -1,11 +1,79 @@
-# model.py
+# models.py
 
 import torch
 import torch.nn as nn
-import math
+from typing import Tuple
+
+class FullyConnectedModel(nn.Module):
+    def __init__(self, vocab_size: int, embedding_dim: int = 512, hidden_dim: int = 512):
+        """
+        Initializes the Fully Connected Network model.
+
+        Args:
+            vocab_size (int): Size of the vocabulary.
+            embedding_dim (int, optional): Dimension of the embedding vectors. Defaults to 512.
+            hidden_dim (int, optional): Dimension of the hidden layer. Defaults to 512.
+        """
+        super(FullyConnectedModel, self).__init__()
+        self.embedding = nn.Embedding(vocab_size, embedding_dim)
+        self.fc1 = nn.Linear(embedding_dim, hidden_dim)
+        self.relu = nn.ReLU()
+        self.fc2 = nn.Linear(hidden_dim, vocab_size)
+
+        self.num_params = sum(p.numel() for p in self.parameters())
+
+    def forward(self, input_ids: torch.Tensor, labels: torch.Tensor = None) -> Tuple[torch.Tensor, torch.Tensor]:
+        """
+        Forward pass of the FCN model.
+
+        Args:
+            input_ids (torch.Tensor): Input tensor of shape [batch_size, seq_len].
+            labels (torch.Tensor, optional): Labels tensor of shape [batch_size, seq_len]. Defaults to None.
+
+        Returns:
+            Tuple[torch.Tensor, torch.Tensor]:
+                - If labels are provided: (loss, logits)
+                - Else: logits tensor of shape [batch_size, seq_len, vocab_size]
+        """
+        # Embed the input_ids: [batch_size, seq_len, embedding_dim]
+        x = self.embedding(input_ids)
+
+        # Pass through the first fully connected layer: [batch_size, seq_len, hidden_dim]
+        x = self.fc1(x)
+        x = self.relu(x)
+
+        # Pass through the second fully connected layer: [batch_size, seq_len, vocab_size]
+        logits = self.fc2(x)
+
+        if labels is not None:
+            # # Debugging: Print shapes before reshaping
+            # print(f"Logits shape before reshaping: {logits.shape}")    # Expected: [batch_size, seq_len, vocab_size]
+            # print(f"Labels shape before reshaping: {labels.shape}")    # Expected: [batch_size, seq_len]
+
+            # Reshape logits and labels for loss computation
+            # Logits: [batch_size * seq_len, vocab_size]
+            # Labels: [batch_size * seq_len]
+            logits_reshaped = logits.reshape(-1, logits.size(-1))
+            labels_reshaped = labels.reshape(-1)
+
+            # Initialize the loss function
+            loss_fn = nn.CrossEntropyLoss()
+
+            # Compute the loss
+            loss = loss_fn(logits_reshaped, labels_reshaped)
+
+            return loss, logits
+        else:
+            return logits
 
 class MetaFullyConnectedModels:
-    def __init__(self, vocab_size):
+    def __init__(self, vocab_size: int):
+        """
+        Initializes the meta class for generating multiple FCN configurations.
+
+        Args:
+            vocab_size (int): Size of the vocabulary.
+        """
         # Parameter Scaling Constants
         self.embedding_dims = [16, 32, 64, 128, 256, 256, 256]
         self.hidden_dims = [16, 32, 64, 128, 256, 512, 1024]
@@ -20,32 +88,24 @@ class MetaFullyConnectedModels:
         )
 
     def __iter__(self):
+        """
+        Yields FullyConnectedModel instances for each configuration.
+        """
         for emb_dim, hid_dim in self.configurations:
             yield FullyConnectedModel(
-                self.vocab_size, embedding_dim=emb_dim, hidden_dim=hid_dim
+                vocab_size=self.vocab_size,
+                embedding_dim=emb_dim,
+                hidden_dim=hid_dim
             )
 
     def __len__(self):
+        """
+        Returns the number of configurations.
+
+        Returns:
+            int: Number of model configurations.
+        """
         return len(self.configurations)
-
-
-class FullyConnectedModel(nn.Module):
-    def __init__(self, vocab_size, embedding_dim=512, hidden_dim=512):
-        super(FullyConnectedModel, self).__init__()
-        self.embedding = nn.Embedding(vocab_size, embedding_dim)
-        self.fc1 = nn.Linear(embedding_dim, hidden_dim)
-        self.relu = nn.ReLU()
-        self.fc2 = nn.Linear(hidden_dim, vocab_size)
-
-        self.num_params = sum(p.numel() for p in self.parameters())
-
-    def forward(self, x):
-        x = self.embedding(x)
-        x = x.mean(dim=1)  # Average embeddings across sequence length
-        x = self.relu(self.fc1(x))
-        x = self.fc2(x)
-        return x
-
 
 class PositionalEncoding(nn.Module):
     def __init__(self, d_model: int, dropout: float = 0.1, max_len: int = 5000):
@@ -68,14 +128,14 @@ class PositionalEncoding(nn.Module):
         return self.dropout(x)
 
 
-class TransformerDecoderOnlyModel(nn.Module):
+class TransformerModel(nn.Module):
     def __init__(self, ntoken: int, d_model: int, nhead: int, d_hid: int,
                  nlayers: int, dropout: float = 0.5):
         super().__init__()
-        self.model_type = 'TransformerDecoderOnly'
+        self.model_type = 'Transformer'
         self.pos_encoder = PositionalEncoding(d_model, dropout)
-        decoder_layers = nn.TransformerDecoderLayer(d_model, nhead, d_hid, dropout)
-        self.transformer_decoder = nn.TransformerDecoder(decoder_layers, nlayers)
+        encoder_layers = nn.TransformerEncoderLayer(d_model, nhead, d_hid, dropout)
+        self.transformer_encoder = nn.TransformerEncoder(encoder_layers, nlayers)
         self.embedding = nn.Embedding(ntoken, d_model)
         self.d_model = d_model
         self.linear = nn.Linear(d_model, ntoken)
@@ -90,18 +150,12 @@ class TransformerDecoderOnlyModel(nn.Module):
         self.linear.bias.data.zero_()
         self.linear.weight.data.uniform_(-initrange, initrange)
 
-    def generate_square_subsequent_mask(self, sz: int) -> torch.Tensor:
-        """Generates a square mask for the sequence. The masked positions are filled with float('-inf').
-           Unmasked positions are filled with float(0.0).
-        """
-        mask = torch.triu(torch.ones(sz, sz), diagonal=1).bool()
-        return mask
-
-    def forward(self, input_ids: torch.Tensor, labels: torch.Tensor = None) -> torch.Tensor:
+    def forward(self, input_ids: torch.Tensor, labels: torch.Tensor = None, src_mask: torch.Tensor = None) -> torch.Tensor:
         """
         Args:
             input_ids: Tensor, shape [batch_size, seq_len]
             labels: Tensor, shape [batch_size, seq_len] (optional)
+            src_mask: Tensor, shape [seq_len, seq_len] (optional)
 
         Returns:
             If labels are provided:
@@ -114,17 +168,16 @@ class TransformerDecoderOnlyModel(nn.Module):
         src = self.embedding(input_ids) * math.sqrt(self.d_model)  # [seq_len, batch_size, d_model]
         src = self.pos_encoder(src)  # [seq_len, batch_size, d_model]
 
-        seq_len = src.size(0)
-        device = src.device
-        mask = self.generate_square_subsequent_mask(seq_len).to(device)  # [seq_len, seq_len]
-
-        # In decoder-only, the memory is not used. We pass src as memory as well.
-        output = self.transformer_decoder(tgt=src, memory=None, tgt_mask=mask)  # [seq_len, batch_size, d_model]
+        output = self.transformer_encoder(src, src_mask)  # [seq_len, batch_size, d_model]
         output = self.linear(output)  # [seq_len, batch_size, ntoken]
         output = output.transpose(0, 1)  # [batch_size, seq_len, ntoken]
 
         if labels is not None:
-            # Reshape for CrossEntropyLoss which expects [batch_size * seq_len, ntoken] and [batch_size * seq_len]
+            # # Debugging: Print shapes before reshaping
+            # print(f"Output shape before reshaping: {output.shape}")  # Should be [batch_size, seq_len, ntoken]
+            # print(f"Labels shape before reshaping: {labels.shape}")  # Should be [batch_size, seq_len]
+
+            # Use .reshape() instead of .view()
             loss_fn = nn.CrossEntropyLoss()
             loss = loss_fn(output.reshape(-1, output.size(-1)), labels.reshape(-1))  # [batch_size*seq_len, ntoken], [batch_size*seq_len]
 
@@ -155,7 +208,7 @@ class MetaVanillaTransformers:
 
     def __iter__(self):
         for d_model, d_hid, nhead, nlayers in self.configurations:
-            yield TransformerDecoderOnlyModel(
+            yield TransformerModel(
                 ntoken=self.vocab_size,
                 d_model=d_model,
                 nhead=nhead,
@@ -166,5 +219,4 @@ class MetaVanillaTransformers:
 
     def __len__(self):
         return len(self.configurations)
-
 
