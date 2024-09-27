@@ -183,7 +183,7 @@ def get_dataloaders(
     val_loader = DataLoader(
         val_subset,
         batch_size=batch_size,
-        shuffle=False,
+        shuffle=True,
         drop_last=False
     )
 

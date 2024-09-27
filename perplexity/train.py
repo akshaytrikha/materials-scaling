@@ -72,8 +72,11 @@ if __name__ == "__main__":
             train_dataset=full_train_dataset,
             val_dataset=full_val_dataset,
             batch_size=BATCH_SIZE,
-            train_fraction=data_fraction,
+            train_fraction=data_fraction
         )
+
+        print(f"Number of training batches: {len(train_loader)}")
+        print(f"Number of validation batches: {len(val_loader)}")
 
         for model in models:
             model.to(DEVICE)

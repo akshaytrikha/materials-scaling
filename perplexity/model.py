@@ -47,10 +47,6 @@ class FullyConnectedModel(nn.Module):
         logits = self.fc2(x)
 
         if labels is not None:
-            # # Debugging: Print shapes before reshaping
-            # print(f"Logits shape before reshaping: {logits.shape}")    # Expected: [batch_size, seq_len, vocab_size]
-            # print(f"Labels shape before reshaping: {labels.shape}")    # Expected: [batch_size, seq_len]
-
             # Reshape logits and labels for loss computation
             # Logits: [batch_size * seq_len, vocab_size]
             # Labels: [batch_size * seq_len]
@@ -108,22 +104,46 @@ class MetaFullyConnectedModels:
         """
         return len(self.configurations)
 
+# model.py
+
+import torch
+import torch.nn as nn
+import math
+from typing import Tuple
+
 class PositionalEncoding(nn.Module):
     def __init__(self, d_model: int, dropout: float = 0.1, max_len: int = 5000):
-        super().__init__()
+        """
+        Implements the sinusoidal positional encoding.
+
+        Args:
+            d_model (int): Embedding dimension.
+            dropout (float): Dropout rate.
+            max_len (int): Maximum length of the input sequences.
+        """
+        super(PositionalEncoding, self).__init__()
         self.dropout = nn.Dropout(p=dropout)
 
-        position = torch.arange(max_len).unsqueeze(1)  # [max_len, 1]
-        div_term = torch.exp(torch.arange(0, d_model, 2) * (-math.log(10000.0) / d_model))  # [d_model/2]
-        pe = torch.zeros(max_len, 1, d_model)  # [max_len, 1, d_model]
-        pe[:, 0, 0::2] = torch.sin(position * div_term)  # Apply sin to even indices
-        pe[:, 0, 1::2] = torch.cos(position * div_term)  # Apply cos to odd indices
-        self.register_buffer('pe', pe)
+        # Create positional encodings once in log space
+        pe = torch.zeros(max_len, d_model)  # [max_len, d_model]
+        position = torch.arange(0, max_len, dtype=torch.float).unsqueeze(1)  # [max_len, 1]
+        div_term = torch.exp(torch.arange(0, d_model, 2).float() * (-math.log(10000.0) / d_model))  # [d_model/2]
+
+        pe[:, 0::2] = torch.sin(position * div_term)  # Apply sin to even indices
+        pe[:, 1::2] = torch.cos(position * div_term)  # Apply cos to odd indices
+
+        pe = pe.unsqueeze(1)  # [max_len, 1, d_model]
+        self.register_buffer('pe', pe)  # Not a parameter, but should be saved with the model
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
+        Adds positional encoding to input tensor.
+
         Args:
-            x: Tensor, shape [seq_len, batch_size, embedding_dim]
+            x (torch.Tensor): Input tensor of shape [seq_len, batch_size, embedding_dim]
+
+        Returns:
+            torch.Tensor: Positional encoded tensor of the same shape as input.
         """
         x = x + self.pe[:x.size(0)]
         return self.dropout(x)
@@ -131,14 +151,29 @@ class PositionalEncoding(nn.Module):
 
 class TransformerModel(nn.Module):
     def __init__(self, ntoken: int, d_model: int, nhead: int, d_hid: int,
-                 nlayers: int, dropout: float = 0.2):
-        super().__init__()
-        self.model_type = 'Transformer'
-        self.pos_encoder = PositionalEncoding(d_model, dropout)
-        encoder_layers = nn.TransformerEncoderLayer(d_model, nhead, d_hid, dropout)
-        self.transformer_encoder = nn.TransformerEncoder(encoder_layers, nlayers)
-        self.embedding = nn.Embedding(ntoken, d_model)
+                 nlayers: int, dropout: float = 0.2, max_len: int = 5000):
+        """
+        Initializes the decoder-only Transformer model.
+
+        Args:
+            ntoken (int): Size of the vocabulary.
+            d_model (int): Embedding dimension.
+            nhead (int): Number of attention heads.
+            d_hid (int): Dimension of the feedforward network.
+            nlayers (int): Number of Transformer decoder layers.
+            dropout (float): Dropout rate.
+            max_len (int): Maximum length of the input sequences.
+        """
+        super(TransformerModel, self).__init__()
+        self.model_type = 'Decoder-Only Transformer'
         self.d_model = d_model
+
+        self.embedding = nn.Embedding(ntoken, d_model)
+        self.pos_encoder = PositionalEncoding(d_model, dropout, max_len)
+        
+        decoder_layer = nn.TransformerDecoderLayer(d_model, nhead, d_hid, dropout)
+        self.transformer_decoder = nn.TransformerDecoder(decoder_layer, nlayers)
+
         self.linear = nn.Linear(d_model, ntoken)
 
         self.init_weights()
@@ -146,49 +181,90 @@ class TransformerModel(nn.Module):
         self.num_params = sum(p.numel() for p in self.parameters())
 
     def init_weights(self) -> None:
-        initrange = 0.1
-        self.embedding.weight.data.uniform_(-initrange, initrange)
-        self.linear.bias.data.zero_()
-        self.linear.weight.data.uniform_(-initrange, initrange)
-
-    def forward(self, input_ids: torch.Tensor, labels: torch.Tensor = None, src_mask: torch.Tensor = None) -> torch.Tensor:
         """
+        Initializes weights of the model.
+        """
+        initrange = 0.1
+        nn.init.uniform_(self.embedding.weight, -initrange, initrange)
+        nn.init.zeros_(self.linear.bias)
+        nn.init.uniform_(self.linear.weight, -initrange, initrange)
+
+    def generate_square_subsequent_mask(self, sz: int) -> torch.Tensor:
+        """
+        Generates an upper-triangular matrix of -inf, with zeros on the diagonal.
+
         Args:
-            input_ids: Tensor, shape [batch_size, seq_len]
-            labels: Tensor, shape [batch_size, seq_len] (optional)
-            src_mask: Tensor, shape [seq_len, seq_len] (optional)
+            sz (int): Size of the mask (sequence length).
 
         Returns:
-            If labels are provided:
-                Tuple containing (loss, logits)
-            Else:
-                Logits tensor of shape [batch_size, seq_len, ntoken]
+            torch.Tensor: Mask tensor of shape [sz, sz].
+        """
+        mask = (torch.triu(torch.ones(sz, sz)) == 1).transpose(0, 1)
+        mask = mask.float().masked_fill(mask == 0, float('-inf')).masked_fill(mask == 1, float(0.0))
+        return mask
+
+    def forward(self, input_ids: torch.Tensor, labels: torch.Tensor = None, src_mask: torch.Tensor = None) -> Tuple[torch.Tensor, torch.Tensor]:
+        """
+        Forward pass of the Transformer model.
+
+        Args:
+            input_ids (torch.Tensor): Input tensor of shape [batch_size, seq_len].
+            labels (torch.Tensor, optional): Labels tensor of shape [batch_size, seq_len]. Defaults to None.
+            src_mask (torch.Tensor, optional): Causal mask tensor of shape [seq_len, seq_len]. Defaults to None.
+
+        Returns:
+            Tuple[torch.Tensor, torch.Tensor]:
+                - If labels are provided: (loss, logits)
+                - Else: logits tensor of shape [batch_size, seq_len, ntoken]
         """
         # Transpose to [seq_len, batch_size]
         input_ids = input_ids.transpose(0, 1)  # [seq_len, batch_size]
-        src = self.embedding(input_ids) * math.sqrt(self.d_model)  # [seq_len, batch_size, d_model]
-        src = self.pos_encoder(src)  # [seq_len, batch_size, d_model]
 
-        output = self.transformer_encoder(src, src_mask)  # [seq_len, batch_size, d_model]
-        output = self.linear(output)  # [seq_len, batch_size, ntoken]
-        output = output.transpose(0, 1)  # [batch_size, seq_len, ntoken]
+        # Embed the input tokens
+        embedded = self.embedding(input_ids) * math.sqrt(self.d_model)  # [seq_len, batch_size, d_model]
+        embedded = self.pos_encoder(embedded)  # [seq_len, batch_size, d_model]
+
+        # Prepare target input by shifting right (optional, depending on implementation)
+        # For simplicity, we'll assume input_ids include the necessary tokens
+
+        # Pass through the Transformer decoder
+        output = self.transformer_decoder(embedded, memory=None, tgt_mask=src_mask)  # [seq_len, batch_size, d_model]
+
+        # Project to vocabulary size
+        logits = self.linear(output)  # [seq_len, batch_size, ntoken]
+
+        # Transpose back to [batch_size, seq_len, ntoken]
+        logits = logits.transpose(0, 1)  # [batch_size, seq_len, ntoken]
 
         if labels is not None:
-            # # Debugging: Print shapes before reshaping
-            # print(f"Output shape before reshaping: {output.shape}")  # Should be [batch_size, seq_len, ntoken]
-            # print(f"Labels shape before reshaping: {labels.shape}")  # Should be [batch_size, seq_len]
+            # Reshape logits and labels for loss computation
+            logits_reshaped = logits.reshape(-1, logits.size(-1))  # [batch_size * seq_len, ntoken]
+            labels_reshaped = labels.reshape(-1)                  # [batch_size * seq_len]
 
-            # Use .reshape() instead of .view()
+            # Initialize the loss function
             loss_fn = nn.CrossEntropyLoss()
-            loss = loss_fn(output.reshape(-1, output.size(-1)), labels.reshape(-1))  # [batch_size*seq_len, ntoken], [batch_size*seq_len]
 
-            return loss, output
+            # Compute the loss
+            loss = loss_fn(logits_reshaped, labels_reshaped)
+
+            return loss, logits
         else:
-            return output
+            return logits
 
 
 class MetaVanillaTransformers:
     def __init__(self, vocab_size, d_model: int = 64, d_hid: int = 128, nhead: int = 2, nlayers: int = 2, dropout: float = 0.2):
+        """
+        Meta class to generate multiple TransformerModel configurations.
+
+        Args:
+            vocab_size (int): Size of the vocabulary.
+            d_model (int, optional): Embedding dimension. Defaults to 64.
+            d_hid (int, optional): Hidden dimension. Defaults to 128.
+            nhead (int, optional): Number of attention heads. Defaults to 2.
+            nlayers (int, optional): Number of Transformer decoder layers. Defaults to 2.
+            dropout (float, optional): Dropout rate. Defaults to 0.2.
+        """
         # You can modify these default values or make them configurable via arguments
         self.d_models = [d_model]  # Single configuration or multiple as needed
         self.d_hids = [d_hid]
@@ -208,6 +284,9 @@ class MetaVanillaTransformers:
         self.vocab_size = vocab_size
 
     def __iter__(self):
+        """
+        Yields TransformerModel instances for each configuration.
+        """
         for d_model, d_hid, nhead, nlayers in self.configurations:
             yield TransformerModel(
                 ntoken=self.vocab_size,
@@ -219,5 +298,12 @@ class MetaVanillaTransformers:
             )
 
     def __len__(self):
+        """
+        Returns the number of configurations.
+
+        Returns:
+            int: Number of model configurations.
+        """
         return len(self.configurations)
+
 
