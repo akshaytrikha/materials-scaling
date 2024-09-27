@@ -37,9 +37,7 @@ def get_args():
         default="small",
         help='Dataset size to use: "small" or "big"',
     )
-    parser.add_argument(
-        "--seq_max_length", type=int, default=512, help="Maximum sequence length"
-    )
+
     parser.add_argument(
         "--data_fractions",
         type=float_or_int,

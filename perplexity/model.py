@@ -90,22 +90,36 @@ class TransformerModel(nn.Module):
         self.linear.bias.data.zero_()
         self.linear.weight.data.uniform_(-initrange, initrange)
 
-    def forward(self, src: torch.Tensor, src_mask: torch.Tensor = None) -> torch.Tensor:
+    def forward(self, input_ids: torch.Tensor, labels: torch.Tensor = None, src_mask: torch.Tensor = None) -> torch.Tensor:
         """
         Args:
-            src: Tensor, shape [seq_len, batch_size]
+            input_ids: Tensor, shape [batch_size, seq_len]
+            labels: Tensor, shape [batch_size, seq_len] (optional)
             src_mask: Tensor, shape [seq_len, seq_len] (optional)
 
         Returns:
-            output Tensor of shape [batch_size, seq_len, ntoken]
+            If labels are provided:
+                Tuple containing (loss, logits)
+            Else:
+                Logits tensor of shape [batch_size, seq_len, ntoken]
         """
-        src = self.embedding(src) * math.sqrt(self.d_model)  # [seq_len, batch_size, d_model]
+        # Transpose to [seq_len, batch_size]
+        input_ids = input_ids.transpose(0, 1)  # [seq_len, batch_size]
+        src = self.embedding(input_ids) * math.sqrt(self.d_model)  # [seq_len, batch_size, d_model]
         src = self.pos_encoder(src)  # [seq_len, batch_size, d_model]
 
         output = self.transformer_encoder(src, src_mask)  # [seq_len, batch_size, d_model]
         output = self.linear(output)  # [seq_len, batch_size, ntoken]
         output = output.transpose(0, 1)  # [batch_size, seq_len, ntoken]
-        return output
+
+        if labels is not None:
+            # Reshape for loss computation
+            loss_fn = nn.CrossEntropyLoss()
+            # Flatten the tensors: [batch_size * seq_len, ntoken] and [batch_size * seq_len]
+            loss = loss_fn(output.view(-1, output.size(-1)), labels.view(-1))
+            return loss, output
+        else:
+            return output
 
 
 class MetaVanillaTransformers:
@@ -141,3 +155,4 @@ class MetaVanillaTransformers:
 
     def __len__(self):
         return len(self.configurations)
+
