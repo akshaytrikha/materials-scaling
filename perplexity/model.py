@@ -103,13 +103,7 @@ class MetaFullyConnectedModels:
             int: Number of model configurations.
         """
         return len(self.configurations)
-
-# model.py
-
-import torch
-import torch.nn as nn
-import math
-from typing import Tuple
+    
 
 class PositionalEncoding(nn.Module):
     def __init__(self, d_model: int, dropout: float = 0.1, max_len: int = 5000):
@@ -149,6 +143,64 @@ class PositionalEncoding(nn.Module):
         return self.dropout(x)
 
 
+class DecoderOnlyLayer(nn.Module):
+    def __init__(self, d_model: int, nhead: int, dim_feedforward: int = 2048, dropout: float = 0.1, activation: str = "relu"):
+        """
+        Initializes a single decoder-only transformer layer.
+
+        Args:
+            d_model (int): Embedding dimension.
+            nhead (int): Number of attention heads.
+            dim_feedforward (int, optional): Dimension of the feedforward network. Defaults to 2048.
+            dropout (float, optional): Dropout rate. Defaults to 0.1.
+            activation (str, optional): Activation function. Defaults to "relu".
+        """
+        super(DecoderOnlyLayer, self).__init__()
+        self.self_attn = nn.MultiheadAttention(d_model, nhead, dropout=dropout)
+
+        # Implementation of Feedforward model
+        self.linear1 = nn.Linear(d_model, dim_feedforward)
+        self.dropout = nn.Dropout(dropout)
+        self.linear2 = nn.Linear(dim_feedforward, d_model)
+
+        self.norm1 = nn.LayerNorm(d_model)
+        self.norm2 = nn.LayerNorm(d_model)
+
+        self.dropout1 = nn.Dropout(dropout)
+        self.dropout2 = nn.Dropout(dropout)
+
+        if activation == "relu":
+            self.activation = nn.functional.relu
+        elif activation == "gelu":
+            self.activation = nn.functional.gelu
+        else:
+            raise ValueError(f"Unsupported activation: {activation}")
+
+    def forward(self, tgt: torch.Tensor, tgt_mask: torch.Tensor = None, tgt_key_padding_mask: torch.Tensor = None) -> torch.Tensor:
+        """
+        Forward pass for the decoder-only layer.
+
+        Args:
+            tgt (torch.Tensor): Target tensor of shape [seq_len, batch_size, d_model].
+            tgt_mask (torch.Tensor, optional): Mask for the target sequence. Defaults to None.
+            tgt_key_padding_mask (torch.Tensor, optional): Mask for the target keys per batch. Defaults to None.
+
+        Returns:
+            torch.Tensor: Output tensor of shape [seq_len, batch_size, d_model].
+        """
+        # Self-attention
+        attn_output, _ = self.self_attn(tgt, tgt, tgt, attn_mask=tgt_mask, key_padding_mask=tgt_key_padding_mask)
+        tgt = tgt + self.dropout1(attn_output)
+        tgt = self.norm1(tgt)
+
+        # Feedforward
+        ff_output = self.linear2(self.dropout(self.activation(self.linear1(tgt))))
+        tgt = tgt + self.dropout2(ff_output)
+        tgt = self.norm2(tgt)
+
+        return tgt
+
+
 class TransformerModel(nn.Module):
     def __init__(self, ntoken: int, d_model: int, nhead: int, d_hid: int,
                  nlayers: int, dropout: float = 0.2, max_len: int = 5000):
@@ -170,9 +222,8 @@ class TransformerModel(nn.Module):
 
         self.embedding = nn.Embedding(ntoken, d_model)
         self.pos_encoder = PositionalEncoding(d_model, dropout, max_len)
-        
-        decoder_layer = nn.TransformerDecoderLayer(d_model, nhead, d_hid, dropout)
-        self.transformer_decoder = nn.TransformerDecoder(decoder_layer, nlayers)
+
+        self.layers = nn.ModuleList([DecoderOnlyLayer(d_model, nhead, d_hid, dropout) for _ in range(nlayers)])
 
         self.linear = nn.Linear(d_model, ntoken)
 
@@ -191,7 +242,8 @@ class TransformerModel(nn.Module):
 
     def generate_square_subsequent_mask(self, sz: int) -> torch.Tensor:
         """
-        Generates an upper-triangular matrix of -inf, with zeros on the diagonal.
+        Generates a square mask for the sequence. The masked positions are filled with float('-inf').
+        Unmasked positions are filled with float(0.0).
 
         Args:
             sz (int): Size of the mask (sequence length).
@@ -203,14 +255,13 @@ class TransformerModel(nn.Module):
         mask = mask.float().masked_fill(mask == 0, float('-inf')).masked_fill(mask == 1, float(0.0))
         return mask
 
-    def forward(self, input_ids: torch.Tensor, labels: torch.Tensor = None, src_mask: torch.Tensor = None) -> Tuple[torch.Tensor, torch.Tensor]:
+    def forward(self, input_ids: torch.Tensor, labels: torch.Tensor = None) -> Tuple[torch.Tensor, torch.Tensor]:
         """
         Forward pass of the Transformer model.
 
         Args:
             input_ids (torch.Tensor): Input tensor of shape [batch_size, seq_len].
             labels (torch.Tensor, optional): Labels tensor of shape [batch_size, seq_len]. Defaults to None.
-            src_mask (torch.Tensor, optional): Causal mask tensor of shape [seq_len, seq_len]. Defaults to None.
 
         Returns:
             Tuple[torch.Tensor, torch.Tensor]:
@@ -224,19 +275,25 @@ class TransformerModel(nn.Module):
         embedded = self.embedding(input_ids) * math.sqrt(self.d_model)  # [seq_len, batch_size, d_model]
         embedded = self.pos_encoder(embedded)  # [seq_len, batch_size, d_model]
 
-        # Prepare target input by shifting right (optional, depending on implementation)
-        # For simplicity, we'll assume input_ids include the necessary tokens
+        # Generate causal mask
+        seq_len = embedded.size(0)
+        src_mask = self.generate_square_subsequent_mask(seq_len).to(embedded.device)  # [seq_len, seq_len]
 
-        # Pass through the Transformer decoder
-        output = self.transformer_decoder(embedded, memory=None, tgt_mask=src_mask)  # [seq_len, batch_size, d_model]
+        # Pass through the decoder layers
+        for layer in self.layers:
+            embedded = layer(embedded, tgt_mask=src_mask)
 
         # Project to vocabulary size
-        logits = self.linear(output)  # [seq_len, batch_size, ntoken]
+        logits = self.linear(embedded)  # [seq_len, batch_size, ntoken]
 
         # Transpose back to [batch_size, seq_len, ntoken]
         logits = logits.transpose(0, 1)  # [batch_size, seq_len, ntoken]
 
         if labels is not None:
+            # Debugging: Print shapes before reshaping
+            print(f"Logits shape before reshaping: {logits.shape}")    # Expected: [batch_size, seq_len, ntoken]
+            print(f"Labels shape before reshaping: {labels.shape}")    # Expected: [batch_size, seq_len]
+
             # Reshape logits and labels for loss computation
             logits_reshaped = logits.reshape(-1, logits.size(-1))  # [batch_size * seq_len, ntoken]
             labels_reshaped = labels.reshape(-1)                  # [batch_size * seq_len]
