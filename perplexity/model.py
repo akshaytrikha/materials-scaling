@@ -4,6 +4,7 @@ import torch
 import torch.nn as nn
 import math
 
+
 class MetaFullyConnectedModels:
     def __init__(self, vocab_size):
         # Parameter Scaling Constants
@@ -39,7 +40,7 @@ class FullyConnectedModel(nn.Module):
 
         self.num_params = sum(p.numel() for p in self.parameters())
 
-    def forward(self, x):
+    def forward(self, x, src_key_padding_mask=None):
         x = self.embedding(x)
         x = x.mean(dim=1)  # Average embeddings across sequence length
         x = self.relu(self.fc1(x))
@@ -53,26 +54,35 @@ class PositionalEncoding(nn.Module):
         self.dropout = nn.Dropout(p=dropout)
 
         position = torch.arange(max_len).unsqueeze(1)  # [max_len, 1]
-        div_term = torch.exp(torch.arange(0, d_model, 2) * (-math.log(10000.0) / d_model))  # [d_model/2]
+        div_term = torch.exp(
+            torch.arange(0, d_model, 2) * (-math.log(10000.0) / d_model)
+        )  # [d_model/2]
         pe = torch.zeros(max_len, 1, d_model)  # [max_len, 1, d_model]
         pe[:, 0, 0::2] = torch.sin(position * div_term)  # Apply sin to even indices
         pe[:, 0, 1::2] = torch.cos(position * div_term)  # Apply cos to odd indices
-        self.register_buffer('pe', pe)
+        self.register_buffer("pe", pe)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
         Args:
             x: Tensor, shape [seq_len, batch_size, embedding_dim]
         """
-        x = x + self.pe[:x.size(0)]
+        x = x + self.pe[: x.size(0)]
         return self.dropout(x)
 
 
 class TransformerModel(nn.Module):
-    def __init__(self, ntoken: int, d_model: int, nhead: int, d_hid: int,
-                 nlayers: int, dropout: float = 0.5):
+    def __init__(
+        self,
+        ntoken: int,
+        d_model: int,
+        nhead: int,
+        d_hid: int,
+        nlayers: int,
+        dropout: float = 0.5,
+    ):
         super().__init__()
-        self.model_type = 'Transformer'
+        self.model_type = "Transformer"
         self.pos_encoder = PositionalEncoding(d_model, dropout)
         encoder_layers = nn.TransformerEncoderLayer(d_model, nhead, d_hid, dropout)
         self.transformer_encoder = nn.TransformerEncoder(encoder_layers, nlayers)
@@ -90,7 +100,12 @@ class TransformerModel(nn.Module):
         self.linear.bias.data.zero_()
         self.linear.weight.data.uniform_(-initrange, initrange)
 
-    def forward(self, src: torch.Tensor, src_mask: torch.Tensor = None) -> torch.Tensor:
+    def forward(
+        self,
+        src: torch.Tensor,
+        src_mask: torch.Tensor = None,
+        src_key_padding_mask: torch.Tensor = None,
+    ) -> torch.Tensor:
         """
         Args:
             src: Tensor, shape [seq_len, batch_size]
@@ -99,17 +114,29 @@ class TransformerModel(nn.Module):
         Returns:
             output Tensor of shape [batch_size, seq_len, ntoken]
         """
-        src = self.embedding(src) * math.sqrt(self.d_model)  # [seq_len, batch_size, d_model]
+        src = self.embedding(src) * math.sqrt(
+            self.d_model
+        )  # [seq_len, batch_size, d_model]
         src = self.pos_encoder(src)  # [seq_len, batch_size, d_model]
 
-        output = self.transformer_encoder(src, src_mask)  # [seq_len, batch_size, d_model]
+        output = self.transformer_encoder(
+            src, src_key_padding_mask=src_key_padding_mask
+        )  # [seq_len, batch_size, d_model]
         output = self.linear(output)  # [seq_len, batch_size, ntoken]
         output = output.transpose(0, 1)  # [batch_size, seq_len, ntoken]
         return output
 
 
 class MetaVanillaTransformers:
-    def __init__(self, vocab_size, d_model: int = 64, d_hid: int = 128, nhead: int = 2, nlayers: int = 2, dropout: float = 0.2):
+    def __init__(
+        self,
+        vocab_size,
+        d_model: int = 64,
+        d_hid: int = 128,
+        nhead: int = 2,
+        nlayers: int = 2,
+        dropout: float = 0.2,
+    ):
         # You can modify these default values or make them configurable via arguments
         self.d_models = [d_model]  # Single configuration or multiple as needed
         self.d_hids = [d_hid]
@@ -136,7 +163,7 @@ class MetaVanillaTransformers:
                 nhead=nhead,
                 d_hid=d_hid,
                 nlayers=nlayers,
-                dropout=self.dropout
+                dropout=self.dropout,
             )
 
     def __len__(self):
