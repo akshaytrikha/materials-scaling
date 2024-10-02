@@ -31,11 +31,12 @@ def compute_loss(batch, model, loss_fn, device):
     if outputs.dim() == 3:
         # Sequence-based model (e.g., VanillaTransformer)
         batch_size, seq_length, vocab_size = outputs.size()
-        outputs = outputs.view(-1, vocab_size)  # Flatten for loss computation
-        labels = labels.view(-1)  # Flatten labels
+        print(outputs.shape)
+        outputs = outputs.reshape(-1, vocab_size)  # Flatten for loss computation
+        labels = labels.reshape(-1)  # Flatten labels
     elif outputs.dim() == 2:
         # Single token prediction model (e.g., FCN)
-        labels = label.view(-1)
+        labels = label.reshape(-1)
     else:
         raise ValueError(f"Unsupported output dimension: {outputs.dim()}")
 
