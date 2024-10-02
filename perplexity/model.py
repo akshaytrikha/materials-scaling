@@ -102,7 +102,7 @@ class TransformerModel(nn.Module):
         src = self.embedding(src) * math.sqrt(self.d_model)  # [seq_len, batch_size, d_model]
         src = self.pos_encoder(src)  # [seq_len, batch_size, d_model]
 
-        output = self.transformer_encoder(src, src_key_padding_mask)  # [seq_len, batch_size, d_model]
+        output = self.transformer_encoder(src, src_key_padding_mask=src_key_padding_mask)  # [seq_len, batch_size, d_model]
         output = self.linear(output)  # [seq_len, batch_size, ntoken]
         output = output.transpose(0, 1)  # [batch_size, seq_len, ntoken]
         return output
