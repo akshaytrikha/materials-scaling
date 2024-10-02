@@ -1,8 +1,9 @@
 import torch
 from transformers import GPT2Tokenizer
 
+
 def generate_padding_mask(input_ids, pad_token_id):
-    mask = (input_ids == pad_token_id)
+    mask = input_ids == pad_token_id
     return mask
 
 
@@ -21,26 +22,13 @@ def compute_loss(batch, model, loss_fn, device):
     inputs = batch["input_ids"].to(device)
     labels = batch["labels"].to(device)
     label = batch["label"].to(device)
-
-    tokenizer = GPT2Tokenizer.from_pretrained("gpt2")
-    padding_mask = generate_padding_mask(inputs, tokenizer.pad_token_id)
-    src_mask = torch.triu(torch.ones(32, 32, device=device) * float('-inf'), diagonal=1)
-    # print(padding_mask)
-    # print(src_mask)
-    # Decode and print the tokens
-    # print("Input tokens:")
-    # print(inputs[0])
-    # print(tokenizer.decode(inputs[0]))
-    # print("Label tokens:")
-    # print(labels[0])
-    # print(tokenizer.decode(labels[0]))
-    # print("Last token:")
-    # print(label[0])
-    # print(tokenizer.decode(label[0]))
-    # print("======")
+    src_mask = batch["src_mask"].to(device)
+    src_key_padding_mask = batch["src_key_padding_mask"].to(device)
 
     # Forward pass
-    outputs = model(inputs, src_mask=src_mask, src_key_padding_mask=padding_mask)
+    outputs = model(
+        inputs, src_mask=src_mask, src_key_padding_mask=src_key_padding_mask
+    )
 
     # Determine output shape and compute loss accordingly
     if outputs.dim() == 3:

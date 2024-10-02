@@ -29,7 +29,9 @@ def setup_dataset(dataset_name: str, seq_length_1: int = 32):
         encoded_examples = {
             "input_ids": [],
             "labels": [],
-            "label": []
+            "label": [],
+            "src_mask": [],
+            "src_key_padding_mask": []
         }
         for text in examples["text"]:
             if text.strip():  # Check if the text is not empty or just whitespace
@@ -46,6 +48,13 @@ def setup_dataset(dataset_name: str, seq_length_1: int = 32):
                 encoded_examples["input_ids"].append(tokens[:-1])
                 encoded_examples["labels"].append(tokens[1:])
                 encoded_examples["label"].append([tokens[-1]])
+                
+                # Create src_mask (all True for now, as we're not doing any masking)
+                encoded_examples["src_mask"].append([True] * (seq_length - 1))
+                
+                # Create src_key_padding_mask (True for pad tokens, False for others)
+                src_key_padding_mask = [token == tokenizer.pad_token_id for token in tokens[:-1]]
+                encoded_examples["src_key_padding_mask"].append(src_key_padding_mask)
         
         if not encoded_examples["input_ids"]:
             # If no valid text was found, return a dictionary with pad tokens
@@ -53,6 +62,8 @@ def setup_dataset(dataset_name: str, seq_length_1: int = 32):
             encoded_examples["input_ids"].append([tokenizer.pad_token_id] * (seq_length - 1))
             encoded_examples["labels"].append([tokenizer.pad_token_id] * (seq_length - 1))
             encoded_examples["label"].append([tokenizer.pad_token_id])
+            encoded_examples["src_mask"].append([True] * (seq_length - 1))
+            encoded_examples["src_key_padding_mask"].append([True] * (seq_length - 1))
         
         return encoded_examples
 
@@ -62,7 +73,7 @@ def setup_dataset(dataset_name: str, seq_length_1: int = 32):
     # Encode the dataset
     dataset = dataset.map(encode, batched=True, remove_columns=dataset["train"].column_names)
     dataset = dataset.filter(filter_pad_data)
-    dataset.set_format(type="torch", columns=["input_ids", "labels", "label"])
+    dataset.set_format(type="torch", columns=["input_ids", "labels", "label", "src_mask", "src_key_padding_mask"])
 
     return dataset, tokenizer
 
