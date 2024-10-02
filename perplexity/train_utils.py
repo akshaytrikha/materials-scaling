@@ -1,4 +1,5 @@
 import torch
+from transformers import GPT2Tokenizer
 
 
 def compute_loss(batch, model, loss_fn, device):
@@ -14,7 +15,21 @@ def compute_loss(batch, model, loss_fn, device):
         loss (torch.Tensor): The computed loss for the batch.
     """
     inputs = batch["input_ids"].to(device)  # Keep inputs as Long for embedding
-    labels = torch.roll(inputs, -1, dims=1)  # Shift inputs for next-token prediction
+    labels = batch["labels"].to(device)
+    label = batch["label"].to(device)
+
+    # Decode and print the tokens
+    # tokenizer = GPT2Tokenizer.from_pretrained("gpt2")
+    # print("Input tokens:")
+    # print(inputs[0])
+    # print(tokenizer.decode(inputs[0]))
+    # print("Label tokens:")
+    # print(labels[0])
+    # print(tokenizer.decode(labels[0]))
+    # print("Last token:")
+    # print(label[0])
+    # print(tokenizer.decode(label[0]))
+    # print("======")
 
     # Forward pass
     outputs = model(inputs)
@@ -27,7 +42,7 @@ def compute_loss(batch, model, loss_fn, device):
         labels = labels.reshape(-1)  # Flatten labels
     elif outputs.dim() == 2:
         # Single token prediction model (e.g., FCN)
-        labels = labels[:, -1]  # Use the last token as the target
+        labels = label.reshape(-1)
     else:
         raise ValueError(f"Unsupported output dimension: {outputs.dim()}")
 

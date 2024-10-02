@@ -3,7 +3,7 @@ from transformers import GPT2Tokenizer
 from torch.utils.data import DataLoader, Subset
 
 
-def setup_dataset(dataset_name: str, seq_max_length: int = 512):
+def setup_dataset(dataset_name: str, seq_length_1: int = 32):
     """Load the wikitext dataset and encode it using the GPT2 tokenizer.
 
     Args:
@@ -25,16 +25,44 @@ def setup_dataset(dataset_name: str, seq_max_length: int = 512):
 
     # Function to encode examples using the tokenizer
     def encode(examples):
-        return tokenizer(
-            examples["text"],
-            truncation=True,
-            padding="max_length",
-            max_length=seq_max_length,
-        )
+        seq_length = seq_length_1 + 1  # +1 for label
+        encoded_examples = {
+            "input_ids": [],
+            "labels": [],
+            "label": []
+        }
+        for text in examples["text"]:
+            if text.strip():  # Check if the text is not empty or just whitespace
+                tokens = tokenizer.encode(text)
+                
+                if len(tokens) < seq_length:
+                    # Pad from the left
+                    padding = [tokenizer.pad_token_id] * (seq_length - len(tokens))
+                    tokens = padding + tokens
+                elif len(tokens) > seq_length:
+                    # Truncate to seq_length
+                    tokens = tokens[:seq_length]
+                
+                encoded_examples["input_ids"].append(tokens[:-1])
+                encoded_examples["labels"].append(tokens[1:])
+                encoded_examples["label"].append([tokens[-1]])
+        
+        if not encoded_examples["input_ids"]:
+            # If no valid text was found, return a dictionary with pad tokens
+            print("No valid text found")
+            encoded_examples["input_ids"].append([tokenizer.pad_token_id] * (seq_length - 1))
+            encoded_examples["labels"].append([tokenizer.pad_token_id] * (seq_length - 1))
+            encoded_examples["label"].append([tokenizer.pad_token_id])
+        
+        return encoded_examples
 
+    def filter_pad_data(example):
+        return not all(token == tokenizer.pad_token_id for token in example['input_ids'])
+        
     # Encode the dataset
-    dataset = dataset.map(encode, batched=True)
-    dataset.set_format(type="torch", columns=["input_ids"])
+    dataset = dataset.map(encode, batched=True, remove_columns=dataset["train"].column_names)
+    dataset = dataset.filter(filter_pad_data)
+    dataset.set_format(type="torch", columns=["input_ids", "labels", "label"])
 
     return dataset, tokenizer
 
