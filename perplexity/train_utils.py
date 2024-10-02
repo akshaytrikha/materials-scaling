@@ -31,9 +31,13 @@ def compute_loss(batch, model, loss_fn, device):
     if outputs.dim() == 3:
         # Sequence-based model (e.g., VanillaTransformer)
         batch_size, seq_length, vocab_size = outputs.size()
-        print(outputs.shape)
+        # print(outputs.shape)
         outputs = outputs.reshape(-1, vocab_size)  # Flatten for loss computation
+        # print(outputs.shape)
+        # print(labels.shape)
         labels = labels.reshape(-1)  # Flatten labels
+        # print(labels.shape)
+        # print("======")
     elif outputs.dim() == 2:
         # Single token prediction model (e.g., FCN)
         labels = label.reshape(-1)
