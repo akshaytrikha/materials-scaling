@@ -90,7 +90,7 @@ class TransformerModel(nn.Module):
         self.linear.bias.data.zero_()
         self.linear.weight.data.uniform_(-initrange, initrange)
 
-    def forward(self, src: torch.Tensor) -> torch.Tensor:
+    def forward(self, src: torch.Tensor, src_mask: torch.Tensor = None, src_key_padding_mask: torch.Tensor = None) -> torch.Tensor:
         """
         Args:
             src: Tensor, shape [seq_len, batch_size]
@@ -102,7 +102,7 @@ class TransformerModel(nn.Module):
         src = self.embedding(src) * math.sqrt(self.d_model)  # [seq_len, batch_size, d_model]
         src = self.pos_encoder(src)  # [seq_len, batch_size, d_model]
 
-        output = self.transformer_encoder(src)  # [seq_len, batch_size, d_model]
+        output = self.transformer_encoder(src, src_key_padding_mask)  # [seq_len, batch_size, d_model]
         output = self.linear(output)  # [seq_len, batch_size, ntoken]
         output = output.transpose(0, 1)  # [batch_size, seq_len, ntoken]
         return output

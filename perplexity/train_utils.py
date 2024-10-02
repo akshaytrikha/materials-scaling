@@ -23,10 +23,10 @@ def compute_loss(batch, model, loss_fn, device):
     labels = batch["labels"].to(device)
     label = batch["label"].to(device)
     # src_mask = batch["src_mask"].to(device)
-    # src_key_padding_mask = batch["src_key_padding_mask"].to(device)
+    src_key_padding_mask = batch["src_key_padding_mask"].to(device)
 
     # Forward pass
-    outputs = model(inputs)
+    outputs = model(inputs, src_key_padding_mask=src_key_padding_mask)
     # Determine output shape and compute loss accordingly
     if outputs.dim() == 3:
         # Sequence-based model (e.g., VanillaTransformer)
