@@ -46,6 +46,12 @@ def compute_loss(batch, model, loss_fn, device):
 
     # Compute loss
     loss = loss_fn(outputs, labels)
+
+    # Check for NaN loss and return None if NaN
+    if torch.isnan(loss):
+        print("Warning: NaN loss detected. Skipping this batch.")
+        return None
+
     return loss
 
 
@@ -71,6 +77,10 @@ def train_epoch(model, train_loader, val_loader, optimizer, loss_fn, device):
     for batch in train_loader:
         # Compute loss
         loss = compute_loss(batch, model, loss_fn, device)
+
+        # Skip this batch if loss is None (NaN)
+        if loss is None:
+            continue
 
         # Backward pass and optimization
         optimizer.zero_grad()
