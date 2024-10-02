@@ -1,6 +1,10 @@
 import torch
 from transformers import GPT2Tokenizer
 
+def generate_padding_mask(input_ids, pad_token_id):
+    mask = (input_ids == pad_token_id)
+    return mask
+
 
 def compute_loss(batch, model, loss_fn, device):
     """Process a batch and compute the loss.
@@ -14,12 +18,16 @@ def compute_loss(batch, model, loss_fn, device):
     Returns:
         loss (torch.Tensor): The computed loss for the batch.
     """
-    inputs = batch["input_ids"].to(device)  # Keep inputs as Long for embedding
+    inputs = batch["input_ids"].to(device)
     labels = batch["labels"].to(device)
     label = batch["label"].to(device)
 
+    tokenizer = GPT2Tokenizer.from_pretrained("gpt2")
+    padding_mask = generate_padding_mask(inputs, tokenizer.pad_token_id)
+    src_mask = torch.triu(torch.ones(32, 32, device=device) * float('-inf'), diagonal=1)
+    # print(padding_mask)
+    # print(src_mask)
     # Decode and print the tokens
-    # tokenizer = GPT2Tokenizer.from_pretrained("gpt2")
     # print("Input tokens:")
     # print(inputs[0])
     # print(tokenizer.decode(inputs[0]))
@@ -32,7 +40,7 @@ def compute_loss(batch, model, loss_fn, device):
     # print("======")
 
     # Forward pass
-    outputs = model(inputs)
+    outputs = model(inputs, src_mask=src_mask, src_key_padding_mask=padding_mask)
 
     # Determine output shape and compute loss accordingly
     if outputs.dim() == 3:

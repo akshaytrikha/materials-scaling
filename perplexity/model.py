@@ -39,7 +39,7 @@ class FullyConnectedModel(nn.Module):
 
         self.num_params = sum(p.numel() for p in self.parameters())
 
-    def forward(self, x):
+    def forward(self, x, src_mask: torch.Tensor = None, src_key_padding_mask=None):
         x = self.embedding(x)
         x = x.mean(dim=1)  # Average embeddings across sequence length
         x = self.relu(self.fc1(x))
@@ -90,7 +90,7 @@ class TransformerModel(nn.Module):
         self.linear.bias.data.zero_()
         self.linear.weight.data.uniform_(-initrange, initrange)
 
-    def forward(self, src: torch.Tensor, src_mask: torch.Tensor = None) -> torch.Tensor:
+    def forward(self, src: torch.Tensor, src_mask: torch.Tensor = None, src_key_padding_mask=None) -> torch.Tensor:
         """
         Args:
             src: Tensor, shape [seq_len, batch_size]
@@ -102,7 +102,7 @@ class TransformerModel(nn.Module):
         src = self.embedding(src) * math.sqrt(self.d_model)  # [seq_len, batch_size, d_model]
         src = self.pos_encoder(src)  # [seq_len, batch_size, d_model]
 
-        output = self.transformer_encoder(src, src_mask)  # [seq_len, batch_size, d_model]
+        output = self.transformer_encoder(src, src_mask, src_key_padding_mask=src_key_padding_mask)  # [seq_len, batch_size, d_model]
         output = self.linear(output)  # [seq_len, batch_size, ntoken]
         output = output.transpose(0, 1)  # [batch_size, seq_len, ntoken]
         return output

@@ -44,7 +44,7 @@ if __name__ == "__main__":
         models = MetaFullyConnectedModels(vocab_size=len(tokenizer))
     elif args.architecture == "VanillaTransformer":
         models = MetaVanillaTransformers(vocab_size=len(tokenizer))
-    loss_fn = nn.CrossEntropyLoss()
+    loss_fn = nn.CrossEntropyLoss(ignore_index=tokenizer.pad_token_id)
 
     # User Hyperparam Feedback
     pprint.pprint(vars(args))
