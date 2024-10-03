@@ -3,13 +3,15 @@
 import torch
 import torch.nn as nn
 import math
+from typing import Tuple
+from transformers import GPT2Tokenizer
 
 
 class MetaFullyConnectedModels:
     def __init__(self, vocab_size):
         # Parameter Scaling Constants
-        self.embedding_dims = [16, 32, 64, 128, 256, 256, 256]
-        self.hidden_dims = [16, 32, 64, 128, 256, 512, 1024]
+        self.embedding_dims = [16] #[16, 32, 64, 128, 256, 256, 256]
+        self.hidden_dims = [16]#, 32, 64, 128, 256, 512, 1024]
         self.vocab_size = vocab_size
 
         # Generate all combinations of embedding_dims and hidden_dims
@@ -168,3 +170,43 @@ class MetaVanillaTransformers:
 
     def __len__(self):
         return len(self.configurations)
+
+def generate(model_save_path, tokenizer, input_text, max_length, device='cpu'):
+    """
+    Generates text from the model given an input prompt.
+    
+    input_text: str, input seed text for generating new text
+    device: torch device (cpu or cuda)
+    
+    Returns:
+    - Generated text as a string
+    """
+    # Step 1: Encode the input text to token indices
+    input_ids = tokenizer.encode(input_text)
+    input_ids = torch.tensor([input_ids], device=device)  # Make it a batch of 1
+    print(f"input_ids.shape is {input_ids.shape}")
+    # Load the model and set it to evaluation mode
+    model = torch.load(model_save_path)
+    model = model.to(device)
+    model.eval()
+    # Initialize the generated sequence with the input ids
+    generated_ids = input_ids
+    for _ in range(max_length):
+        # Step 2: Pass the input through the model
+        with torch.no_grad():
+            logits = model(generated_ids)
+            print(logits.shape)
+        # Step 3: Sample the next token (using greedy sampling for simplicity)
+        next_token_id = torch.argmax(logits, dim=-1).unsqueeze(1)#[0][len(input_text.split(" ")) - 1].unsqueeze(0).unsqueeze(0)
+        # Step 4: Append the generated token to the sequence
+        print(f"the next_token_id.shape is {next_token_id.shape}")
+        generated_ids = torch.cat((generated_ids, next_token_id), dim=1)
+        print(generated_ids.shape)
+        # If end-of-sequence token is generated, stop
+        if next_token_id.item() == tokenizer.eos_token_id:
+            break
+    # Step 5: Decode the generated sequence back to text
+    # generated_text = tokenizer.decode(generated_ids.squeeze().tolist())
+    return "" #generated_text
+
+generate('FCN_dv=small_df=0.01_p=1658753.pt', GPT2Tokenizer.from_pretrained('gpt2'), "we are trying to", 100, 'mps')
