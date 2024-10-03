@@ -4,10 +4,10 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import wandb
-import os
 import pprint
 from tqdm.auto import tqdm
 import warnings
+import os
 
 warnings.filterwarnings("ignore", category=FutureWarning)
 
@@ -49,7 +49,7 @@ if __name__ == "__main__":
     print()
 
     # Scaling Experiments
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    timestamp = datetime.now().strftime("%Y_%m_%d-%H:%M:%S")
     group_name = f"{dataset_name}_{args.architecture}_ts={timestamp}"  # for wandb
 
     for data_fraction in tqdm(args.data_fractions, desc="Data Iteration"):
@@ -81,6 +81,7 @@ if __name__ == "__main__":
                 )
 
             # Train the model
+            best_val_loss = float("inf")
             for epoch in range(args.num_epochs):
                 train_loss, val_loss = train_epoch(
                     model, train_loader, val_loader, optimizer, loss_fn, DEVICE
@@ -88,6 +89,13 @@ if __name__ == "__main__":
                 print(
                     f"Dataset Size: {int(data_fraction*100)}%, Epoch: {epoch+1}, Train Loss: {train_loss}, Val Loss: {val_loss}"
                 )
+
+                if val_loss < best_val_loss:
+                    best_val_loss = val_loss
+                    os.makedirs(f"saved_models/{group_name}", exist_ok=True)
+                    model_save_path = f"saved_models/{group_name}/{model_name}.pt"
+                    torch.save(model, model_save_path)
+                    print(f"Model saved to {model_save_path}")
 
             # Evaluate Perplexity
             train_perplexity = torch.exp(torch.tensor(train_loss)).item()
@@ -106,7 +114,3 @@ if __name__ == "__main__":
                     }
                 )
             wandb.finish()
-            os.makedirs(f"saved_models/{group_name}", exist_ok=True)
-            model_save_path = f"saved_models/{group_name}/{model_name}.pt"
-            torch.save(model, model_save_path)
-            print(f"Model saved to {model_save_path}")
