@@ -68,7 +68,7 @@ def setup_dataset(dataset_name: str, seq_length: int = 32):
     # Encode the dataset
     dataset = dataset.map(encode, batched=True, remove_columns=dataset["train"].column_names)
     dataset = dataset.filter(filter_pad_data)
-    dataset.set_format(type="torch", columns=["input_ids", "labels", "label", "src_mask", "src_key_padding_mask"])
+    dataset.set_format(type="torch", columns=["input_ids", "labels", "label", "src_key_padding_mask"])
 
     return dataset, tokenizer
 
