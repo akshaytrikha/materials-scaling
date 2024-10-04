@@ -133,8 +133,8 @@ class MetaVanillaTransformers:
     def __init__(
         self,
         vocab_size,
-        d_model: int = 64,
-        d_hid: int = 128,
+        d_model: int = 256,
+        d_hid: int = 512,
         nhead: int = 4,
         nlayers: int = 8,
         dropout: float = 0.2,
