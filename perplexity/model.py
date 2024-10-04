@@ -9,8 +9,8 @@ class MetaFullyConnectedModels:
         self.context_length = context_length
 
         # Parameter Scaling Constants
-        self.hidden_dims = [2, 4, 8, 16, 32, 64, 128, 256, 512]
-        self.depths = [1, 2, 3, 4, 5, 6, 7]
+        self.hidden_dims = [2, 4, 8, 16, 32, 64, 128]
+        self.depths = [2, 4, 8, 16, 32]
         self.embedding_dim = 128
 
     def __iter__(self):
