@@ -42,14 +42,14 @@ if __name__ == "__main__":
         models = MetaFullyConnectedModels(vocab_size=len(tokenizer))
     elif args.architecture == "VanillaTransformer":
         models = MetaVanillaTransformers(vocab_size=len(tokenizer))
-    loss_fn = nn.CrossEntropyLoss()
+    loss_fn = nn.CrossEntropyLoss(ignore_index=tokenizer.pad_token_id)
 
     # User Hyperparam Feedback
     pprint.pprint(vars(args))
     print()
 
     # Scaling Experiments
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    timestamp = datetime.now().strftime("%Y_%m_%d-%H:%M:%S")
     group_name = f"{dataset_name}_{args.architecture}_ts={timestamp}"  # for wandb
 
     for data_fraction in tqdm(args.data_fractions, desc="Data Iteration"):

@@ -1,4 +1,10 @@
 import torch
+from transformers import GPT2Tokenizer
+
+
+def generate_padding_mask(input_ids, pad_token_id):
+    mask = input_ids == pad_token_id
+    return mask
 
 
 def compute_loss(batch, model, loss_fn, device):
@@ -13,12 +19,13 @@ def compute_loss(batch, model, loss_fn, device):
     Returns:
         loss (torch.Tensor): The computed loss for the batch.
     """
-    inputs = batch["input_ids"].to(device)  # Keep inputs as Long for embedding
-    labels = torch.roll(inputs, -1, dims=1)  # Shift inputs for next-token prediction
+    inputs = batch["input_ids"].to(device)
+    labels = batch["labels"].to(device)
+    label = batch["label"].to(device)
+    src_key_padding_mask = batch["src_key_padding_mask"].to(device).transpose(0, 1)
 
     # Forward pass
-    outputs = model(inputs)
-
+    outputs = model(inputs, src_key_padding_mask=src_key_padding_mask)
     # Determine output shape and compute loss accordingly
     if outputs.dim() == 3:
         # Sequence-based model (e.g., VanillaTransformer)
@@ -27,12 +34,18 @@ def compute_loss(batch, model, loss_fn, device):
         labels = labels.reshape(-1)  # Flatten labels
     elif outputs.dim() == 2:
         # Single token prediction model (e.g., FCN)
-        labels = labels[:, -1]  # Use the last token as the target
+        labels = label.reshape(-1)
     else:
         raise ValueError(f"Unsupported output dimension: {outputs.dim()}")
 
     # Compute loss
     loss = loss_fn(outputs, labels)
+
+    # Check for NaN loss and return None if NaN
+    if torch.isnan(loss):
+        print("Warning: NaN loss detected. Skipping this batch.")
+        return None
+
     return loss
 
 
@@ -59,9 +72,14 @@ def train_epoch(model, train_loader, val_loader, optimizer, loss_fn, device):
         # Compute loss
         loss = compute_loss(batch, model, loss_fn, device)
 
+        # Skip this batch if loss is None (NaN)
+        if loss is None:
+            continue
+
         # Backward pass and optimization
         optimizer.zero_grad()
         loss.backward()
+        torch.nn.utils.clip_grad_norm_(model.parameters(), 0.5)
         optimizer.step()
 
         total_train_loss += loss.item()

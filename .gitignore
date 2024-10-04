@@ -5,4 +5,5 @@ wandb
 materials-scaling-venv
 *.png
 .env
+*.pt
 saved_models/
