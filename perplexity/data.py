@@ -2,6 +2,8 @@ import datasets
 from transformers import GPT2Tokenizer
 from torch.utils.data import DataLoader, Subset
 
+SEQ_LENGTH = 128
+
 
 # Function to encode examples using the tokenizer
 def encode(examples, tokenizer, seq_length):
@@ -58,7 +60,6 @@ def setup_dataset(dataset_name: str):
 
     Args:
         dataset_name (str): small is "wikitext-2-v1", large is "wikitext-103-v1" which is 50x bigger
-        seq_max_length (int): Maximum sequence length for the tokenizer
     Returns:
         dataset (datasets.Dataset): The encoded wikitext dataset
         tokenizer (transformers.GPT2Tokenizer): The GPT2 tokenizer
@@ -75,9 +76,13 @@ def setup_dataset(dataset_name: str):
 
     # Encode the dataset
     dataset = dataset.map(
-        encode, batched=True, remove_columns=dataset["train"].column_names
+        encode,
+        batched=True,
+        fn_kwargs={"tokenizer": tokenizer, "seq_length": SEQ_LENGTH},
+        remove_columns=dataset["train"].column_names,
     )
-    dataset = dataset.filter(filter_pad_data)
+
+    dataset = dataset.filter(filter_pad_data, fn_kwargs={"tokenizer": tokenizer})
     dataset.set_format(
         type="torch", columns=["input_ids", "labels", "label", "src_key_padding_mask"]
     )
