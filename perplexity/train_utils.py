@@ -1,6 +1,6 @@
 import torch
 from transformers import GPT2Tokenizer
-
+from tqdm import tqdm  # Import tqdm
 
 def generate_padding_mask(input_ids, pad_token_id):
     mask = input_ids == pad_token_id
@@ -48,10 +48,9 @@ def compute_loss(batch, model, loss_fn, device):
 
     return loss
 
-
 def train_epoch(model, train_loader, val_loader, optimizer, loss_fn, device):
     """
-    Train model for one epoch and compute the average train * validation loss.
+    Train model for one epoch and compute the average train and validation loss.
 
     Args:
         model (torch.nn.Module): Model to train.
@@ -68,7 +67,11 @@ def train_epoch(model, train_loader, val_loader, optimizer, loss_fn, device):
     # Training loop
     model.train()
     total_train_loss = 0
-    for batch_idx, batch in enumerate(train_loader):
+
+    # Initialize tqdm progress bar for training
+    train_bar = tqdm(train_loader, desc="Training", leave=False)
+
+    for batch in train_bar:
         # Compute loss
         loss = compute_loss(batch, model, loss_fn, device)
 
@@ -84,22 +87,33 @@ def train_epoch(model, train_loader, val_loader, optimizer, loss_fn, device):
 
         total_train_loss += loss.item()
 
-        if (batch_idx + 1) % 10 == 0 or (batch_idx + 1) == len(train_loader):
-            print(f"Batch {batch_idx + 1}/{len(train_loader)} - Loss: {loss.item():.4f}")
+        # Update tqdm description with current loss
+        train_bar.set_postfix(loss=loss.item())
+
+    # Calculate average training loss
+    avg_train_loss = total_train_loss / len(train_loader)
 
     # Validation loop
     model.eval()
     total_val_loss = 0
+
+    # Initialize tqdm progress bar for validation
+    val_bar = tqdm(val_loader, desc="Validation", leave=False)
+
     with torch.no_grad():
-        for batch_idx, batch in enumerate(val_loader):
+        for batch in val_bar:
             # Compute loss
             loss = compute_loss(batch, model, loss_fn, device)
             if loss is not None:
                 total_val_loss += loss.item()
 
-    avg_train_loss = total_train_loss / len(train_loader)
+            # Optionally, update tqdm description with current loss
+            val_bar.set_postfix(loss=loss.item() if loss is not None else 0.0)
+
+    # Calculate average validation loss
     avg_val_loss = total_val_loss / len(val_loader)
 
+    # Print epoch summary
     print(f"Epoch completed - Avg Train Loss: {avg_train_loss:.4f}, Avg Val Loss: {avg_val_loss:.4f}")
 
     return avg_train_loss, avg_val_loss
