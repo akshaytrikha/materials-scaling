@@ -4,7 +4,7 @@ from x_transformers import TransformerWrapper, Decoder
 
 # Define your transformer model from x-transformers
 class PredefinedTransformerModel(nn.Module):
-    def __init__(self, vocab_size, max_seq_len=1024, d_model=512, n_layers=8, n_heads=8, d_ff=2048, dropout=0.1):
+    def __init__(self, vocab_size, max_seq_len=1024, d_model=512, n_layers=8, n_heads=8, d_ff=2048):
         super().__init__()
         # Transformer model setup
         self.model = TransformerWrapper(
@@ -15,7 +15,6 @@ class PredefinedTransformerModel(nn.Module):
                 depth=n_layers,              # Number of transformer layers
                 heads=n_heads,               # Number of attention heads
                 ff_mult=d_ff // d_model,     # Feed-forward multiplier
-                dropout=dropout              # Dropout rate
             )
         )
         self.num_params = sum(p.numel() for p in self.parameters())  # Count parameters
@@ -32,13 +31,11 @@ class MetaXTransformers:
         n_layers: int = 8,
         n_heads: int = 8,
         d_ff: int = 2048,
-        dropout: float = 0.1,
     ):
         self.d_models = [d_model]  # Single configuration for simplicity, can be expanded
         self.n_layers = [n_layers]
         self.n_heads = [n_heads]
         self.d_ff = d_ff
-        self.dropout = dropout
 
         self.configurations = []
         for d_model in self.d_models:
@@ -57,7 +54,6 @@ class MetaXTransformers:
                 n_layers=n_layers,
                 n_heads=n_heads,
                 d_ff=self.d_ff,
-                dropout=self.dropout,
             )
 
     def __len__(self):
