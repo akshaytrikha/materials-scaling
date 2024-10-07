@@ -2,9 +2,8 @@ import torch
 import torch.nn as nn
 from x_transformers import TransformerWrapper, Decoder
 
-# Define your transformer model from x-transformers
 class PredefinedTransformerModel(nn.Module):
-    def __init__(self, vocab_size, max_seq_len=1024, d_model=512, n_layers=8, n_heads=8, d_ff=2048):
+    def __init__(self, vocab_size, max_seq_len=512, d_model=512, n_layers=8, n_heads=8, d_ff=2048):
         super().__init__()
         # Transformer model setup
         self.model = TransformerWrapper(
@@ -20,15 +19,23 @@ class PredefinedTransformerModel(nn.Module):
         self.num_params = sum(p.numel() for p in self.parameters())  # Count parameters
 
     def forward(self, src, src_key_padding_mask=None):
+        """
+        Args:
+            src: Tensor of shape [batch_size, seq_length]
+            src_key_padding_mask: Tensor of shape [batch_size, seq_length] (optional)
+        
+        Returns:
+            logits: Tensor of shape [batch_size, seq_length, vocab_size]
+        """
         if src_key_padding_mask is not None:
-            # Create attention mask from padding mask for `x-transformers`
-            src_key_padding_mask = src_key_padding_mask.bool()  # Convert to boolean tensor if necessary
-            attn_mask = ~src_key_padding_mask  # Invert mask (True = no mask, False = mask)
-            attn_mask = attn_mask[:, None, :].expand(-1, src.shape[1], -1)  # Broadcast for use in attention
+            # x-transformers expects mask of shape [batch_size, seq_length]
+            # where True indicates tokens to be masked (ignored)
+            attn_mask = src_key_padding_mask.bool()  # Ensure it's boolean
         else:
             attn_mask = None
         
-        return self.model(src, mask=attn_mask)  # Pass the attention mask to the model
+        # x-transformers expects input of shape [batch_size, seq_length]
+        return self.model(src, mask=attn_mask)  # Pass the 2D attention mask directly
 
 
 class MetaXTransformers:
@@ -40,7 +47,8 @@ class MetaXTransformers:
         n_heads: int = 8,
         d_ff: int = 2048,
     ):
-        self.d_models = [d_model]  # Single configuration for simplicity, can be expanded
+        # You can add more configurations if needed
+        self.d_models = [d_model]
         self.n_layers = [n_layers]
         self.n_heads = [n_heads]
         self.d_ff = d_ff
