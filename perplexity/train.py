@@ -93,6 +93,7 @@ if __name__ == "__main__":
                 if val_loss < best_val_loss:
                     best_val_loss = val_loss
                     if args.kaggle:
+                        os.makedirs(f"kaggle/working/saved_models/{group_name}", exist_ok=True)
                         model_save_path = f"kaggle/working/saved_models/{group_name}/{model_name}.pt"
                     else:
                         os.makedirs(f"saved_models/{group_name}", exist_ok=True)
