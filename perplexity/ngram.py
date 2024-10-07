@@ -31,7 +31,12 @@ class NGramModel:
             tokens = example["input_ids"]
 
             # Filter out special tokens
-            tokens = [token for token in tokens if token not in special_tokens]
+            tokens = [
+                int(token.cpu().numpy())
+                for token in tokens
+                if token not in special_tokens
+            ]
+
             self.vocab.update(tokens)
             for i in range(len(tokens) - self.n + 1):
                 context = tuple(tokens[i : i + self.n - 1])
@@ -70,6 +75,34 @@ class NGramModel:
         return math.exp(-log_prob / N)  # Natural exponent
 
 
+def infer_ngram_model(ngram_model, user_input, tokenizer):
+    """Infer the probabilities of the next word given a user input using an n-gram model."""
+
+    # Tokenize the user input
+    tokens = ngram_model.tokenizer.encode(user_input, add_special_tokens=False)
+
+    # Initialize a list to store probabilities
+    probabilities = []
+
+    # Initialize variables to track the word with the highest probability
+    max_prob = -1
+    max_prob_word = None
+
+    # Loop through the tokens to create n-grams
+    for i in range(len(tokens) - ngram_model.n + 1):
+        context = tuple(tokens[i : i + ngram_model.n - 1])
+        word = tokens[i + ngram_model.n - 1]
+        prob = ngram_model.get_prob(context, word)
+        probabilities.append((context, word, prob))
+
+        # Update the word with the highest probability
+        if prob > max_prob:
+            max_prob = prob
+            max_prob_word = word
+
+    return probabilities, tokenizer.decode(max_prob_word)
+
+
 dataset_name = "wikitext-2-v1"  # or "wikitext-103-v1"
 
 dataset, tokenizer = setup_dataset(dataset_name)
@@ -78,11 +111,19 @@ val_dataset = dataset["validation"]
 test_dataset = dataset["test"]
 
 # train n-gram models
-for n in range(2, 6):
+for n in range(1, 6):
     ngram_model = NGramModel(n=n, tokenizer=tokenizer)
     ngram_model.train(train_dataset)
     print(f"{n}-gram Vocabulary Size: {len(ngram_model.vocab)}")
     print(f"{n}-gram Unique Contexts: {len(ngram_model.ngram_counts)}")
 
     ngram_ppl = ngram_model.perplexity(val_dataset)
-    print(f"{n}-gram Perplexity: {ngram_ppl}\n")
+    print(f"{n}-gram Perplexity: {ngram_ppl}")
+
+    user_input = "Park has a black MacBook that"
+    for i in range(5):
+        probabilities, max_prob_word = infer_ngram_model(
+            ngram_model, user_input, tokenizer
+        )
+        user_input += max_prob_word
+        print(user_input)
