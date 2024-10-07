@@ -7,7 +7,7 @@ import wandb
 import pprint
 from tqdm import tqdm
 import os
-from x_transformers import CosineWarmupScheduler
+# from transformers import get_scheduler
 
 # Internal
 from data import setup_dataset, get_dataloaders
@@ -64,11 +64,12 @@ if __name__ == "__main__":
             optimizer = optim.Adam(model.parameters(), lr=args.lr)
             total_steps = args.num_epochs * len(train_loader)
             num_warmup_steps = int(0.1 * total_steps)
-            scheduler = CosineWarmupScheduler(
-                optimizer,
-                warmup_steps=num_warmup_steps,
-                decay_steps=total_steps
-            )
+            # scheduler = get_scheduler(
+            #     name="cosine",
+            #     optimizer=optimizer,
+            #     num_warmup_steps=num_warmup_steps,
+            #     num_training_steps=total_steps
+            # )
             model_name = f"{args.architecture}_dv={args.dataset_version}_df={data_fraction}_p={model.num_params}"
 
             if args.wandb_log:
@@ -89,7 +90,7 @@ if __name__ == "__main__":
 
             for epoch in tqdm(range(args.num_epochs), desc="Epoch Progress", leave=True):
                 train_loss, val_loss = train_epoch(
-                    model, train_loader, val_loader, optimizer, scheduler, loss_fn, DEVICE
+                    model, train_loader, val_loader, optimizer, loss_fn, DEVICE
                 )
                 print(
                     f"Dataset Size: {int(data_fraction*100)}%, Epoch: {epoch+1}, Train Loss: {train_loss}, Val Loss: {val_loss}"
