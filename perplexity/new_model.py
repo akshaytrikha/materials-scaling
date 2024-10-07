@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 from x_transformers import TransformerWrapper, Decoder
+from transformers import GPT2Tokenizer
 
 class PredefinedTransformerModel(nn.Module):
     def __init__(self, vocab_size, max_seq_len=512, d_model=512, n_layers=8, n_heads=8, d_ff=2048):
@@ -75,47 +76,67 @@ class MetaXTransformers:
     def __len__(self):
         return len(self.configurations)
 
-
-# Example of using this in the text generation function
-def generate(model_save_path, tokenizer, input_text, max_length, device):
+def generate(meta_model, model_save_path, tokenizer, input_text, max_length, device):
     """
     Generates text from the model given an input prompt.
 
-    input_text: str, input seed text for generating new text
-    device: torch device (cpu or cuda)
+    Args:
+        meta_model: A meta model instance like MetaVanillaTransformers or MetaFullyConnectedModels.
+        model_save_path: str, path to the saved model's state dict.
+        tokenizer: A tokenizer instance (e.g., GPT2Tokenizer).
+        input_text: str, input seed text for generating new text.
+        max_length: int, the maximum number of tokens to generate.
+        device: torch.device, the device to run computations on.
 
     Returns:
-    - Generated text as a string
+        str: The generated text.
     """
-    # Step 1: Encode the input text to token indices
+    # Step 1: Encode the input text into token indices
     input_ids = tokenizer.encode(input_text)
     input_ids = torch.tensor([input_ids], device=device)  # Make it a batch of 1
     print(f"input_ids.shape is {input_ids.shape}")
+
+    # Step 2: Initialize the model using the provided meta_model
+    model = next(iter(meta_model))  # Get the first model configuration (you can modify this as needed)
     
-    # Load the model and set it to evaluation mode
-    model = torch.load(model_save_path)
+    # Step 3: Load the model state from the saved path
+    model.load_state_dict(torch.load(model_save_path), map_location=device)
     model = model.to(device)
     model.eval()
-    
+
     # Initialize the generated sequence with the input ids
     generated_ids = input_ids
-    
+
+    # Step 4: Generate tokens iteratively until max_length is reached or EOS token is encountered
     for _ in range(max_length):
-        # Step 2: Pass the input through the model
+        # Pass the input through the model
         with torch.no_grad():
-            logits = model(generated_ids)
-            print(logits.shape)
-            
-        # Step 3: Sample the next token (using greedy sampling for simplicity)
-        next_token_id = torch.argmax(logits, dim=-1).unsqueeze(1)
-        print(f"the next_token_id.shape is {next_token_id.shape}")
-        
-        # Step 4: Append the generated token to the sequence
+            logits = model(generated_ids)  # Model forward pass
+            logits = logits[:, -1, :]  # Only consider the last token's logits (for greedy decoding)
+
+        # Sample the next token (greedy sampling)
+        next_token_id = torch.argmax(logits, dim=-1).unsqueeze(0)
+
+        # Append the generated token to the sequence
         generated_ids = torch.cat((generated_ids, next_token_id), dim=1)
-        print(tokenizer.decode(generated_ids.squeeze().tolist()))
-        
-        # Stop if end-of-sequence token is generated
+
+        # Decode and print the generated sequence so far
+        print(f"Generated sequence so far: {tokenizer.decode(generated_ids.squeeze().tolist())}")
+
+        # Stop if the EOS token is generated
         if next_token_id.item() == tokenizer.eos_token_id:
             break
 
-    return ""
+    # Step 5: Decode the generated sequence back to text
+    generated_text = tokenizer.decode(generated_ids.squeeze().tolist())
+
+    return generated_text
+
+# Example Usage:
+# Assuming you've initialized the model meta-class (MetaVanillaTransformers or MetaFullyConnectedModels)
+# and that the model has been trained and saved.
+
+meta_model = MetaXTransformers(vocab_size=50257)
+tokenizer = GPT2Tokenizer.from_pretrained("gpt2")
+generated_text = generate(meta_model, "saved_models/VanillaTransformer_dv=small_df=1_p=6597696.pt", tokenizer, "Once upon a time", 50, torch.device("cuda"))
+print(generated_text)
