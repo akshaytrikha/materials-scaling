@@ -1,6 +1,6 @@
 import torch
 from transformers import GPT2Tokenizer
-from tqdm import tqdm  # Import tqdm
+from tqdm import tqdm
 
 def generate_padding_mask(input_ids, pad_token_id):
     mask = input_ids == pad_token_id
@@ -48,8 +48,6 @@ def compute_loss(batch, model, loss_fn, device):
 
     return loss
 
-from tqdm import tqdm
-
 def train_epoch(model, train_loader, val_loader, optimizer, loss_fn, device):
     """
     Train model for one epoch and compute the average train * validation loss.
@@ -87,9 +85,6 @@ def train_epoch(model, train_loader, val_loader, optimizer, loss_fn, device):
 
         total_train_loss += loss.item()
 
-        # # Update progress bar with the current loss
-        # progress_bar.set_postfix({"Loss": f"{loss.item():.4f}"})
-
     avg_train_loss = total_train_loss / len(train_loader)
 
     # Validation loop
@@ -103,13 +98,9 @@ def train_epoch(model, train_loader, val_loader, optimizer, loss_fn, device):
             if loss is not None:
                 total_val_loss += loss.item()
 
-            # # Update progress bar with the current loss
-            # val_progress_bar.set_postfix({"Loss": f"{loss.item():.4f}"})
-
     avg_val_loss = total_val_loss / len(val_loader)
 
     # After both loops, print the final train and validation losses
     print(f"Epoch completed - Avg Train Loss: {avg_train_loss:.4f}, Avg Val Loss: {avg_val_loss:.4f}")
 
     return avg_train_loss, avg_val_loss
-
