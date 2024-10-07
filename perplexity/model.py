@@ -115,12 +115,12 @@ class MetaXTransformers:
         for config in self.configurations:
             d_model, n_layers, n_heads, d_ff = config
             yield TransformerWrapper(
-                ntoken=self.vocab_size,
+                num_tokens=self.vocab_size,
                 d_model=d_model,
                 nhead=n_heads,
                 d_hid=d_ff,
                 nlayers=n_layers,
-                dropout=0.1
+                dropout=0.0
             )
 
     def __len__(self):
