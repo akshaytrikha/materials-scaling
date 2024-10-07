@@ -96,11 +96,11 @@ class MetaXTransformers:
     ):
         # Predefined configurations to match target parameter counts, including varying d_ff
         self.configurations = [
-            # {"d_model": 64, "n_layers": 2, "n_heads": 2, "d_ff": 256},    # ~2M params
-            # {"d_model": 128, "n_layers": 4, "n_heads": 4, "d_ff": 512},   # ~10M params
-            # {"d_model": 256, "n_layers": 6, "n_heads": 8, "d_ff": 1024},  # ~30M params
-            # {"d_model": 512, "n_layers": 8, "n_heads": 8, "d_ff": 2048},  # ~70M params
-            {"d_model": 768, "n_layers": 12, "n_heads": 12, "d_ff": 3072} # ~150M params
+            {"d_model": 64, "n_layers": 2, "n_heads": 2, "d_ff": 256},    # ~2M params
+            {"d_model": 128, "n_layers": 4, "n_heads": 4, "d_ff": 512},   # ~10M params
+            {"d_model": 256, "n_layers": 6, "n_heads": 8, "d_ff": 1024},  # ~30M params
+            {"d_model": 512, "n_layers": 8, "n_heads": 8, "d_ff": 2048},  # ~70M params
+            # {"d_model": 768, "n_layers": 12, "n_heads": 12, "d_ff": 3072} # ~150M params
         ]
 
         self.vocab_size = vocab_size
