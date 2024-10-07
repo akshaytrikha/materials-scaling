@@ -92,8 +92,11 @@ if __name__ == "__main__":
 
                 if val_loss < best_val_loss:
                     best_val_loss = val_loss
-                    os.makedirs(f"saved_models/{group_name}", exist_ok=True)
-                    model_save_path = f"saved_models/{group_name}/{model_name}.pt"
+                    if args.kaggle:
+                        model_save_path = f"kaggle/working/saved_models/{group_name}/{model_name}.pt"
+                    else:
+                        os.makedirs(f"saved_models/{group_name}", exist_ok=True)
+                        model_save_path = f"saved_models/{group_name}/{model_name}.pt"
                     torch.save(model, model_save_path)
                     print(f"Model saved to {model_save_path}")
 

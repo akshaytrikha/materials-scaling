@@ -50,4 +50,7 @@ def get_args():
     parser.add_argument(
         "--wandb_log", action="store_true", help="Enable Weights and Biases logging"
     )
+    parser.add_argument(
+        "--kaggle", action="store_true", help="Change model store to kaggle working directory"
+    )
     return parser.parse_args()
