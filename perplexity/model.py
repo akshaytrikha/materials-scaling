@@ -93,10 +93,10 @@ class MetaXTransformers:
     def __init__(self, vocab_size):
         # Define different configurations for transformer models
         # Each index will define one model configuration, allowing index-based iteration
-        self.d_models = [128, 256, 512, 640, 768, 1024]  # Example d_model sizes
-        self.n_layers = [4, 6, 8, 10, 12, 12]  # Example number of layers
-        self.n_heads = [4, 8, 8, 10, 12, 16]  # Number of attention heads
-        self.d_ff = [512, 1024, 2048, 2560, 3072, 4096]  # Feed-forward hidden dimension sizes
+        self.d_models = [1024]#[128, 256, 512, 640, 768, 1024]  # Example d_model sizes
+        self.n_layers = [12]#[4, 6, 8, 10, 12, 12]  # Example number of layers
+        self.n_heads = [16]#[4, 8, 8, 10, 12, 16]  # Number of attention heads
+        self.d_ff = [4096]#[512, 1024, 2048, 2560, 3072, 4096]  # Feed-forward hidden dimension sizes
         
         # Ensure all lists have the same length
         assert len(self.d_models) == len(self.n_layers) == len(self.n_heads) == len(self.d_ff), \
