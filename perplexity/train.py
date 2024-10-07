@@ -5,8 +5,7 @@ import torch.nn as nn
 import torch.optim as optim
 import wandb
 import pprint
-from tqdm.auto import tqdm
-import warnings
+from tqdm import tqdm
 import os
 
 warnings.filterwarnings("ignore", category=FutureWarning)
@@ -82,7 +81,8 @@ if __name__ == "__main__":
 
             # Train the model
             best_val_loss = float("inf")
-            for epoch in range(args.num_epochs):
+
+            for epoch in tqdm(range(args.num_epochs), desc="Epoch Progress", leave=True):
                 train_loss, val_loss = train_epoch(
                     model, train_loader, val_loader, optimizer, loss_fn, DEVICE
                 )

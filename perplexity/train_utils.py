@@ -1,6 +1,5 @@
 import torch
 from transformers import GPT2Tokenizer
-from tqdm import tqdm
 
 def generate_padding_mask(input_ids, pad_token_id):
     mask = input_ids == pad_token_id
@@ -67,9 +66,8 @@ def train_epoch(model, train_loader, val_loader, optimizer, loss_fn, device):
     # Training loop
     model.train()
     total_train_loss = 0
-    progress_bar = tqdm(train_loader, desc="Training", leave=True)
 
-    for batch_idx, batch in enumerate(progress_bar):
+    for batch_idx, batch in enumerate(train_loader):
         # Compute loss
         loss = compute_loss(batch, model, loss_fn, device)
 
@@ -90,9 +88,8 @@ def train_epoch(model, train_loader, val_loader, optimizer, loss_fn, device):
     # Validation loop
     model.eval()
     total_val_loss = 0
-    val_progress_bar = tqdm(val_loader, desc="Validation", leave=True)
     with torch.no_grad():
-        for batch_idx, batch in enumerate(val_progress_bar):
+        for batch_idx, batch in enumerate(val_loader):
             # Compute loss
             loss = compute_loss(batch, model, loss_fn, device)
             if loss is not None:
