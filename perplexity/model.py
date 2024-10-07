@@ -3,8 +3,6 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import math
-from typing import Tuple
 from transformers import GPT2Tokenizer
 from x_transformers import TransformerWrapper, Decoder
 import matplotlib.pyplot as plt
@@ -53,6 +51,9 @@ class FullyConnectedModel(nn.Module):
         return x
 
 
+import torch.nn as nn
+from x_transformers import TransformerWrapper, Decoder
+
 class PredefinedTransformerModel(nn.Module):
     def __init__(self, vocab_size, max_seq_len=512, d_model=512, n_layers=8, n_heads=8, d_ff=2048):
         super().__init__()
@@ -88,43 +89,41 @@ class PredefinedTransformerModel(nn.Module):
         # x-transformers expects input of shape [batch_size, seq_length]
         return self.model(src, mask=attn_mask)  # Pass the 2D attention mask directly
 
-
 class MetaXTransformers:
-    def __init__(self, vocab_size):
-        # Define different configurations for transformer models
-        # Each index will define one model configuration, allowing index-based iteration
-        self.d_models = [1024]#[128, 256, 512, 640, 768, 1024]  # Example d_model sizes
-        self.n_layers = [12]#[4, 6, 8, 10, 12, 12]  # Example number of layers
-        self.n_heads = [16]#[4, 8, 8, 10, 12, 16]  # Number of attention heads
-        self.d_ff = [4096]#[512, 1024, 2048, 2560, 3072, 4096]  # Feed-forward hidden dimension sizes
-        
-        # Ensure all lists have the same length
-        assert len(self.d_models) == len(self.n_layers) == len(self.n_heads) == len(self.d_ff), \
-            "Configuration lists must have the same length"
-
-        # Store configurations based on index
+    def __init__(
+        self,
+        vocab_size
+    ):
+        # Predefined configurations to match target parameter counts, including varying d_ff
         self.configurations = [
-            (self.d_models[i], self.n_layers[i], self.n_heads[i], self.d_ff[i])
-            for i in range(len(self.d_models))
+            # {"d_model": 64, "n_layers": 2, "n_heads": 2, "d_ff": 256},    # ~2M params
+            # {"d_model": 128, "n_layers": 4, "n_heads": 4, "d_ff": 512},   # ~10M params
+            # {"d_model": 256, "n_layers": 6, "n_heads": 8, "d_ff": 1024},  # ~30M params
+            # {"d_model": 512, "n_layers": 8, "n_heads": 8, "d_ff": 2048},  # ~70M params
+            {"d_model": 768, "n_layers": 12, "n_heads": 12, "d_ff": 3072} # ~150M params
         ]
 
         self.vocab_size = vocab_size
 
-    def __iter__(self):
-        # Iterate over the configurations by index
-        for config in self.configurations:
-            d_model, n_layers, n_heads, d_ff = config
-            yield TransformerWrapper(
-                num_tokens=self.vocab_size,
-                d_model=d_model,
-                nhead=n_heads,
-                d_hid=d_ff,
-                nlayers=n_layers,
-                dropout=0.0
-            )
+    def __getitem__(self, idx):
+        if idx >= len(self.configurations):
+            raise IndexError("Configuration index out of range.")
+        config = self.configurations[idx]
+        return PredefinedTransformerModel(
+            vocab_size=self.vocab_size,
+            d_model=config["d_model"],
+            n_layers=config["n_layers"],
+            n_heads=config["n_heads"],
+            d_ff=config["d_ff"]
+        )
 
     def __len__(self):
         return len(self.configurations)
+
+    def __iter__(self):
+        for idx in range(len(self.configurations)):
+            yield self[idx]
+
 
 def plot_top_k_probs(probabilities, k, tokenizer):
     """
