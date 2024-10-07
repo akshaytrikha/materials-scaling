@@ -33,19 +33,27 @@ class MetaFullyConnectedModels:
 
 
 class FullyConnectedModel(nn.Module):
-    def __init__(self, vocab_size, embedding_dim=512, hidden_dim=512):
-        super(FullyConnectedModel, self).__init__()
+    def __init__(self, vocab_size, embedding_dim=128, hidden_dim=128):
+        super().__init__()
         self.embedding = nn.Embedding(vocab_size, embedding_dim)
         self.fc1 = nn.Linear(embedding_dim, hidden_dim)
         self.relu = nn.ReLU()
+        self.dropout = nn.Dropout(0.5)
+        self.inner_layers = nn.ModuleList()
+        for _ in range(8):
+            self.inner_layers.append(nn.Linear(hidden_dim, hidden_dim))
+            self.inner_layers.append(nn.ReLU())
+            self.inner_layers.append(nn.Dropout(0.5))
         self.fc2 = nn.Linear(hidden_dim, vocab_size)
-
         self.num_params = sum(p.numel() for p in self.parameters())
 
     def forward(self, x, src_key_padding_mask=None):
         x = self.embedding(x)
         x = x.mean(dim=1)  # Average embeddings across sequence length
         x = self.relu(self.fc1(x))
+        x = self.dropout(x)
+        for layer in self.inner_layers:
+            x = layer(x)
         x = self.fc2(x)
         return x
 
@@ -172,7 +180,7 @@ class MetaVanillaTransformers:
         return len(self.configurations)
 
 
-def generate(model_save_path, tokenizer, input_text, max_length, device):
+def generate(model_save_path, tokenizer, input_text, max_length, device, temperature):
     """
     Generates text from the model given an input prompt.
 
@@ -196,16 +204,19 @@ def generate(model_save_path, tokenizer, input_text, max_length, device):
         # Step 2: Pass the input through the model
         with torch.no_grad():
             logits = model(generated_ids)
-            print(logits.shape)
+            print(f"logits.shape is {logits.shape}")
         # Step 3: Sample the next token (using greedy sampling for simplicity)
-        next_token_id = torch.argmax(logits, dim=-1).unsqueeze(
+        logits = logits / temperature
+        probabilities = torch.softmax(logits, dim=-1).squeeze()
+        next_token_id = torch.multinomial(probabilities, num_samples=1).unsqueeze(
             1
         )  # [0][len(input_text.split(" ")) - 1].unsqueeze(0).unsqueeze(0)
         # Step 4: Append the generated token to the sequence
         print(f"the next_token_id.shape is {next_token_id.shape}")
         generated_ids = torch.cat((generated_ids, next_token_id), dim=1)
+        print(generated_ids)
         print(tokenizer.decode(generated_ids.squeeze().tolist()))
-        # print(generated_ids.shape)
+        print(generated_ids.shape)
         # If end-of-sequence token is generated, stop
 
         if next_token_id.item() == tokenizer.eos_token_id:
@@ -216,10 +227,11 @@ def generate(model_save_path, tokenizer, input_text, max_length, device):
     return ""  # generated_text
 
 
-# generate(
-#     "saved_models/wikitext-2-v1_FCN_ts=20241002_191720/FCN_dv=small_df=0.01_p=1658753.pt",
-#     GPT2Tokenizer.from_pretrained("gpt2"),
-#     "we are trying to",
-#     10,
-#     torch.device("cpu"),
-# )
+generate(
+    "saved_models/wikitext-2-v1_FCN_ts=2024_10_07-15:16:12/FCN_dv=small_df=0.1_p=73039185.pt",
+    GPT2Tokenizer.from_pretrained("gpt2"),
+    "we are trying to",
+    100,
+    torch.device("cpu"),
+    0.3
+)
