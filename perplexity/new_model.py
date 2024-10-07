@@ -138,5 +138,5 @@ def generate(meta_model, model_save_path, tokenizer, input_text, max_length, dev
 
 meta_model = MetaXTransformers(vocab_size=50257)
 tokenizer = GPT2Tokenizer.from_pretrained("gpt2")
-generated_text = generate(meta_model, "saved_models/VanillaTransformer_dv=small_df=1_p=6597696.pt", tokenizer, "Once upon a time", 50, torch.device("cuda"))
+generated_text = generate(meta_model, "/kaggle/working/materials-scaling/perplexity/kaggle/working/saved_models/wikitext-2-v1_VanillaTransformer_ts=2024_10_07-21:00:08/VanillaTransformer_dv=small_df=1_p=6597696.pt", tokenizer, "Once upon a time", 50, torch.device("cuda"))
 print(generated_text)
