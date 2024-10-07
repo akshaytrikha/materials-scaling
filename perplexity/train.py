@@ -8,8 +8,6 @@ import pprint
 from tqdm import tqdm
 import os
 
-warnings.filterwarnings("ignore", category=FutureWarning)
-
 # Internal
 from data import setup_dataset, get_dataloaders
 from new_model import *
