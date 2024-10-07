@@ -10,7 +10,7 @@ import os
 
 # Internal
 from data import setup_dataset, get_dataloaders
-from new_model import *
+from model import *
 from train_utils import train_epoch
 from arg_parser import get_args
 
