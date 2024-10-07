@@ -87,8 +87,8 @@ def train_epoch(model, train_loader, val_loader, optimizer, loss_fn, device):
 
         total_train_loss += loss.item()
 
-        # Update progress bar with the current loss
-        progress_bar.set_postfix({"Loss": f"{loss.item():.4f}"})
+        # # Update progress bar with the current loss
+        # progress_bar.set_postfix({"Loss": f"{loss.item():.4f}"})
 
     avg_train_loss = total_train_loss / len(train_loader)
 
@@ -103,8 +103,8 @@ def train_epoch(model, train_loader, val_loader, optimizer, loss_fn, device):
             if loss is not None:
                 total_val_loss += loss.item()
 
-            # Update progress bar with the current loss
-            val_progress_bar.set_postfix({"Loss": f"{loss.item():.4f}"})
+            # # Update progress bar with the current loss
+            # val_progress_bar.set_postfix({"Loss": f"{loss.item():.4f}"})
 
     avg_val_loss = total_val_loss / len(val_loader)
 
