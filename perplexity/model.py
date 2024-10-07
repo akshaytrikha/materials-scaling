@@ -137,7 +137,7 @@ class MetaVanillaTransformers:
         d_hid: int = 128,
         nhead: int = 2,
         nlayers: int = 2,
-        dropout: float = 0.2,
+        dropout: float = 0.0,
     ):
         # You can modify these default values or make them configurable via arguments
         self.d_models = [d_model]  # Single configuration or multiple as needed
