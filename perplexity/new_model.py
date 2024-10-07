@@ -170,16 +170,17 @@ def generate(meta_model, model_save_path, tokenizer, input_text, max_length, dev
 # Assuming you've initialized the model meta-class (MetaVanillaTransformers or MetaFullyConnectedModels)
 # and that the model has been trained and saved.
 
-meta_model = MetaXTransformers(vocab_size=50257)
-tokenizer = GPT2Tokenizer.from_pretrained("gpt2")
-generated_text = generate(
-    meta_model=meta_model, 
-    model_save_path="saved_models/VanillaTransformer_dv=small_df=1_p=6597696.pt", 
-    tokenizer=tokenizer, 
-    input_text="Once upon a time", 
-    max_length=50, 
-    device=torch.device("cpu"), 
-    temperature=0.3  # Default temperature (you can adjust this)
-)
-print(generated_text)
+if __name__ == '__main__':
+    meta_model = MetaXTransformers(vocab_size=50257)
+    tokenizer = GPT2Tokenizer.from_pretrained("gpt2")
+    generated_text = generate(
+        meta_model=meta_model, 
+        model_save_path="saved_models/VanillaTransformer_dv=small_df=1_p=6597696.pt", 
+        tokenizer=tokenizer, 
+        input_text="Once upon a time", 
+        max_length=50, 
+        device=torch.device("cpu"), 
+        temperature=0.3  # Default temperature (you can adjust this)
+    )
+    print(generated_text)
 
