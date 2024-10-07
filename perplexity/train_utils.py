@@ -48,9 +48,11 @@ def compute_loss(batch, model, loss_fn, device):
 
     return loss
 
+from tqdm import tqdm
+
 def train_epoch(model, train_loader, val_loader, optimizer, loss_fn, device):
     """
-    Train model for one epoch and compute the average train and validation loss.
+    Train model for one epoch and compute the average train * validation loss.
 
     Args:
         model (torch.nn.Module): Model to train.
@@ -67,11 +69,9 @@ def train_epoch(model, train_loader, val_loader, optimizer, loss_fn, device):
     # Training loop
     model.train()
     total_train_loss = 0
+    progress_bar = tqdm(train_loader, desc="Training", leave=True)
 
-    # Initialize tqdm progress bar for training
-    train_bar = tqdm(train_loader, desc="Training", leave=False)
-
-    for batch in train_bar:
+    for batch_idx, batch in enumerate(progress_bar):
         # Compute loss
         loss = compute_loss(batch, model, loss_fn, device)
 
@@ -87,33 +87,29 @@ def train_epoch(model, train_loader, val_loader, optimizer, loss_fn, device):
 
         total_train_loss += loss.item()
 
-        # Update tqdm description with current loss
-        train_bar.set_postfix(loss=loss.item())
+        # Update progress bar with the current loss
+        progress_bar.set_postfix({"Loss": f"{loss.item():.4f}"})
 
-    # Calculate average training loss
     avg_train_loss = total_train_loss / len(train_loader)
 
     # Validation loop
     model.eval()
     total_val_loss = 0
-
-    # Initialize tqdm progress bar for validation
-    val_bar = tqdm(val_loader, desc="Validation", leave=False)
-
+    val_progress_bar = tqdm(val_loader, desc="Validation", leave=True)
     with torch.no_grad():
-        for batch in val_bar:
+        for batch_idx, batch in enumerate(val_progress_bar):
             # Compute loss
             loss = compute_loss(batch, model, loss_fn, device)
             if loss is not None:
                 total_val_loss += loss.item()
 
-            # Optionally, update tqdm description with current loss
-            val_bar.set_postfix(loss=loss.item() if loss is not None else 0.0)
+            # Update progress bar with the current loss
+            val_progress_bar.set_postfix({"Loss": f"{loss.item():.4f}"})
 
-    # Calculate average validation loss
     avg_val_loss = total_val_loss / len(val_loader)
 
-    # Print epoch summary
+    # After both loops, print the final train and validation losses
     print(f"Epoch completed - Avg Train Loss: {avg_train_loss:.4f}, Avg Val Loss: {avg_val_loss:.4f}")
 
     return avg_train_loss, avg_val_loss
+
