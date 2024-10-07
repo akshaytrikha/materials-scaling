@@ -2,6 +2,8 @@ import torch
 import torch.nn as nn
 from x_transformers import TransformerWrapper, Decoder
 from transformers import GPT2Tokenizer
+import torch.nn.functional as F
+import matplotlib.pyplot as plt
 
 class PredefinedTransformerModel(nn.Module):
     def __init__(self, vocab_size, max_seq_len=512, d_model=512, n_layers=8, n_heads=8, d_ff=2048):
@@ -76,9 +78,32 @@ class MetaXTransformers:
     def __len__(self):
         return len(self.configurations)
 
-def generate(meta_model, model_save_path, tokenizer, input_text, max_length, device):
+def plot_top_k_probs(probabilities, k, tokenizer):
     """
-    Generates text from the model given an input prompt.
+    Plot the top-k probabilities as a bar chart.
+
+    Args:
+        probabilities: Tensor of shape [vocab_size], the probabilities for the current step.
+        k: int, the number of top probabilities to display.
+        tokenizer: The tokenizer instance to convert token IDs to readable tokens.
+    """
+    # Get the top-k probabilities and their indices
+    top_k_probs, top_k_indices = torch.topk(probabilities, k)
+    
+    # Convert token indices to actual tokens
+    top_k_tokens = [tokenizer.decode([idx]) for idx in top_k_indices.tolist()]
+
+    # Plot the probabilities as a bar chart
+    plt.figure(figsize=(10, 5))
+    plt.bar(top_k_tokens, top_k_probs.cpu().numpy())
+    plt.title(f"Top {k} Probability Distribution")
+    plt.xlabel("Tokens")
+    plt.ylabel("Probabilities")
+    plt.show()
+
+def generate(meta_model, model_save_path, tokenizer, input_text, max_length, device, temperature=1.0, top_k=10):
+    """
+    Generates text from the model given an input prompt using temperature-based sampling.
 
     Args:
         meta_model: A meta model instance like MetaVanillaTransformers or MetaFullyConnectedModels.
@@ -87,6 +112,8 @@ def generate(meta_model, model_save_path, tokenizer, input_text, max_length, dev
         input_text: str, input seed text for generating new text.
         max_length: int, the maximum number of tokens to generate.
         device: torch.device, the device to run computations on.
+        temperature: float, controls the randomness of predictions by scaling the logits.
+        top_k: int, the number of top probabilities to display and plot.
 
     Returns:
         str: The generated text.
@@ -100,7 +127,7 @@ def generate(meta_model, model_save_path, tokenizer, input_text, max_length, dev
     model = next(iter(meta_model))  # Get the first model configuration (you can modify this as needed)
     
     # Step 3: Load the model state from the saved path
-    model.load_state_dict(torch.load(model_save_path), map_location=device)
+    model.load_state_dict(torch.load(model_save_path, map_location=device))
     model = model.to(device)
     model.eval()
 
@@ -112,10 +139,17 @@ def generate(meta_model, model_save_path, tokenizer, input_text, max_length, dev
         # Pass the input through the model
         with torch.no_grad():
             logits = model(generated_ids)  # Model forward pass
-            logits = logits[:, -1, :]  # Only consider the last token's logits (for greedy decoding)
+            logits = logits[:, -1, :]  # Only consider the last token's logits
 
-        # Sample the next token (greedy sampling)
-        next_token_id = torch.argmax(logits, dim=-1).unsqueeze(0)
+        # Step 5: Apply temperature to the logits and convert to probabilities
+        logits = logits / temperature
+        probabilities = F.softmax(logits, dim=-1)
+
+        # Plot top-k probability distribution
+        plot_top_k_probs(probabilities.squeeze(), top_k, tokenizer)
+
+        # Step 6: Sample the next token based on the probability distribution
+        next_token_id = torch.multinomial(probabilities, num_samples=1)
 
         # Append the generated token to the sequence
         generated_ids = torch.cat((generated_ids, next_token_id), dim=1)
@@ -127,7 +161,7 @@ def generate(meta_model, model_save_path, tokenizer, input_text, max_length, dev
         if next_token_id.item() == tokenizer.eos_token_id:
             break
 
-    # Step 5: Decode the generated sequence back to text
+    # Step 7: Decode the generated sequence back to text
     generated_text = tokenizer.decode(generated_ids.squeeze().tolist())
 
     return generated_text
@@ -138,5 +172,14 @@ def generate(meta_model, model_save_path, tokenizer, input_text, max_length, dev
 
 meta_model = MetaXTransformers(vocab_size=50257)
 tokenizer = GPT2Tokenizer.from_pretrained("gpt2")
-generated_text = generate(meta_model, "/kaggle/working/materials-scaling/perplexity/kaggle/working/saved_models/wikitext-2-v1_VanillaTransformer_ts=2024_10_07-21:00:08/VanillaTransformer_dv=small_df=1_p=6597696.pt", tokenizer, "Once upon a time", 50, torch.device("cuda"))
+generated_text = generate(
+    meta_model=meta_model, 
+    model_save_path="saved_models/VanillaTransformer_dv=small_df=1_p=6597696.pt", 
+    tokenizer=tokenizer, 
+    input_text="Once upon a time", 
+    max_length=50, 
+    device=torch.device("cpu"), 
+    temperature=0.3  # Default temperature (you can adjust this)
+)
 print(generated_text)
+
