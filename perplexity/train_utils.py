@@ -47,7 +47,7 @@ def compute_loss(batch, model, loss_fn, device):
 
     return loss
 
-def train_epoch(model, train_loader, val_loader, optimizer, loss_fn, device):
+def train_epoch(model, train_loader, val_loader, optimizer, scheduler, loss_fn, device):
     """
     Train model for one epoch and compute the average train * validation loss.
 
@@ -80,6 +80,7 @@ def train_epoch(model, train_loader, val_loader, optimizer, loss_fn, device):
         loss.backward()
         torch.nn.utils.clip_grad_norm_(model.parameters(), 0.5)
         optimizer.step()
+        scheduler.step() 
 
         total_train_loss += loss.item()
 
