@@ -13,7 +13,7 @@ warnings.filterwarnings("ignore", category=FutureWarning)
 
 # Internal
 from data import setup_dataset, get_dataloaders
-from model import *
+from new_model import *
 from train_utils import train_epoch
 from arg_parser import get_args
 
