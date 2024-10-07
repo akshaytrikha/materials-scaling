@@ -1,3 +1,5 @@
+import torch
+import torch.nn as nn
 from x_transformers import TransformerWrapper, Decoder
 
 # Define your transformer model from x-transformers
