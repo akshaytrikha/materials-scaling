@@ -43,7 +43,7 @@ class MetaXTransformers:
         self,
         vocab_size,
         d_model: int = 64,  # Default values for the transformer size
-        n_layers: int = 4,
+        n_layers: int = 2,
         n_heads: int = 2,
         d_ff: int = 256,
     ):
