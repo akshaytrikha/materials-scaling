@@ -1,4 +1,6 @@
 # External
+import pickle
+import os
 from transformers import GPT2Tokenizer
 from collections import defaultdict, Counter
 import math
@@ -6,11 +8,6 @@ from tqdm.auto import tqdm
 
 # Internal
 from data import setup_dataset
-
-
-from collections import defaultdict, Counter
-import math
-from tqdm.auto import tqdm
 
 
 class NGramModel:
@@ -63,7 +60,11 @@ class NGramModel:
         for example in tqdm(dataset, desc="Calculating Perplexity"):
             tokens = example["input_ids"]
             # Filter out special tokens
-            tokens = [token for token in tokens if token not in special_tokens]
+            tokens = [
+                int(token.cpu().numpy())
+                for token in tokens
+                if token not in special_tokens
+            ]
 
             for i in range(len(tokens) - self.n + 1):
                 context = tuple(tokens[i : i + self.n - 1])
@@ -73,6 +74,14 @@ class NGramModel:
                 N += 1
 
         return math.exp(-log_prob / N)  # Natural exponent
+
+    def save(self, filepath):
+        with open(filepath, "wb") as f:
+            pickle.dump(self, f)
+
+    def load(filepath):
+        with open(filepath, "rb") as f:
+            return pickle.load(f)
 
 
 def infer_ngram_model(ngram_model, user_input, tokenizer):
@@ -103,15 +112,10 @@ def infer_ngram_model(ngram_model, user_input, tokenizer):
     return probabilities, tokenizer.decode(max_prob_word)
 
 
-dataset_name = "wikitext-2-v1"  # or "wikitext-103-v1"
+def train(n, train_dataset, val_dataset, tokenizer):
+    model_filepath = f"ngram_models/{n}gram_model.pkl"
 
-dataset, tokenizer = setup_dataset(dataset_name)
-train_dataset = dataset["train"]
-val_dataset = dataset["validation"]
-test_dataset = dataset["test"]
-
-# train n-gram models
-for n in range(1, 6):
+    # Train n-gram model
     ngram_model = NGramModel(n=n, tokenizer=tokenizer)
     ngram_model.train(train_dataset)
     print(f"{n}-gram Vocabulary Size: {len(ngram_model.vocab)}")
@@ -120,10 +124,41 @@ for n in range(1, 6):
     ngram_ppl = ngram_model.perplexity(val_dataset)
     print(f"{n}-gram Perplexity: {ngram_ppl}")
 
-    user_input = "Park has a black MacBook that"
+    # Save the model
+    ngram_model.save(model_filepath)
+    print(f"{n}-gram model saved to {model_filepath}")
+
+    return ngram_model
+
+
+def inference(n, tokenizer, user_input):
+    model_filepath = f"ngram_models/{n}gram_model.pkl"
+
+    # Load model if it exists
+    if os.path.exists(model_filepath):
+        ngram_model = NGramModel.load(model_filepath)
+    else:
+        print(f"{n}-gram model does not exist at {model_filepath}")
+
     for i in range(5):
         probabilities, max_prob_word = infer_ngram_model(
             ngram_model, user_input, tokenizer
         )
         user_input += max_prob_word
         print(user_input)
+
+
+if __name__ == "__main__":
+    dataset_name = "wikitext-2-v1"  # or "wikitext-103-v1"
+
+    dataset, tokenizer = setup_dataset(dataset_name)
+    train_dataset = dataset["train"]
+    val_dataset = dataset["validation"]
+    test_dataset = dataset["test"]
+
+    # Create directory for saving models
+    os.makedirs("ngram_models", exist_ok=True)
+
+    for n in range(1, 6):
+        train(n, train_dataset, val_dataset, tokenizer)
+        inference(n, tokenizer, "Park has a black MacBook that")

@@ -7,3 +7,4 @@ materials-scaling-venv
 .env
 *.pt
 saved_models/
+*.pkl
