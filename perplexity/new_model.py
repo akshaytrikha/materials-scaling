@@ -42,10 +42,10 @@ class MetaXTransformers:
     def __init__(
         self,
         vocab_size,
-        d_model: int = 512,  # Default values for the transformer size
-        n_layers: int = 8,
-        n_heads: int = 8,
-        d_ff: int = 2048,
+        d_model: int = 64,  # Default values for the transformer size
+        n_layers: int = 4,
+        n_heads: int = 2,
+        d_ff: int = 256,
     ):
         # You can add more configurations if needed
         self.d_models = [d_model]
