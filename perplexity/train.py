@@ -62,8 +62,8 @@ if __name__ == "__main__":
                 f"\nModel is on device {DEVICE} and has {model.num_params} parameters"
             )
             optimizer = optim.Adam(model.parameters(), lr=args.lr)
-            total_steps = args.num_epochs * len(train_loader)
-            num_warmup_steps = int(0.1 * total_steps)
+            # total_steps = args.num_epochs * len(train_loader)
+            # num_warmup_steps = int(0.1 * total_steps)
             # scheduler = get_scheduler(
             #     name="cosine",
             #     optimizer=optimizer,
