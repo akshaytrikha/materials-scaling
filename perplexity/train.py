@@ -1,4 +1,5 @@
 # External
+from collections import defaultdict
 from datetime import datetime
 import torch
 import torch.nn as nn
@@ -49,6 +50,8 @@ if __name__ == "__main__":
     # Scaling Experiments
     timestamp = datetime.now().strftime("%Y_%m_%d-%H:%M:%S")
     group_name = f"{dataset_name}_{args.architecture}_ts={timestamp}"  # for wandb
+
+    scaling_plot = defaultdict(list)
 
     for data_fraction in tqdm(args.data_fractions, desc="Data Iteration"):
         # Create a subset of the dataset
@@ -108,19 +111,22 @@ if __name__ == "__main__":
                     print(f"Model saved to {model_save_path}")
 
             # Evaluate Perplexity
-            train_perplexity = torch.exp(torch.tensor(train_loss)).item()
-            val_perplexity = torch.exp(torch.tensor(val_loss)).item()
+            # train_perplexity = torch.exp(torch.tensor(train_loss)).item()
+            best_val_perplexity = torch.exp(torch.tensor(best_val_loss)).item()
             print(
-                f"Dataset Size: {int(data_fraction*100)}%, Train Perplexity: {train_perplexity}, Val Perplexity: {val_perplexity}\n"
+                f"Dataset Size: {int(data_fraction*100)}%, Val Perplexity: {best_val_perplexity}\n"
             )
             if args.wandb_log:
                 wandb.log(
                     {
                         "train_loss": train_loss,
-                        "train_perplexity": train_perplexity,
                         "val_loss": val_loss,
-                        "val_perplexity": val_perplexity,
+                        "val_perplexity": best_val_perplexity,
                         "num_params": model.num_params,
                     }
                 )
             wandb.finish()
+            scaling_plot[model.num_params].append(best_val_perplexity)
+    
+    print(scaling_plot)
+
