@@ -91,3 +91,29 @@ def get_dataloaders(dataset: datasets.Dataset, data_fraction: float, batch_size:
     val_loader = DataLoader(dataset["validation"], batch_size=batch_size, shuffle=True)
 
     return train_loader, val_loader
+
+
+# def count_train_tokens(train_loader):
+#     """Count the total number of tokens in the training data."""
+#     total_tokens = 0
+#     for batch in train_loader:
+#         total_tokens += batch["input_ids"].numel()  # Sum the total number of tokens
+#     return total_tokens
+
+# if __name__ == '__main__':
+#     dataset_name = "wikitext-2-v1"  # You can switch to "wikitext-103-v1" for the larger version
+#     seq_length = 512
+#     batch_size = 8
+#     data_fractions = [0.01, 0.1, 0.25, 0.5, 0.75, 1]
+    
+#     # Setup dataset and tokenizer
+#     dataset, tokenizer = setup_dataset(dataset_name, seq_length)
+
+#     # Iterate over each data fraction
+#     for fraction in data_fractions:
+#         train_loader, _ = get_dataloaders(dataset, data_fraction=fraction, batch_size=batch_size)
+#         print(count_train_tokens(train_loader))
+
+
+
+
