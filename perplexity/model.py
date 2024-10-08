@@ -50,10 +50,6 @@ class FullyConnectedModel(nn.Module):
         x = self.fc2(x)
         return x
 
-
-import torch.nn as nn
-from x_transformers import TransformerWrapper, Decoder
-
 class PredefinedTransformerModel(nn.Module):
     def __init__(self, vocab_size, max_seq_len=512, d_model=512, n_layers=8, n_heads=8, d_ff=2048):
         super().__init__()
@@ -96,11 +92,11 @@ class MetaXTransformers:
     ):
         # Predefined configurations to match target parameter counts, including varying d_ff
         self.configurations = [
-            {"d_model": 64, "n_layers": 2, "n_heads": 2, "d_ff": 256},    # ~2M params
-            {"d_model": 128, "n_layers": 4, "n_heads": 4, "d_ff": 512},   # ~10M params
-            {"d_model": 256, "n_layers": 6, "n_heads": 8, "d_ff": 1024},  # ~30M params
-            {"d_model": 512, "n_layers": 8, "n_heads": 8, "d_ff": 2048},  # ~70M params
-            # {"d_model": 768, "n_layers": 12, "n_heads": 12, "d_ff": 3072} # ~150M params
+            {"d_model": 32, "n_layers": 1, "n_heads": 1, "d_ff": 128},    # ~3M params
+            {"d_model": 64, "n_layers": 2, "n_heads": 2, "d_ff": 256},    # ~6.5M params
+            {"d_model": 128, "n_layers": 4, "n_heads": 4, "d_ff": 512},   # ~14M params
+            {"d_model": 256, "n_layers": 8, "n_heads": 8, "d_ff": 1024},  # ~34M params
+            {"d_model": 512, "n_layers": 10, "n_heads": 10, "d_ff": 2048},  # ~86M params
         ]
 
         self.vocab_size = vocab_size
@@ -255,17 +251,39 @@ def generate(meta_model, model_save_path, tokenizer, input_text, max_length, dev
 # Assuming you've initialized the model meta-class (MetaVanillaTransformers or MetaFullyConnectedModels)
 # and that the model has been trained and saved.
 
-if __name__ == '__main__':
-    meta_model = MetaXTransformers(vocab_size=50257)
-    tokenizer = GPT2Tokenizer.from_pretrained("gpt2")
-    generated_text = generate(
-        meta_model=meta_model, 
-        model_save_path="saved_models/VanillaTransformer_dv=small_df=1_p=6597696.pt", 
-        tokenizer=tokenizer, 
-        input_text="Once upon a time", 
-        max_length=50, 
-        device=torch.device("cpu"), 
-        temperature=0.3  # Default temperature (you can adjust this)
-    )
-    print(generated_text)
+# if __name__ == '__main__':
+#     meta_model = MetaXTransformers(vocab_size=50257)
+#     tokenizer = GPT2Tokenizer.from_pretrained("gpt2")
+#     generated_text = generate(
+#         meta_model=meta_model, 
+#         model_save_path="saved_models/VanillaTransformer_dv=small_df=1_p=6597696.pt", 
+#         tokenizer=tokenizer, 
+#         input_text="Once upon a time", 
+#         max_length=50, 
+#         device=torch.device("cpu"), 
+#         temperature=0.3  # Default temperature (you can adjust this)
+#     )
+#     print(generated_text)
+
+
+def verify_model_sizes(vocab_size):
+    """
+    Instantiate models from MetaXTransformers, print the number of parameters for each.
+    """
+    # Instantiate MetaXTransformers with the desired vocab size
+    meta_transformers = MetaXTransformers(vocab_size=vocab_size)
+
+    # Iterate through the configurations and instantiate models
+    for idx, transformer_model in enumerate(meta_transformers):
+        # Count the parameters
+        param_count = transformer_model.num_params
+        # Print the configuration index and parameter count
+        print(f"Model {idx+1}: {param_count} parameters")
+
+if __name__ == "__main__":
+    # Set a sample vocabulary size (this should match your intended vocabulary size)
+    vocab_size = 50187  # Example vocab size
+    # Verify model sizes
+    verify_model_sizes(vocab_size)
+
 
