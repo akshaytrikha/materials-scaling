@@ -96,7 +96,7 @@ class MetaXTransformers:
             {"d_model": 4, "n_layers": 1, "n_heads": 1, "d_ff": 16},    # ~400k params
             {"d_model": 8, "n_layers": 1, "n_heads": 1, "d_ff": 32},    # ~800k params
             {"d_model": 16, "n_layers": 1, "n_heads": 1, "d_ff": 64},    # ~1.6M params
-            {"d_model": 32, "n_layers": 1, "n_heads": 1, "d_ff": 128},    # ~3.2M params
+            # {"d_model": 32, "n_layers": 1, "n_heads": 1, "d_ff": 128},    # ~3.2M params
             # {"d_model": 64, "n_layers": 2, "n_heads": 2, "d_ff": 256},    # ~6.5M params
             # {"d_model": 128, "n_layers": 4, "n_heads": 4, "d_ff": 512},   # ~14M params
             # {"d_model": 256, "n_layers": 8, "n_heads": 8, "d_ff": 1024},  # ~34M params
