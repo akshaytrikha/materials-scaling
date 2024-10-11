@@ -14,8 +14,8 @@ class NGramModel:
     def __init__(self, n, tokenizer):
         self.n = n
         self.tokenizer = tokenizer
-        self.ngram_counts = defaultdict(Counter)
-        self.context_counts = defaultdict(int)
+        self.ngram_counts = [defaultdict(Counter) for _ in range(n)]
+        self.context_counts = [defaultdict(int) for _ in range(n)]
         self.vocab = set()
 
     def train(self, dataset):
@@ -31,24 +31,37 @@ class NGramModel:
             tokens = [
                 int(token.cpu().numpy())
                 for token in tokens
-                if token not in special_tokens
+                if int(token.cpu().numpy()) not in special_tokens
             ]
-
             self.vocab.update(tokens)
-            for i in range(len(tokens) - self.n + 1):
-                context = tuple(tokens[i : i + self.n - 1])
-                word = tokens[i + self.n - 1]
-                self.ngram_counts[context][word] += 1
-                self.context_counts[context] += 1
+            for i in range(self.n, len(tokens)):
+                for j in range(1, self.n + 1):
+                    context = tuple(tokens[i - j: i])
+                    word = tokens[i]
+                    self.ngram_counts[j - 1][context][word] += 1
+                    self.context_counts[j - 1][context] += 1
 
-    def get_prob(self, context, word, smoothing=1):
-        count = self.ngram_counts[context][word] + smoothing
-        total = self.context_counts[context] + smoothing * len(self.vocab)
-        return count / total
+    def get_prob(self, context, word, order=None, smoothing=0):
+        if order is None:
+            order = self.n - 1
+        
+        if order < 0:
+            return 1 / len(self.vocab)  # Uniform distribution as fallback
+
+        count = self.ngram_counts[order][context][word] + smoothing
+        total = self.context_counts[order][context] + smoothing * len(self.vocab)
+        if total == 0:
+            return self.get_prob(context[1:], word, order - 1, smoothing)
+        prob = count / total
+
+        # Use backoff if probability is zero
+        if prob == 0:
+            return self.get_prob(context[1:], word, order - 1, smoothing)
+        return prob
 
     def perplexity(self, dataset):
-        log_prob = 0.0
-        N = 0
+        log_prob_sum = 0.0
+        total_words = 0
 
         special_tokens = {
             self.tokenizer.pad_token_id,
@@ -63,53 +76,46 @@ class NGramModel:
             tokens = [
                 int(token.cpu().numpy())
                 for token in tokens
-                if token not in special_tokens
+                if int(token.cpu().numpy()) not in special_tokens
             ]
 
-            for i in range(len(tokens) - self.n + 1):
-                context = tuple(tokens[i : i + self.n - 1])
-                word = tokens[i + self.n - 1]
-                prob = self.get_prob(context, word)
-                log_prob += math.log(prob)  # Natural logarithm
-                N += 1
+            for i in range(len(tokens)):
+                context = tuple(tokens[max(0, i - self.n + 1):i])
+                word = tokens[i]
+                prob = self.get_prob(context, word, order=len(context), smoothing=0.1)
+                log_prob_sum += math.log(prob)
+                total_words += 1
 
-        return math.exp(-log_prob / N)  # Natural exponent
+        avg_log_prob = log_prob_sum / total_words
+        perplexity = math.exp(-avg_log_prob)
+        return perplexity
 
     def save(self, filepath):
         with open(filepath, "wb") as f:
             pickle.dump(self, f)
 
+    @staticmethod
     def load(filepath):
         with open(filepath, "rb") as f:
             return pickle.load(f)
 
+    def infer(self, user_input):
+        """Infer the probabilities of the next word given a user input."""
+        tokens = self.tokenizer.encode(user_input, add_special_tokens=False)
 
-def infer_ngram_model(ngram_model, user_input, tokenizer):
-    """Infer the probabilities of the next word given a user input using an n-gram model."""
+        probabilities = []
+        max_prob = -1
+        max_prob_word = None
 
-    # Tokenize the user input
-    tokens = ngram_model.tokenizer.encode(user_input, add_special_tokens=False)
+        context = tuple(tokens[max(0, len(tokens) - self.n):])
+        for word in self.vocab:
+            prob = self.get_prob(context, word, order=len(context) - 1)
+            probabilities.append((context, word, prob))
 
-    # Initialize a list to store probabilities
-    probabilities = []
-
-    # Initialize variables to track the word with the highest probability
-    max_prob = -1
-    max_prob_word = None
-
-    # Loop through the tokens to create n-grams
-    for i in range(len(tokens) - ngram_model.n + 1):
-        context = tuple(tokens[i : i + ngram_model.n - 1])
-        word = tokens[i + ngram_model.n - 1]
-        prob = ngram_model.get_prob(context, word)
-        probabilities.append((context, word, prob))
-
-        # Update the word with the highest probability
-        if prob > max_prob:
-            max_prob = prob
-            max_prob_word = word
-
-    return probabilities, tokenizer.decode(max_prob_word)
+            if prob > max_prob:
+                max_prob = prob
+                max_prob_word = word
+        return probabilities, self.tokenizer.decode(max_prob_word)
 
 
 def train(n, train_dataset, val_dataset, tokenizer):
@@ -119,7 +125,7 @@ def train(n, train_dataset, val_dataset, tokenizer):
     ngram_model = NGramModel(n=n, tokenizer=tokenizer)
     ngram_model.train(train_dataset)
     print(f"{n}-gram Vocabulary Size: {len(ngram_model.vocab)}")
-    print(f"{n}-gram Unique Contexts: {len(ngram_model.ngram_counts)}")
+    print(f"{n}-gram Unique Contexts: {[len(contexts) for contexts in ngram_model.ngram_counts]}")
 
     ngram_ppl = ngram_model.perplexity(val_dataset)
     print(f"{n}-gram Perplexity: {ngram_ppl}")
@@ -140,16 +146,15 @@ def inference(n, tokenizer, user_input):
     else:
         print(f"{n}-gram model does not exist at {model_filepath}")
 
-    for i in range(5):
-        probabilities, max_prob_word = infer_ngram_model(
-            ngram_model, user_input, tokenizer
-        )
+    for i in range(10):
+        probabilities, max_prob_word = ngram_model.infer(user_input)
+
         user_input += max_prob_word
         print(user_input)
 
 
 if __name__ == "__main__":
-    dataset_name = "wikitext-2-v1"  # or "wikitext-103-v1"
+    dataset_name = "wikitext-2-raw-v1"  # or "wikitext-103-v1"
 
     dataset, tokenizer = setup_dataset(dataset_name)
     train_dataset = dataset["train"]
@@ -159,6 +164,6 @@ if __name__ == "__main__":
     # Create directory for saving models
     os.makedirs("ngram_models", exist_ok=True)
 
-    for n in range(1, 6):
+    for n in range(5, 6):
         train(n, train_dataset, val_dataset, tokenizer)
-        inference(n, tokenizer, "Park has a black MacBook that")
+        inference(n, tokenizer, "i am a")
