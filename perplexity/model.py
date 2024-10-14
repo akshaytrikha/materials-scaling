@@ -189,7 +189,6 @@ def generate(model_save_path, tokenizer, input_text, max_length, device, tempera
     # Step 1: Encode the input text to token indices
     input_ids = tokenizer.encode(input_text)
     input_ids = torch.tensor([input_ids], device=device)  # Make it a batch of 1
-    print(f"input_ids.shape is {input_ids.shape}")
 
     # Load the model and set it to evaluation mode
     model = torch.load(model_save_path)
@@ -197,29 +196,18 @@ def generate(model_save_path, tokenizer, input_text, max_length, device, tempera
     model.eval()
 
     # Initialize the generated sequence with the input ids
-    generated_ids = input_ids
+    generated_ids = input_ids[0]
     for _ in range(max_length):
         # Step 2: Pass the input through the model
         with torch.no_grad():
             logits = model(generated_ids)
-            print(f"logits.shape is {logits.shape}")
         # Step 3: Sample the next token (using greedy sampling for simplicity)
         logits = logits / temperature
-        probabilities = torch.softmax(logits, dim=-1).squeeze()
-        next_token_id = torch.multinomial(probabilities, num_samples=1).unsqueeze(
-            1
-        )  # [0][len(input_text.split(" ")) - 1].unsqueeze(0).unsqueeze(0)
-        # Step 4: Append the generated token to the sequence
-        print(f"the next_token_id.shape is {next_token_id.shape}")
-        generated_ids = torch.cat((generated_ids, next_token_id), dim=1)
-        print(generated_ids)
-        print(tokenizer.decode(generated_ids.squeeze().tolist()))
-        print(generated_ids.shape)
-        # If end-of-sequence token is generated, stop
+        probabilities = torch.softmax(logits, dim=-1).squeeze()[-1, :]
+        next_token_id = torch.multinomial(probabilities, num_samples=1)
 
         # Step 4: Append generated token to the sequence
-        generated_ids = torch.cat((generated_ids, next_token_id), dim=1)
-
+        generated_ids = torch.cat((generated_ids, next_token_id), dim=0)
         # If end-of-sequence token is generated, stop
         if next_token_id.item() == tokenizer.eos_token_id:
             break
@@ -228,11 +216,11 @@ def generate(model_save_path, tokenizer, input_text, max_length, device, tempera
     return tokenizer.decode(generated_ids.squeeze().tolist())
 
 
-generate(
-    "saved_models/wikitext-2-v1_FCN_ts=2024_10_09-19:05:05/FCN_dv=small_df=1_p=86167121.pt",
-    GPT2Tokenizer.from_pretrained("gpt2"),
-    "we are trying to",
-    100,
-    torch.device("cpu"),
-    0.3
-)
+# print(generate(
+#     "saved_models/wikitext-2-v1_FCN_ts=2024_10_09-19:05:05/FCN_dv=small_df=1_p=86167121.pt",
+#     GPT2Tokenizer.from_pretrained("gpt2"),
+#     "we are trying to",
+#     100,
+#     torch.device("cpu"),
+#     0.3
+# ))

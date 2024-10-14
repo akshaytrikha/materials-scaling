@@ -32,9 +32,9 @@ if __name__ == "__main__":
 
     # Setup Dataset
     if args.dataset_version == "small":
-        dataset_name = "wikitext-2-v1"
+        dataset_name = "wikitext-2-raw-v1"
     elif args.dataset_version == "large":
-        dataset_name = "wikitext-103-v1"
+        dataset_name = "wikitext-103-raw-v1"
     dataset, tokenizer = setup_dataset(dataset_name)
 
     # Models, Loss
