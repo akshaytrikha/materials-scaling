@@ -64,8 +64,10 @@ if __name__ == "__main__":
                 f"\nModel is on device {DEVICE} and has {model.num_params} parameters"
             )
             optimizer = optim.Adam(model.parameters(), lr=args.lr)
-
-            model_name = f"{args.architecture}_dv={args.dataset_version}_df={data_fraction}_p={model.num_params}"
+            if args.architecture == "FCN":
+                model_name = f"{args.architecture}_dv={args.dataset_version}_df={data_fraction}_p={model.num_params}_e={model.embedding_dim}_h={model.hidden_dim}_d={model.depth}"
+            else:
+                model_name = f"{args.architecture}_dv={args.dataset_version}_df={data_fraction}_p={model.num_params}"
 
             if args.wandb_log:
                 run = wandb.init(
