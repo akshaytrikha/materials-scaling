@@ -11,42 +11,42 @@ import matplotlib.pyplot as plt
 class MetaFullyConnectedModels:
     def __init__(self, vocab_size):
         # Parameter Scaling Constants
-        self.embedding_dims = [16, 32, 64, 128, 256, 256, 256]
-        self.hidden_dims = [16, 32, 64, 128, 256, 512, 1024]
         self.vocab_size = vocab_size
-
-        # Generate all combinations of embedding_dims and hidden_dims
-        self.configurations = list(
-            zip(
-                self.embedding_dims,
-                self.hidden_dims,
-            )
-        )
+        self.embedding_dims_and_hidden_dims = [[16, 32], [32, 64], [64, 128], [128, 256], [256, 512], [512, 1024]]
+        self.depths = [i for i in range(1, 13, 1)]
 
     def __iter__(self):
-        for emb_dim, hid_dim in self.configurations:
-            yield FullyConnectedModel(
-                self.vocab_size, embedding_dim=emb_dim, hidden_dim=hid_dim
-            )
+        for item in self.embedding_dims_and_hidden_dims:
+            for current_depth in self.depths:
+                yield FullyConnectedModel(
+                    self.vocab_size, embedding_dim=item[0], hidden_dim=item[1], depth=current_depth
+                )
 
     def __len__(self):
         return len(self.configurations)
 
 
 class FullyConnectedModel(nn.Module):
-    def __init__(self, vocab_size, embedding_dim=512, hidden_dim=512):
-        super(FullyConnectedModel, self).__init__()
+    def __init__(self, vocab_size, embedding_dim=128, hidden_dim=128, depth=8):
+        super().__init__()
         self.embedding = nn.Embedding(vocab_size, embedding_dim)
         self.fc1 = nn.Linear(embedding_dim, hidden_dim)
         self.relu = nn.ReLU()
+        self.dropout = nn.Dropout(0.2)
+        self.inner_layers = nn.ModuleList()
+        for _ in range(depth):
+            self.inner_layers.append(nn.Linear(hidden_dim, hidden_dim))
+            self.inner_layers.append(nn.ReLU())
+            self.inner_layers.append(nn.Dropout(0.2))
         self.fc2 = nn.Linear(hidden_dim, vocab_size)
-
         self.num_params = sum(p.numel() for p in self.parameters())
 
     def forward(self, x, src_key_padding_mask=None):
         x = self.embedding(x)
-        x = x.mean(dim=1)  # Average embeddings across sequence length
         x = self.relu(self.fc1(x))
+        x = self.dropout(x)
+        for layer in self.inner_layers:
+            x = layer(x)
         x = self.fc2(x)
         return x
 

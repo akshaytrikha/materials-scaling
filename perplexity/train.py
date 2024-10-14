@@ -19,8 +19,8 @@ from arg_parser import get_args
 
 if torch.cuda.is_available():
     DEVICE = torch.device("cuda")
-elif torch.backends.mps.is_available():
-    DEVICE = torch.device("mps")
+# elif torch.backends.mps.is_available():
+#     DEVICE = torch.device("mps")
 else:
     DEVICE = torch.device("cpu")
 
@@ -73,7 +73,10 @@ if __name__ == "__main__":
                 num_warmup_steps=num_warmup_steps,
                 num_training_steps=total_steps
             )
-            model_name = f"{args.architecture}_dv={args.dataset_version}_df={data_fraction}_p={model.num_params}"
+            if args.architecture == "FCN":
+                model_name = f"{args.architecture}_dv={args.dataset_version}_df={data_fraction}_p={model.num_params}_e={model.embedding_dim}_h={model.hidden_dim}_d={model.depth}"
+            else:
+                model_name = f"{args.architecture}_dv={args.dataset_version}_df={data_fraction}_p={model.num_params}"
 
             if args.wandb_log:
                 run = wandb.init(
