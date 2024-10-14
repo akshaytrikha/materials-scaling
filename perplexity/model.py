@@ -50,7 +50,7 @@ class FullyConnectedModel(nn.Module):
         x = self.fc2(x)
         return x
 
-class PredefinedTransformerModel(nn.Module):
+class XTransformerModel(nn.Module):
     def __init__(self, vocab_size, max_seq_len=512, d_model=512, n_layers=8, n_heads=8, d_ff=2048):
         super().__init__()
         # Transformer model setup
@@ -109,7 +109,7 @@ class MetaXTransformers:
         if idx >= len(self.configurations):
             raise IndexError("Configuration index out of range.")
         config = self.configurations[idx]
-        return PredefinedTransformerModel(
+        return XTransformerModel(
             vocab_size=self.vocab_size,
             d_model=config["d_model"],
             n_layers=config["n_layers"],
@@ -179,7 +179,7 @@ def generate(meta_model, model_save_path, tokenizer, input_text, max_length, dev
     model.eval()
 
     # Check if the model is a Transformer or FCN
-    is_transformer = isinstance(model, PredefinedTransformerModel)
+    is_transformer = isinstance(model, XTransformerModel)
 
     if is_transformer:
         # Transformer Model: Autoregressive Generation (token by token)
