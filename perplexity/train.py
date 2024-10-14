@@ -93,14 +93,14 @@ if __name__ == "__main__":
 
             # Train the model
             best_val_loss = float("inf")
-
             for epoch in tqdm(range(args.num_epochs), desc="Epoch Progress", leave=True):
                 train_loss, val_loss = train_epoch(
                     model, train_loader, val_loader, optimizer, scheduler, loss_fn, DEVICE
                 )
-                print(
-                    f"Dataset Size: {int(data_fraction*100)}%, Epoch: {epoch+1}, Train Loss: {train_loss}, Val Loss: {val_loss}"
-                )
+                if epoch % 10 == 0:
+                    print(
+                        f"Dataset Size: {int(data_fraction*100)}%, Epoch: {epoch+1}, Train Loss: {train_loss}, Val Loss: {val_loss}"
+                    )
 
                 if val_loss < best_val_loss:
                     best_val_loss = val_loss
@@ -111,7 +111,7 @@ if __name__ == "__main__":
                         os.makedirs(f"saved_models/{group_name}", exist_ok=True)
                         model_save_path = f"saved_models/{group_name}/{model_name}.pt"
                     torch.save(model.state_dict(), model_save_path)
-                    print(f"Model saved to {model_save_path}")
+                    # print(f"Model saved to {model_save_path}")
 
             # Evaluate Perplexity
             # train_perplexity = torch.exp(torch.tensor(train_loss)).item()
