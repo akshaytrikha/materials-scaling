@@ -2,9 +2,10 @@
 
 import torch
 import torch.nn as nn
-import math
-from typing import Tuple
+import torch.nn.functional as F
 from transformers import GPT2Tokenizer
+from x_transformers import TransformerWrapper, Decoder
+import matplotlib.pyplot as plt
 
 
 class MetaFullyConnectedModels:
@@ -49,190 +50,244 @@ class FullyConnectedModel(nn.Module):
         x = self.fc2(x)
         return x
 
-
-class PositionalEncoding(nn.Module):
-    def __init__(self, d_model: int, dropout: float = 0.1, max_len: int = 5000):
+class XTransformerModel(nn.Module):
+    def __init__(self, vocab_size, max_seq_len=512, d_model=512, n_layers=8, n_heads=8, d_ff=2048):
         super().__init__()
-        self.dropout = nn.Dropout(p=dropout)
+        # Transformer model setup
+        self.model = TransformerWrapper(
+            num_tokens=vocab_size,           # Size of the vocabulary
+            max_seq_len=max_seq_len,         # Max sequence length
+            attn_layers=Decoder(             # Decoder layers (no encoder for autoregressive generation)
+                dim=d_model,                 # Model dimension (embedding size)
+                depth=n_layers,              # Number of transformer layers
+                heads=n_heads,               # Number of attention heads
+                ff_mult=d_ff // d_model,     # Feed-forward multiplier
+            )
+        )
+        self.num_params = sum(p.numel() for p in self.parameters())  # Count parameters
 
-        position = torch.arange(max_len).unsqueeze(1)  # [max_len, 1]
-        div_term = torch.exp(
-            torch.arange(0, d_model, 2) * (-math.log(10000.0) / d_model)
-        )  # [d_model/2]
-        pe = torch.zeros(max_len, 1, d_model)  # [max_len, 1, d_model]
-        pe[:, 0, 0::2] = torch.sin(position * div_term)  # Apply sin to even indices
-        pe[:, 0, 1::2] = torch.cos(position * div_term)  # Apply cos to odd indices
-        self.register_buffer("pe", pe)
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, src, src_key_padding_mask=None):
         """
         Args:
-            x: Tensor, shape [seq_len, batch_size, embedding_dim]
-        """
-        x = x + self.pe[: x.size(0)]
-        return self.dropout(x)
-
-
-class TransformerModel(nn.Module):
-    def __init__(
-        self,
-        ntoken: int,
-        d_model: int,
-        nhead: int,
-        d_hid: int,
-        nlayers: int,
-        dropout: float = 0.5,
-    ):
-        super().__init__()
-        self.model_type = "Transformer"
-        self.pos_encoder = PositionalEncoding(d_model, dropout)
-        encoder_layers = nn.TransformerEncoderLayer(d_model, nhead, d_hid, dropout)
-        self.transformer_encoder = nn.TransformerEncoder(encoder_layers, nlayers)
-        self.embedding = nn.Embedding(ntoken, d_model)
-        self.d_model = d_model
-        self.linear = nn.Linear(d_model, ntoken)
-
-        self.init_weights()
-
-        self.num_params = sum(p.numel() for p in self.parameters())
-
-    def init_weights(self) -> None:
-        initrange = 0.1
-        self.embedding.weight.data.uniform_(-initrange, initrange)
-        self.linear.bias.data.zero_()
-        self.linear.weight.data.uniform_(-initrange, initrange)
-
-    def forward(
-        self,
-        src: torch.Tensor,
-        src_mask: torch.Tensor = None,
-        src_key_padding_mask: torch.Tensor = None,
-    ) -> torch.Tensor:
-        """
-        Args:
-            src: Tensor, shape [seq_len, batch_size]
-            src_mask: Tensor, shape [seq_len, seq_len] (optional)
-
+            src: Tensor of shape [batch_size, seq_length]
+            src_key_padding_mask: Tensor of shape [batch_size, seq_length] (optional)
+        
         Returns:
-            output Tensor of shape [batch_size, seq_len, ntoken]
+            logits: Tensor of shape [batch_size, seq_length, vocab_size]
         """
-        src = self.embedding(src) * math.sqrt(
-            self.d_model
-        )  # [seq_len, batch_size, d_model]
-        src = self.pos_encoder(src)  # [seq_len, batch_size, d_model]
+        if src_key_padding_mask is not None:
+            # x-transformers expects mask of shape [batch_size, seq_length]
+            # where True indicates tokens to be masked (ignored)
+            attn_mask = src_key_padding_mask.bool()  # Ensure it's boolean
+        else:
+            attn_mask = None
+        
+        # x-transformers expects input of shape [batch_size, seq_length]
+        return self.model(src, mask=attn_mask)  # Pass the 2D attention mask directly
 
-        output = self.transformer_encoder(
-            src, src_key_padding_mask=src_key_padding_mask
-        )  # [seq_len, batch_size, d_model]
-        output = self.linear(output)  # [seq_len, batch_size, ntoken]
-        output = output.transpose(0, 1)  # [batch_size, seq_len, ntoken]
-        return output
-
-
-class MetaVanillaTransformers:
+class MetaXTransformers:
     def __init__(
         self,
-        vocab_size,
-        d_model: int = 256,
-        d_hid: int = 512,
-        nhead: int = 4,
-        nlayers: int = 8,
-        dropout: float = 0.2,
+        vocab_size
     ):
-        # You can modify these default values or make them configurable via arguments
-        self.d_models = [d_model]  # Single configuration or multiple as needed
-        self.d_hids = [d_hid]
-        self.nheads = [nhead]
-        self.nlayers = [nlayers]
-        self.dropout = dropout
-
-        # Generate all combinations (you can limit this to avoid combinatorial explosion)
-        self.configurations = []
-        for d_model in self.d_models:
-            for d_hid in self.d_hids:
-                for nhead in self.nheads:
-                    for nlayers in self.nlayers:
-                        if d_model % nhead == 0:  # Ensure d_model is divisible by nhead
-                            self.configurations.append((d_model, d_hid, nhead, nlayers))
+        # Predefined configurations to match target parameter counts, including varying d_ff
+        self.configurations = [
+            {"d_model": 2, "n_layers": 1, "n_heads": 1, "d_ff": 8},    # ~200k params
+            # {"d_model": 4, "n_layers": 1, "n_heads": 1, "d_ff": 16},    # ~400k params
+            # {"d_model": 8, "n_layers": 1, "n_heads": 1, "d_ff": 32},    # ~800k params
+            # {"d_model": 16, "n_layers": 1, "n_heads": 1, "d_ff": 64},    # ~1.6M params
+            # {"d_model": 32, "n_layers": 1, "n_heads": 1, "d_ff": 128},    # ~3.2M params
+            # {"d_model": 64, "n_layers": 2, "n_heads": 2, "d_ff": 256},    # ~6.5M params
+            # {"d_model": 128, "n_layers": 4, "n_heads": 4, "d_ff": 512},   # ~14M params
+            # {"d_model": 256, "n_layers": 8, "n_heads": 8, "d_ff": 1024},  # ~34M params
+            # {"d_model": 512, "n_layers": 10, "n_heads": 10, "d_ff": 2048},  # ~86M params
+        ]
 
         self.vocab_size = vocab_size
 
-    def __iter__(self):
-        for d_model, d_hid, nhead, nlayers in self.configurations:
-            yield TransformerModel(
-                ntoken=self.vocab_size,
-                d_model=d_model,
-                nhead=nhead,
-                d_hid=d_hid,
-                nlayers=nlayers,
-                dropout=self.dropout,
-            )
+    def __getitem__(self, idx):
+        if idx >= len(self.configurations):
+            raise IndexError("Configuration index out of range.")
+        config = self.configurations[idx]
+        return XTransformerModel(
+            vocab_size=self.vocab_size,
+            d_model=config["d_model"],
+            n_layers=config["n_layers"],
+            n_heads=config["n_heads"],
+            d_ff=config["d_ff"]
+        )
 
     def __len__(self):
         return len(self.configurations)
 
+    def __iter__(self):
+        for idx in range(len(self.configurations)):
+            yield self[idx]
 
-def generate(model_save_path, tokenizer, input_text, max_length, device, temperature):
+
+def plot_top_k_probs(probabilities, k, tokenizer):
     """
-    Generates text from the model given an input prompt.
+    Plot the top-k probabilities as a bar chart.
 
     Args:
-        model_save_path (str): path to the saved model
-        tokenizer: GPT2Tokenizer
-        input_text (str): input seed text for generating new text
-        max_length (int): maximum length of the generated text
-        device: torch device (cpu or cuda)
+        probabilities: Tensor of shape [vocab_size], the probabilities for the current step.
+        k: int, the number of top probabilities to display.
+        tokenizer: The tokenizer instance to convert token IDs to readable tokens.
+    """
+    # Get the top-k probabilities and their indices
+    top_k_probs, top_k_indices = torch.topk(probabilities, k)
+    
+    # Convert token indices to actual tokens
+    top_k_tokens = [tokenizer.decode([idx]) for idx in top_k_indices.tolist()]
+
+    # Plot the probabilities as a bar chart
+    plt.figure(figsize=(10, 5))
+    plt.bar(top_k_tokens, top_k_probs.cpu().numpy())
+    plt.title(f"Top {k} Probability Distribution")
+    plt.xlabel("Tokens")
+    plt.ylabel("Probabilities")
+    plt.show()
+
+def generate(meta_model, model_save_path, tokenizer, input_text, max_length, device, temperature=1.0, top_k=10):
+    """
+    Generates text from the model given an input prompt using temperature-based sampling.
+
+    Args:
+        meta_model: A meta model instance like MetaVanillaTransformers or MetaFullyConnectedModels.
+        model_save_path: str, path to the saved model's state dict.
+        tokenizer: A tokenizer instance (e.g., GPT2Tokenizer).
+        input_text: str, input seed text for generating new text.
+        max_length: int, the maximum number of tokens to generate.
+        device: torch.device, the device to run computations on.
+        temperature: float, controls the randomness of predictions by scaling the logits.
+        top_k: int, the number of top probabilities to display and plot.
 
     Returns:
-    - generated text as a string
+        str: The generated text.
     """
-    # Step 1: Encode the input text to token indices
+    # Step 1: Encode the input text into token indices
     input_ids = tokenizer.encode(input_text)
     input_ids = torch.tensor([input_ids], device=device)  # Make it a batch of 1
     print(f"input_ids.shape is {input_ids.shape}")
 
-    # Load the model and set it to evaluation mode
-    model = torch.load(model_save_path)
+    # Step 2: Initialize the model using the provided meta_model
+    model = next(iter(meta_model))  # Get the first model configuration (you can modify this as needed)
+    
+    # Step 3: Load the model state from the saved path
+    model.load_state_dict(torch.load(model_save_path, map_location=device))
     model = model.to(device)
     model.eval()
 
-    # Initialize the generated sequence with the input ids
-    generated_ids = input_ids
-    for _ in range(max_length):
-        # Step 2: Pass the input through the model
-        with torch.no_grad():
-            logits = model(generated_ids)
-            print(f"logits.shape is {logits.shape}")
-        # Step 3: Sample the next token (using greedy sampling for simplicity)
-        logits = logits / temperature
-        probabilities = torch.softmax(logits, dim=-1).squeeze()
-        next_token_id = torch.multinomial(probabilities, num_samples=1).unsqueeze(
-            1
-        )  # [0][len(input_text.split(" ")) - 1].unsqueeze(0).unsqueeze(0)
-        # Step 4: Append the generated token to the sequence
-        print(f"the next_token_id.shape is {next_token_id.shape}")
-        generated_ids = torch.cat((generated_ids, next_token_id), dim=1)
-        print(generated_ids)
-        print(tokenizer.decode(generated_ids.squeeze().tolist()))
-        print(generated_ids.shape)
-        # If end-of-sequence token is generated, stop
+    # Check if the model is a Transformer or FCN
+    is_transformer = isinstance(model, XTransformerModel)
 
-        # Step 4: Append generated token to the sequence
-        generated_ids = torch.cat((generated_ids, next_token_id), dim=1)
+    if is_transformer:
+        # Transformer Model: Autoregressive Generation (token by token)
+        generated_ids = input_ids
 
-        # If end-of-sequence token is generated, stop
-        if next_token_id.item() == tokenizer.eos_token_id:
-            break
+        for _ in range(max_length):
+            # Pass the input through the model
+            with torch.no_grad():
+                logits = model(generated_ids)  # Model forward pass
+                logits = logits[:, -1, :]  # Only consider the last token's logits
 
-    # Step 5: Decode the generated sequence back to text
-    return tokenizer.decode(generated_ids.squeeze().tolist())
+            # Apply temperature to the logits and convert to probabilities
+            logits = logits / temperature
+            probabilities = F.softmax(logits, dim=-1)
+
+            # Plot top-k probability distribution
+            plot_top_k_probs(probabilities.squeeze(), top_k, tokenizer)
+
+            # Sample the next token based on the probability distribution
+            next_token_id = torch.multinomial(probabilities, num_samples=1)
+
+            # Append the generated token to the sequence
+            generated_ids = torch.cat((generated_ids, next_token_id), dim=1)
+
+            # Decode and print the generated sequence so far
+            print(f"Generated sequence so far: {tokenizer.decode(generated_ids.squeeze().tolist())}")
+
+            # Stop if the EOS token is generated
+            if next_token_id.item() == tokenizer.eos_token_id:
+                break
+
+        # Decode the generated sequence back to text
+        generated_text = tokenizer.decode(generated_ids.squeeze().tolist())
+
+    else:
+        # Fully Connected Model: Autoregressive behavior by appending predictions back to the input
+        generated_ids = input_ids
+
+        for _ in range(max_length):
+            # Step 1: Pass the input through the model
+            with torch.no_grad():
+                logits = model(generated_ids)  # Model forward pass, predicting the last word
+
+            # Step 2: Apply temperature to the logits and convert to probabilities
+            logits = logits / temperature
+            probabilities = F.softmax(logits, dim=-1)
+
+            # Plot top-k probability distribution
+            plot_top_k_probs(probabilities.squeeze(), top_k, tokenizer)
+
+            # Step 3: Sample the next token based on the probability distribution
+            next_token_id = torch.multinomial(probabilities, num_samples=1)
+
+            # Make sure next_token_id is [batch_size, 1]
+            next_token_id = next_token_id.unsqueeze(-1) if next_token_id.dim() == 1 else next_token_id
+
+            # Step 4: Append the predicted token to the input (for autoregressive behavior)
+            generated_ids = torch.cat((generated_ids, next_token_id), dim=1)  # Append the new token to the input sequence
+
+            # Print the generated sequence so far
+            print(f"Generated sequence so far: {tokenizer.decode(generated_ids.squeeze().tolist())}")
+
+            # Step 5: Stop if the EOS token is generated
+            if next_token_id.item() == tokenizer.eos_token_id:
+                break
+
+        # Step 6: Decode the generated sequence back to text
+        generated_text = tokenizer.decode(generated_ids.squeeze().tolist())
+
+    return generated_text
+
+# Example Usage:
+# Assuming you've initialized the model meta-class (MetaVanillaTransformers or MetaFullyConnectedModels)
+# and that the model has been trained and saved.
+
+# if __name__ == '__main__':
+#     meta_model = MetaXTransformers(vocab_size=50257)
+#     tokenizer = GPT2Tokenizer.from_pretrained("gpt2")
+#     generated_text = generate(
+#         meta_model=meta_model, 
+#         model_save_path="saved_models/VanillaTransformer_dv=small_df=1_p=6597696.pt", 
+#         tokenizer=tokenizer, 
+#         input_text="Once upon a time", 
+#         max_length=50, 
+#         device=torch.device("cpu"), 
+#         temperature=0.3  # Default temperature (you can adjust this)
+#     )
+#     print(generated_text)
 
 
-generate(
-    "saved_models/wikitext-2-v1_FCN_ts=2024_10_09-19:05:05/FCN_dv=small_df=1_p=86167121.pt",
-    GPT2Tokenizer.from_pretrained("gpt2"),
-    "we are trying to",
-    100,
-    torch.device("cpu"),
-    0.3
-)
+# def verify_model_sizes(vocab_size):
+#     """
+#     Instantiate models from MetaXTransformers, print the number of parameters for each.
+#     """
+#     # Instantiate MetaXTransformers with the desired vocab size
+#     meta_transformers = MetaXTransformers(vocab_size=vocab_size)
+
+#     # Iterate through the configurations and instantiate models
+#     for idx, transformer_model in enumerate(meta_transformers):
+#         # Count the parameters
+#         param_count = transformer_model.num_params
+#         # Print the configuration index and parameter count
+#         print(f"Model {idx+1}: {param_count} parameters")
+
+# if __name__ == "__main__":
+#     # Set a sample vocabulary size (this should match your intended vocabulary size)
+#     vocab_size = 50187  # Example vocab size
+#     # Verify model sizes
+#     verify_model_sizes(vocab_size)
+
+

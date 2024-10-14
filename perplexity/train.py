@@ -1,15 +1,14 @@
 # External
+from collections import defaultdict
 from datetime import datetime
 import torch
 import torch.nn as nn
 import torch.optim as optim
 import wandb
 import pprint
-from tqdm.auto import tqdm
-import warnings
+from tqdm import tqdm
 import os
-
-warnings.filterwarnings("ignore", category=FutureWarning)
+from transformers import get_scheduler
 
 # Internal
 from data import setup_dataset, get_dataloaders
@@ -41,7 +40,7 @@ if __name__ == "__main__":
     if args.architecture == "FCN":
         models = MetaFullyConnectedModels(vocab_size=len(tokenizer))
     elif args.architecture == "VanillaTransformer":
-        models = MetaVanillaTransformers(vocab_size=len(tokenizer))
+        models = MetaXTransformers(vocab_size=len(tokenizer))
     loss_fn = nn.CrossEntropyLoss(ignore_index=tokenizer.pad_token_id)
 
     # User Hyperparam Feedback
@@ -51,6 +50,8 @@ if __name__ == "__main__":
     # Scaling Experiments
     timestamp = datetime.now().strftime("%Y_%m_%d-%H:%M:%S")
     group_name = f"{dataset_name}_{args.architecture}_ts={timestamp}"  # for wandb
+
+    scaling_plot = defaultdict(list)
 
     for data_fraction in tqdm(args.data_fractions, desc="Data Iteration"):
         # Create a subset of the dataset
@@ -64,6 +65,14 @@ if __name__ == "__main__":
                 f"\nModel is on device {DEVICE} and has {model.num_params} parameters"
             )
             optimizer = optim.Adam(model.parameters(), lr=args.lr)
+            total_steps = args.num_epochs * len(train_loader)
+            num_warmup_steps = int(0.1 * total_steps)
+            scheduler = get_scheduler(
+                name="cosine",
+                optimizer=optimizer,
+                num_warmup_steps=num_warmup_steps,
+                num_training_steps=total_steps
+            )
             if args.architecture == "FCN":
                 model_name = f"{args.architecture}_dv={args.dataset_version}_df={data_fraction}_p={model.num_params}_e={model.embedding_dim}_h={model.hidden_dim}_d={model.depth}"
             else:
@@ -84,9 +93,10 @@ if __name__ == "__main__":
 
             # Train the model
             best_val_loss = float("inf")
-            for epoch in range(args.num_epochs):
+
+            for epoch in tqdm(range(args.num_epochs), desc="Epoch Progress", leave=True):
                 train_loss, val_loss = train_epoch(
-                    model, train_loader, val_loader, optimizer, loss_fn, DEVICE
+                    model, train_loader, val_loader, optimizer, scheduler, loss_fn, DEVICE
                 )
                 print(
                     f"Dataset Size: {int(data_fraction*100)}%, Epoch: {epoch+1}, Train Loss: {train_loss}, Val Loss: {val_loss}"
@@ -95,34 +105,31 @@ if __name__ == "__main__":
                 if val_loss < best_val_loss:
                     best_val_loss = val_loss
                     if args.kaggle:
-                        os.makedirs(
-                            f"/kaggle/working/saved_models/{group_name}", exist_ok=True
-                        )
-                        model_save_path = (
-                            f"/kaggle/working/saved_models/{group_name}/{model_name}.pt"
-                        )
-                        torch.save(model, model_save_path)
-                        print(f"Model saved to {model_save_path}")
+                        os.makedirs(f"kaggle/working/saved_models/{group_name}", exist_ok=True)
+                        model_save_path = f"kaggle/working/saved_models/{group_name}/{model_name}.pt"
                     else:
                         os.makedirs(f"saved_models/{group_name}", exist_ok=True)
                         model_save_path = f"saved_models/{group_name}/{model_name}.pt"
-                        torch.save(model, model_save_path)
-                        print(f"Model saved to {model_save_path}")
+                    torch.save(model.state_dict(), model_save_path)
+                    print(f"Model saved to {model_save_path}")
 
             # Evaluate Perplexity
-            train_perplexity = torch.exp(torch.tensor(train_loss)).item()
-            val_perplexity = torch.exp(torch.tensor(val_loss)).item()
+            # train_perplexity = torch.exp(torch.tensor(train_loss)).item()
+            best_val_perplexity = torch.exp(torch.tensor(best_val_loss)).item()
             print(
-                f"Dataset Size: {int(data_fraction*100)}%, Train Perplexity: {train_perplexity}, Val Perplexity: {val_perplexity}\n"
+                f"Dataset Size: {int(data_fraction*100)}%, Val Perplexity: {best_val_perplexity}\n"
             )
             if args.wandb_log:
                 wandb.log(
                     {
                         "train_loss": train_loss,
-                        "train_perplexity": train_perplexity,
                         "val_loss": val_loss,
-                        "val_perplexity": val_perplexity,
+                        "val_perplexity": best_val_perplexity,
                         "num_params": model.num_params,
                     }
                 )
             wandb.finish()
+            scaling_plot[model.num_params].append(best_val_perplexity)
+    
+    print(scaling_plot)
+

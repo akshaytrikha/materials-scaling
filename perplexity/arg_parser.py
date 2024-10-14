@@ -44,7 +44,7 @@ def get_args():
         "--data_fractions",
         type=float_or_int,
         nargs="+",
-        default=[0.01, 0.05, 0.1, 0.2, 0.4, 0.6, 0.8, 1],
+        default=[0.01, 0.1, 0.25, 0.5, 0.75, 1],
         help="List of data fractions to use for training",
     )
     parser.add_argument(
