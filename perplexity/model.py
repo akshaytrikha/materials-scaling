@@ -29,12 +29,15 @@ class MetaFullyConnectedModels:
 class FullyConnectedModel(nn.Module):
     def __init__(self, vocab_size, embedding_dim=128, hidden_dim=128, depth=8):
         super().__init__()
-        self.embedding = nn.Embedding(vocab_size, embedding_dim)
-        self.fc1 = nn.Linear(embedding_dim, hidden_dim)
+        self.embedding_dim = embedding_dim
+        self.hidden_dim = hidden_dim
+        self.depth = depth
+        self.embedding = nn.Embedding(vocab_size, self.embedding_dim)
+        self.fc1 = nn.Linear(embedding_dim, self.hidden_dim)
         self.relu = nn.ReLU()
         self.dropout = nn.Dropout(0.2)
         self.inner_layers = nn.ModuleList()
-        for _ in range(depth):
+        for _ in range(self.depth):
             self.inner_layers.append(nn.Linear(hidden_dim, hidden_dim))
             self.inner_layers.append(nn.ReLU())
             self.inner_layers.append(nn.Dropout(0.2))
@@ -168,7 +171,6 @@ def generate(meta_model, model_save_path, tokenizer, input_text, max_length, dev
     # Step 1: Encode the input text into token indices
     input_ids = tokenizer.encode(input_text)
     input_ids = torch.tensor([input_ids], device=device)  # Make it a batch of 1
-    print(f"input_ids.shape is {input_ids.shape}")
 
     # Step 2: Initialize the model using the provided meta_model
     model = next(iter(meta_model))  # Get the first model configuration (you can modify this as needed)
@@ -215,39 +217,21 @@ def generate(meta_model, model_save_path, tokenizer, input_text, max_length, dev
         generated_text = tokenizer.decode(generated_ids.squeeze().tolist())
 
     else:
-        # Fully Connected Model: Autoregressive behavior by appending predictions back to the input
-        generated_ids = input_ids
-
+        generated_ids = input_ids[0]
         for _ in range(max_length):
-            # Step 1: Pass the input through the model
+            # Step 2: Pass the input through the model
             with torch.no_grad():
-                logits = model(generated_ids)  # Model forward pass, predicting the last word
-
-            # Step 2: Apply temperature to the logits and convert to probabilities
+                logits = model(generated_ids)
+            # Step 3: Sample the next token (using greedy sampling for simplicity)
             logits = logits / temperature
-            probabilities = F.softmax(logits, dim=-1)
-
-            # Plot top-k probability distribution
-            plot_top_k_probs(probabilities.squeeze(), top_k, tokenizer)
-
-            # Step 3: Sample the next token based on the probability distribution
+            probabilities = torch.softmax(logits, dim=-1).squeeze()[-1, :]
             next_token_id = torch.multinomial(probabilities, num_samples=1)
 
-            # Make sure next_token_id is [batch_size, 1]
-            next_token_id = next_token_id.unsqueeze(-1) if next_token_id.dim() == 1 else next_token_id
-
-            # Step 4: Append the predicted token to the input (for autoregressive behavior)
-            generated_ids = torch.cat((generated_ids, next_token_id), dim=1)  # Append the new token to the input sequence
-
-            # Print the generated sequence so far
-            print(f"Generated sequence so far: {tokenizer.decode(generated_ids.squeeze().tolist())}")
-
-            # Step 5: Stop if the EOS token is generated
+            # Step 4: Append generated token to the sequence
+            generated_ids = torch.cat((generated_ids, next_token_id), dim=0)
+            # If end-of-sequence token is generated, stop
             if next_token_id.item() == tokenizer.eos_token_id:
                 break
-
-        # Step 6: Decode the generated sequence back to text
-        generated_text = tokenizer.decode(generated_ids.squeeze().tolist())
 
     return generated_text
 
@@ -291,3 +275,11 @@ def generate(meta_model, model_save_path, tokenizer, input_text, max_length, dev
 #     verify_model_sizes(vocab_size)
 
 
+# print(generate(
+#     "saved_models/wikitext-2-v1_FCN_ts=2024_10_09-19:05:05/FCN_dv=small_df=1_p=86167121.pt",
+#     GPT2Tokenizer.from_pretrained("gpt2"),
+#     "we are trying to",
+#     100,
+#     torch.device("cpu"),
+#     0.3
+# ))
