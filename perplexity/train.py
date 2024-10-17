@@ -19,8 +19,8 @@ from arg_parser import get_args
 
 if torch.cuda.is_available():
     DEVICE = torch.device("cuda")
-# elif torch.backends.mps.is_available():
-#     DEVICE = torch.device("mps")
+elif torch.backends.mps.is_available():
+    DEVICE = torch.device("mps")
 else:
     DEVICE = torch.device("cpu")
 
@@ -71,7 +71,7 @@ if __name__ == "__main__":
                 name="cosine",
                 optimizer=optimizer,
                 num_warmup_steps=num_warmup_steps,
-                num_training_steps=total_steps
+                num_training_steps=total_steps,
             )
             if args.architecture == "FCN":
                 model_name = f"{args.architecture}_dv={args.dataset_version}_df={data_fraction}_p={model.num_params}_e={model.embedding_dim}_h={model.hidden_dim}_d={model.depth}"
@@ -93,9 +93,17 @@ if __name__ == "__main__":
 
             # Train the model
             best_val_loss = float("inf")
-            for epoch in tqdm(range(args.num_epochs), desc="Epoch Progress", leave=True):
+            for epoch in tqdm(
+                range(args.num_epochs), desc="Epoch Progress", leave=True
+            ):
                 train_loss, val_loss = train_epoch(
-                    model, train_loader, val_loader, optimizer, scheduler, loss_fn, DEVICE
+                    model,
+                    train_loader,
+                    val_loader,
+                    optimizer,
+                    scheduler,
+                    loss_fn,
+                    DEVICE,
                 )
                 if epoch % 10 == 0:
                     print(
@@ -105,8 +113,12 @@ if __name__ == "__main__":
                 if val_loss < best_val_loss:
                     best_val_loss = val_loss
                     if args.kaggle:
-                        os.makedirs(f"kaggle/working/saved_models/{group_name}", exist_ok=True)
-                        model_save_path = f"kaggle/working/saved_models/{group_name}/{model_name}.pt"
+                        os.makedirs(
+                            f"kaggle/working/saved_models/{group_name}", exist_ok=True
+                        )
+                        model_save_path = (
+                            f"kaggle/working/saved_models/{group_name}/{model_name}.pt"
+                        )
                     else:
                         os.makedirs(f"saved_models/{group_name}", exist_ok=True)
                         model_save_path = f"saved_models/{group_name}/{model_name}.pt"
@@ -130,6 +142,5 @@ if __name__ == "__main__":
                 )
             wandb.finish()
             scaling_plot[model.num_params].append(best_val_perplexity)
-    
-    print(scaling_plot)
 
+    print(scaling_plot)
