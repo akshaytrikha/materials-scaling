@@ -304,7 +304,7 @@ def generate(meta_model, model_save_path, tokenizer, input_text, max_length, dev
 
 print(generate(
     MetaFullyConnectedModels(len(GPT2Tokenizer.from_pretrained("gpt2"))),
-    "/Users/parkszachta/Desktop/materials-scaling/perplexity/saved_models/wikitext-2-raw-v1_FCN_ts=2024_10_17-03:36:15/FCN_dv=small_df=0.25_p=1660929_e=16_h=16_d=8.pt",
+    "saved_models/wikitext-2-raw-v1_FCN_ts=2024_10_17-03:50:00/FCN_dv=small_df=0.25_p=1660929_e=16_h=16_d=8.pt",
     GPT2Tokenizer.from_pretrained("gpt2"),
     "1 2 3 4 5",
     10,
