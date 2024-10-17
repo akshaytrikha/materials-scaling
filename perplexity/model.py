@@ -11,9 +11,9 @@ import matplotlib.pyplot as plt
 class MetaFullyConnectedModels:
     def __init__(self, vocab_size):
         self.configurations = [
-            # {"embedding_dim": 2, "hidden_dim": 2, "depth": 1},      # 251,297 params
+            {"embedding_dim": 2, "hidden_dim": 2, "depth": 1},      # 251,297 params
             # {"embedding_dim": 4, "hidden_dim": 4, "depth": 2},      # 452,373 params
-            {"embedding_dim": 8, "hidden_dim": 8, "depth": 4},      # 854,729 params
+            # {"embedding_dim": 8, "hidden_dim": 8, "depth": 4},      # 854,729 params
             # {"embedding_dim": 16, "hidden_dim": 16, "depth": 8},    # 1,660,929 params
             # {"embedding_dim": 32, "hidden_dim": 32, "depth": 12},   # 3,280,433 params
             # {"embedding_dim": 64, "hidden_dim": 64, "depth": 12},   # 6,537,233 params
@@ -68,7 +68,7 @@ class FullyConnectedModel(nn.Module):
     def forward(self, x, src_key_padding_mask=None):
         x = self.embedding(x)
         # print(f"embedding is {x}")
-        # x = self.sigmoid(self.fc1(x))
+        x = self.sigmoid(self.fc1(x))
         for layer in self.inner_layers:
             x = layer(x)
             # print(f"layer output is {x}")
@@ -297,12 +297,12 @@ def generate(meta_model, model_save_path, tokenizer, input_text, max_length, dev
 #     # Verify model sizes
 #     verify_model_sizes(vocab_size)
 
-# print(generate(
-#     MetaFullyConnectedModels(len(GPT2Tokenizer.from_pretrained("gpt2"))),
-#     "saved_models/wikitext-2-raw-v1_FCN_ts=2024_10_17-03:59:52/FCN_dv=small_df=0.25_p=1660929_e=16_h=16_d=8.pt",
-#     GPT2Tokenizer.from_pretrained("gpt2"),
-#     "1 2 3 4 5",
-#     10,
-#     torch.device("cpu"),
-#     0.3
-# ))
+print(generate(
+    MetaFullyConnectedModels(len(GPT2Tokenizer.from_pretrained("gpt2"))),
+    "saved_models/wikitext-2-raw-v1_FCN_ts=2024_10_17-04:08:51/FCN_dv=small_df=0.25_p=854729_e=8_h=8_d=4.pt",
+    GPT2Tokenizer.from_pretrained("gpt2"),
+    "we are going to",
+    10,
+    torch.device("cpu"),
+    0.3
+))
