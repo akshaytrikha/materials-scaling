@@ -302,12 +302,12 @@ def generate(meta_model, model_save_path, tokenizer, input_text, max_length, dev
 #     # Verify model sizes
 #     verify_model_sizes(vocab_size)
 
-print(generate(
-    MetaFullyConnectedModels(len(GPT2Tokenizer.from_pretrained("gpt2"))),
-    "saved_models/wikitext-2-raw-v1_FCN_ts=2024_10_17-03:50:00/FCN_dv=small_df=0.25_p=1660929_e=16_h=16_d=8.pt",
-    GPT2Tokenizer.from_pretrained("gpt2"),
-    "1 2 3 4 5",
-    10,
-    torch.device("cpu"),
-    0.3
-))
+# print(generate(
+#     MetaFullyConnectedModels(len(GPT2Tokenizer.from_pretrained("gpt2"))),
+#     "saved_models/wikitext-2-raw-v1_FCN_ts=2024_10_17-03:50:00/FCN_dv=small_df=0.25_p=1660929_e=16_h=16_d=8.pt",
+#     GPT2Tokenizer.from_pretrained("gpt2"),
+#     "1 2 3 4 5",
+#     10,
+#     torch.device("cpu"),
+#     0.3
+# ))
