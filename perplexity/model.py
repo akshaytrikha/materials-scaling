@@ -276,10 +276,11 @@ def generate(meta_model, model_save_path, tokenizer, input_text, max_length, dev
 
 
 # print(generate(
-#     "saved_models/wikitext-2-v1_FCN_ts=2024_10_09-19:05:05/FCN_dv=small_df=1_p=86167121.pt",
+#     MetaXTransformers(len(GPT2Tokenizer.from_pretrained("gpt2"))),
+#     "local/VanillaTransformer_dv=small_df=0.1_p=202612.pt",
 #     GPT2Tokenizer.from_pretrained("gpt2"),
 #     "we are trying to",
-#     100,
+#     10,
 #     torch.device("cpu"),
 #     0.3
 # ))
