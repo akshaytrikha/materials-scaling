@@ -69,16 +69,16 @@ class FullyConnectedModel(nn.Module):
 
     def forward(self, x, src_key_padding_mask=None):
         x = self.embedding(x)
-        print(f"embedding is {x}")
+        # print(f"embedding is {x}")
         # x = self.sigmoid(self.fc1(x))
         # print(f"sigmoid is {x}")
         # x = self.dropout(x)
         # print(f"dropout is {x}")
         for layer in self.inner_layers:
             x = layer(x)
-            print(f"layer output is {x}")
+            # print(f"layer output is {x}")
         x = self.fc2(x)
-        print(f"fc2 is {x}")
+        # print(f"fc2 is {x}")
         return x
 
 class XTransformerModel(nn.Module):
