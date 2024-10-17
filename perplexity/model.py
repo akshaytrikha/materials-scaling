@@ -57,23 +57,23 @@ class FullyConnectedModel(nn.Module):
         self.depth = depth
         self.embedding = nn.Embedding(vocab_size, self.embedding_dim)
         self.fc1 = nn.Linear(embedding_dim, self.hidden_dim)
-        self.sigmoid = nn.Sigmoid()
+        self.leakyrelu = nn.LeakyReLU(negative_slope=0.01)
         self.inner_layers = nn.ModuleList()
         for _ in range(self.depth):
             self.inner_layers.append(nn.Linear(hidden_dim, hidden_dim))
-            self.inner_layers.append(nn.Sigmoid())
+            self.inner_layers.append(nn.LeakyReLU(negative_slope=0.01))
         self.fc2 = nn.Linear(hidden_dim, vocab_size)
         self.num_params = sum(p.numel() for p in self.parameters())
 
     def forward(self, x, src_key_padding_mask=None):
         x = self.embedding(x)
-        # print(f"embedding is {x}")
-        x = self.sigmoid(self.fc1(x))
+        print(f"embedding is {x}")
+        x = self.leakyrelu(self.fc1(x))
         for layer in self.inner_layers:
             x = layer(x)
-            # print(f"layer output is {x}")
+            print(f"layer output is {x}")
         x = self.fc2(x)
-        # print(f"fc2 is {x}")
+        print(f"fc2 is {x}")
         return x
 
 class XTransformerModel(nn.Module):
@@ -299,10 +299,10 @@ def generate(meta_model, model_save_path, tokenizer, input_text, max_length, dev
 
 # print(generate(
 #     MetaFullyConnectedModels(len(GPT2Tokenizer.from_pretrained("gpt2"))),
-#     "saved_models/wikitext-2-raw-v1_FCN_ts=2024_10_17-04:20:23/FCN_dv=small_df=0.25_p=251297_e=2_h=2_d=1.pt",
+#     "saved_models/wikitext-2-raw-v1_FCN_ts=2024_10_17-05:02:14/FCN_dv=small_df=0.25_p=1660929_e=16_h=16_d=8.pt",
 #     GPT2Tokenizer.from_pretrained("gpt2"),
-#     "1 2 3 4 5",
-#     10,
+#     "1 2 3 4",
+#     1,
 #     torch.device("cpu"),
 #     0.3
 # ))
