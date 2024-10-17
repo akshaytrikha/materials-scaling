@@ -93,7 +93,7 @@ if __name__ == "__main__":
             start_epoch = 0
             best_val_loss = float("inf")
 
-            # Check if checkpoint exists
+            # Load from checkpoint if exists
             if os.path.exists(checkpoint_path):
                 print(f"Loading checkpoint from {checkpoint_path}")
                 start_epoch, best_val_loss = load_checkpoint(
