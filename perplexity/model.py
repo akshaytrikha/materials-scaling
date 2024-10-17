@@ -13,8 +13,8 @@ class MetaFullyConnectedModels:
         self.configurations = [
             # {"embedding_dim": 2, "hidden_dim": 2, "depth": 1},      # 251,297 params
             # {"embedding_dim": 4, "hidden_dim": 4, "depth": 2},      # 452,373 params
-            # {"embedding_dim": 8, "hidden_dim": 8, "depth": 4},      # 854,729 params
-            {"embedding_dim": 16, "hidden_dim": 16, "depth": 8},    # 1,660,929 params
+            {"embedding_dim": 8, "hidden_dim": 8, "depth": 4},      # 854,729 params
+            # {"embedding_dim": 16, "hidden_dim": 16, "depth": 8},    # 1,660,929 params
             # {"embedding_dim": 32, "hidden_dim": 32, "depth": 12},   # 3,280,433 params
             # {"embedding_dim": 64, "hidden_dim": 64, "depth": 12},   # 6,537,233 params
             # {"embedding_dim": 128, "hidden_dim": 128, "depth": 12}, # 13,130,705 params
@@ -57,13 +57,11 @@ class FullyConnectedModel(nn.Module):
         self.depth = depth
         self.embedding = nn.Embedding(vocab_size, self.embedding_dim)
         self.fc1 = nn.Linear(embedding_dim, self.hidden_dim)
-        # self.sigmoid = nn.Sigmoid()
-        # self.dropout = nn.Dropout(0.2)
+        self.sigmoid = nn.Sigmoid()
         self.inner_layers = nn.ModuleList()
         for _ in range(self.depth):
             self.inner_layers.append(nn.Linear(hidden_dim, hidden_dim))
-            # self.inner_layers.append(nn.Sigmoid())
-            # self.inner_layers.append(nn.Dropout(0.2))
+            self.inner_layers.append(nn.Sigmoid())
         self.fc2 = nn.Linear(hidden_dim, vocab_size)
         self.num_params = sum(p.numel() for p in self.parameters())
 
@@ -71,9 +69,6 @@ class FullyConnectedModel(nn.Module):
         x = self.embedding(x)
         # print(f"embedding is {x}")
         # x = self.sigmoid(self.fc1(x))
-        # print(f"sigmoid is {x}")
-        # x = self.dropout(x)
-        # print(f"dropout is {x}")
         for layer in self.inner_layers:
             x = layer(x)
             # print(f"layer output is {x}")
@@ -304,7 +299,7 @@ def generate(meta_model, model_save_path, tokenizer, input_text, max_length, dev
 
 # print(generate(
 #     MetaFullyConnectedModels(len(GPT2Tokenizer.from_pretrained("gpt2"))),
-#     "saved_models/wikitext-2-raw-v1_FCN_ts=2024_10_17-03:50:00/FCN_dv=small_df=0.25_p=1660929_e=16_h=16_d=8.pt",
+#     "saved_models/wikitext-2-raw-v1_FCN_ts=2024_10_17-03:59:52/FCN_dv=small_df=0.25_p=1660929_e=16_h=16_d=8.pt",
 #     GPT2Tokenizer.from_pretrained("gpt2"),
 #     "1 2 3 4 5",
 #     10,
