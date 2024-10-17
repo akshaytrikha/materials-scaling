@@ -57,23 +57,30 @@ class FullyConnectedModel(nn.Module):
         self.depth = depth
         self.embedding = nn.Embedding(vocab_size, self.embedding_dim)
         self.fc1 = nn.Linear(embedding_dim, self.hidden_dim)
+        self.layernorm = nn.LayerNorm(self.hidden_dim)
         self.leakyrelu = nn.LeakyReLU(negative_slope=0.01)
         self.inner_layers = nn.ModuleList()
         for _ in range(self.depth):
             self.inner_layers.append(nn.Linear(hidden_dim, hidden_dim))
+            self.inner_layers.append(nn.LayerNorm(self.hidden_dim))
             self.inner_layers.append(nn.LeakyReLU(negative_slope=0.01))
         self.fc2 = nn.Linear(hidden_dim, vocab_size)
         self.num_params = sum(p.numel() for p in self.parameters())
 
     def forward(self, x, src_key_padding_mask=None):
         x = self.embedding(x)
-        print(f"embedding is {x}")
-        x = self.leakyrelu(self.fc1(x))
+        # print(f"embedding is {x}")
+        x = self.fc1(x)
+        # print(f"fc1 is {x}")
+        x = self.layernorm(x)
+        # print(f"layernorm is {x}")
+        x = self.leakyrelu(x)
+        # print(f"leakyrelu is {x}")
         for layer in self.inner_layers:
             x = layer(x)
-            print(f"layer output is {x}")
+            # print(f"layer output is {x}")
         x = self.fc2(x)
-        print(f"fc2 is {x}")
+        # print(f"fc2 is {x}")
         return x
 
 class XTransformerModel(nn.Module):
