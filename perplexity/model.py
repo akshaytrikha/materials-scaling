@@ -57,28 +57,28 @@ class FullyConnectedModel(nn.Module):
         self.depth = depth
         self.embedding = nn.Embedding(vocab_size, self.embedding_dim)
         self.fc1 = nn.Linear(embedding_dim, self.hidden_dim)
-        self.sigmoid = nn.Sigmoid()
-        self.dropout = nn.Dropout(0.2)
+        # self.sigmoid = nn.Sigmoid()
+        # self.dropout = nn.Dropout(0.2)
         self.inner_layers = nn.ModuleList()
         for _ in range(self.depth):
             self.inner_layers.append(nn.Linear(hidden_dim, hidden_dim))
-            self.inner_layers.append(nn.Sigmoid())
-            self.inner_layers.append(nn.Dropout(0.2))
+            # self.inner_layers.append(nn.Sigmoid())
+            # self.inner_layers.append(nn.Dropout(0.2))
         self.fc2 = nn.Linear(hidden_dim, vocab_size)
         self.num_params = sum(p.numel() for p in self.parameters())
 
     def forward(self, x, src_key_padding_mask=None):
         x = self.embedding(x)
-        # print(f"embedding is {x}")
-        x = self.sigmoid(self.fc1(x))
+        print(f"embedding is {x}")
+        # x = self.sigmoid(self.fc1(x))
         # print(f"sigmoid is {x}")
-        x = self.dropout(x)
+        # x = self.dropout(x)
         # print(f"dropout is {x}")
         for layer in self.inner_layers:
             x = layer(x)
-            # print(f"layer output is {x}")
+            print(f"layer output is {x}")
         x = self.fc2(x)
-        # print(f"fc2 is {x}")
+        print(f"fc2 is {x}")
         return x
 
 class XTransformerModel(nn.Module):
@@ -302,12 +302,12 @@ def generate(meta_model, model_save_path, tokenizer, input_text, max_length, dev
 #     # Verify model sizes
 #     verify_model_sizes(vocab_size)
 
-# print(generate(
-#     MetaFullyConnectedModels(len(GPT2Tokenizer.from_pretrained("gpt2"))),
-#     "/Users/parkszachta/Desktop/materials-scaling/perplexity/saved_models/wikitext-2-raw-v1_FCN_ts=2024_10_16-19:10:27/FCN_dv=small_df=0.1_p=854729_e=8_h=8_d=4.pt",
-#     GPT2Tokenizer.from_pretrained("gpt2"),
-#     "we are at the",
-#     10,
-#     torch.device("cpu"),
-#     0.3
-# ))
+print(generate(
+    MetaFullyConnectedModels(len(GPT2Tokenizer.from_pretrained("gpt2"))),
+    "/Users/parkszachta/Desktop/materials-scaling/perplexity/saved_models/wikitext-2-raw-v1_FCN_ts=2024_10_17-03:36:15/FCN_dv=small_df=0.25_p=1660929_e=16_h=16_d=8.pt",
+    GPT2Tokenizer.from_pretrained("gpt2"),
+    "1 2 3 4 5",
+    10,
+    torch.device("cpu"),
+    0.3
+))
