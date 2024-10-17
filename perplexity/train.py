@@ -96,7 +96,6 @@ if __name__ == "__main__":
             # Check if checkpoint exists
             if os.path.exists(checkpoint_path):
                 print(f"Loading checkpoint from {checkpoint_path}")
-                breakpoint()
                 start_epoch, best_val_loss = load_checkpoint(
                     model, optimizer, scheduler, checkpoint_path, DEVICE
                 )
