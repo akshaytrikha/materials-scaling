@@ -1,9 +1,10 @@
 import torch
-from transformers import GPT2Tokenizer
+
 
 def generate_padding_mask(input_ids, pad_token_id):
     mask = input_ids == pad_token_id
     return mask
+
 
 def compute_loss(batch, model, loss_fn, device):
     """Process a batch and compute the loss.
@@ -17,20 +18,26 @@ def compute_loss(batch, model, loss_fn, device):
     Returns:
         loss (torch.Tensor): The computed loss for the batch.
     """
-    inputs = batch["input_ids"].to(device)             # [batch_size, seq_length]
-    labels = batch["labels"].to(device)               # [batch_size, seq_length]
-    label = batch["label"].to(device)                 # [batch_size, 1]
-    src_key_padding_mask = batch["src_key_padding_mask"].to(device)  # [batch_size, seq_length]
+    inputs = batch["input_ids"].to(device)  # [batch_size, seq_length]
+    labels = batch["labels"].to(device)  # [batch_size, seq_length]
+    label = batch["label"].to(device)  # [batch_size, 1]
+    src_key_padding_mask = batch["src_key_padding_mask"].to(
+        device
+    )  # [batch_size, seq_length]
 
     # Forward pass
-    outputs = model(inputs, src_key_padding_mask=src_key_padding_mask)  # [batch_size, seq_length, vocab_size]
+    outputs = model(
+        inputs, src_key_padding_mask=src_key_padding_mask
+    )  # [batch_size, seq_length, vocab_size]
 
     # Determine output shape and compute loss accordingly
     if outputs.dim() == 3:
         # Sequence-based model (e.g., Transformer)
         batch_size, seq_length, vocab_size = outputs.size()
-        outputs = outputs.reshape(-1, vocab_size)  # [batch_size * seq_length, vocab_size]
-        labels = labels.reshape(-1)                # [batch_size * seq_length]
+        outputs = outputs.reshape(
+            -1, vocab_size
+        )  # [batch_size * seq_length, vocab_size]
+        labels = labels.reshape(-1)  # [batch_size * seq_length]
     elif outputs.dim() == 2:
         # Single token prediction model (e.g., FCN)
         labels = label.reshape(-1)
@@ -46,6 +53,7 @@ def compute_loss(batch, model, loss_fn, device):
         return None
 
     return loss
+
 
 def train_epoch(model, train_loader, val_loader, optimizer, scheduler, loss_fn, device):
     """
@@ -106,3 +114,25 @@ def train_epoch(model, train_loader, val_loader, optimizer, scheduler, loss_fn, 
 
     return avg_train_loss, avg_val_loss
 
+
+def load_checkpoint(model, optimizer, scheduler, checkpoint_path, device):
+    """Load a model checkpoint from a file.
+    Args:
+        model (torch.nn.Module): model to load the checkpoint into.
+        optimizer (torch.optim.Optimizer): The optimizer to load the checkpoint into.
+        scheduler (transformers.get_scheduler): The scheduler to load the checkpoint into.
+        checkpoint_path (str): Path to the checkpoint file.
+        device (torch.device): Device to load the checkpoint onto.
+    Returns:
+        start_epoch (int): The epoch to start training from.
+        best_val_loss (float): The best validation loss from the checkpoint.
+    """
+    checkpoint = torch.load(checkpoint_path, map_location=device)
+
+    model.load_state_dict(checkpoint["model_state_dict"])
+    optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
+    scheduler.load_state_dict(checkpoint["scheduler_state_dict"])
+    start_epoch = checkpoint["epoch"] + 1
+    best_val_loss = checkpoint.get("best_val_loss", float("inf"))
+
+    return start_epoch, best_val_loss

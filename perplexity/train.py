@@ -13,9 +13,8 @@ from transformers import get_scheduler
 # Internal
 from data import setup_dataset, get_dataloaders
 from model import *
-from train_utils import train_epoch
+from train_utils import train_epoch, load_checkpoint
 from arg_parser import get_args
-
 
 if torch.cuda.is_available():
     DEVICE = torch.device("cuda")
@@ -47,9 +46,12 @@ if __name__ == "__main__":
     pprint.pprint(vars(args))
     print()
 
-    # Scaling Experiments
+    # Group runs
     timestamp = datetime.now().strftime("%Y_%m_%d-%H:%M:%S")
-    group_name = f"{dataset_name}_{args.architecture}_ts={timestamp}"  # for wandb
+    if args.checkpoint_group_name is not None:
+        group_name = args.checkpoint_group_name
+    else:
+        group_name = f"{dataset_name}_{args.architecture}_ts={timestamp}"  # for wandb, checkpoints
 
     scaling_plot = defaultdict(list)
 
@@ -71,12 +73,35 @@ if __name__ == "__main__":
                 name="cosine",
                 optimizer=optimizer,
                 num_warmup_steps=num_warmup_steps,
-                num_training_steps=total_steps
+                num_training_steps=total_steps,
             )
+
+            # Define model name
             if args.architecture == "FCN":
                 model_name = f"{args.architecture}_dv={args.dataset_version}_df={data_fraction}_p={model.num_params}_e={model.embedding_dim}_h={model.hidden_dim}_d={model.depth}"
             else:
                 model_name = f"{args.architecture}_dv={args.dataset_version}_df={data_fraction}_p={model.num_params}"
+
+            # Define checkpoint path
+            if args.kaggle:
+                checkpoint_dir = f"kaggle/working/saved_models/{group_name}"
+            else:
+                checkpoint_dir = f"saved_models/{group_name}"
+            os.makedirs(checkpoint_dir, exist_ok=True)
+            checkpoint_path = os.path.join(checkpoint_dir, f"{model_name}.pt")
+
+            start_epoch = 0
+            best_val_loss = float("inf")
+
+            # Load from checkpoint if exists
+            if os.path.exists(checkpoint_path):
+                print(f"Loading checkpoint from {checkpoint_path}")
+                start_epoch, best_val_loss = load_checkpoint(
+                    model, optimizer, scheduler, checkpoint_path, DEVICE
+                )
+                print(
+                    f"Resuming training from epoch {start_epoch} with best_val_loss={best_val_loss}"
+                )
 
             if args.wandb_log:
                 run = wandb.init(
@@ -89,13 +114,21 @@ if __name__ == "__main__":
                         "batch_size": args.batch_size,
                         "data_fraction": f"{int(data_fraction*100)}%",
                     },
+                    resume="allow" if os.path.exists(checkpoint_path) else False,
                 )
 
-            # Train the model
-            best_val_loss = float("inf")
-            for epoch in tqdm(range(args.num_epochs), desc="Epoch Progress", leave=True):
+            # Train model
+            for epoch in tqdm(
+                range(start_epoch, args.num_epochs), desc="Epoch Progress", leave=True
+            ):
                 train_loss, val_loss = train_epoch(
-                    model, train_loader, val_loader, optimizer, scheduler, loss_fn, DEVICE
+                    model,
+                    train_loader,
+                    val_loader,
+                    optimizer,
+                    scheduler,
+                    loss_fn,
+                    DEVICE,
                 )
                 if epoch % 10 == 0:
                     print(
@@ -104,32 +137,38 @@ if __name__ == "__main__":
 
                 if val_loss < best_val_loss:
                     best_val_loss = val_loss
-                    if args.kaggle:
-                        os.makedirs(f"kaggle/working/saved_models/{group_name}", exist_ok=True)
-                        model_save_path = f"kaggle/working/saved_models/{group_name}/{model_name}.pt"
-                    else:
-                        os.makedirs(f"saved_models/{group_name}", exist_ok=True)
-                        model_save_path = f"saved_models/{group_name}/{model_name}.pt"
-                    torch.save(model.state_dict(), model_save_path)
-                    # print(f"Model saved to {model_save_path}")
+                    torch.save(
+                        {
+                            "model_state_dict": model.state_dict(),
+                            "optimizer_state_dict": optimizer.state_dict(),
+                            "scheduler_state_dict": scheduler.state_dict(),
+                            "epoch": epoch,
+                            "best_val_loss": best_val_loss,
+                        },
+                        checkpoint_path,
+                    )
 
-            # Evaluate Perplexity
-            # train_perplexity = torch.exp(torch.tensor(train_loss)).item()
+                # Logging
+                best_val_perplexity = torch.exp(torch.tensor(best_val_loss)).item()
+                if args.wandb_log:
+                    wandb.log(
+                        {
+                            "epoch": epoch,
+                            "train_loss": train_loss,
+                            "val_loss": val_loss,
+                            "val_perplexity": best_val_perplexity,
+                            "learning_rate": scheduler.get_last_lr()[0],
+                            "num_params": model.num_params,
+                        }
+                    )
+
+            # Evaluate Perplexity after training
             best_val_perplexity = torch.exp(torch.tensor(best_val_loss)).item()
             print(
                 f"Dataset Size: {int(data_fraction*100)}%, Val Perplexity: {best_val_perplexity}\n"
             )
-            if args.wandb_log:
-                wandb.log(
-                    {
-                        "train_loss": train_loss,
-                        "val_loss": val_loss,
-                        "val_perplexity": best_val_perplexity,
-                        "num_params": model.num_params,
-                    }
-                )
-            wandb.finish()
             scaling_plot[model.num_params].append(best_val_perplexity)
-    
-    print(scaling_plot)
+            if args.wandb_log:
+                wandb.finish()
 
+    print(scaling_plot)
