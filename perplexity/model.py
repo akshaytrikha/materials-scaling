@@ -10,10 +10,18 @@ import matplotlib.pyplot as plt
 
 class MetaFullyConnectedModels:
     def __init__(self, vocab_size):
-        # Parameter Scaling Constants
+        self.configurations = [
+            # {"embedding_dim": 2, "hidden_dim": 2, "depth": 1},      # 251,297 params
+            # {"embedding_dim": 4, "hidden_dim": 4, "depth": 2},      # 452,373 params
+            # {"embedding_dim": 8, "hidden_dim": 8, "depth": 4},      # 854,729 params
+            {"embedding_dim": 16, "hidden_dim": 16, "depth": 8},    # 1,660,929 params
+            # {"embedding_dim": 32, "hidden_dim": 32, "depth": 12},   # 3,280,433 params
+            # {"embedding_dim": 64, "hidden_dim": 64, "depth": 12},   # 6,537,233 params
+            # {"embedding_dim": 128, "hidden_dim": 128, "depth": 12}, # 13,130,705 params
+            # {"embedding_dim": 320, "hidden_dim": 320, "depth": 16}, # 33,960,977 params
+            # {"embedding_dim": 640, "hidden_dim": 640, "depth": 54}  # 86,942,417 params
+        ]
         self.vocab_size = vocab_size
-        self.embedding_dims_and_hidden_dims = [[16, 32], [32, 64], [64, 128], [128, 256], [256, 512], [512, 1024]]
-        self.depths = [i for i in range(1, 13, 1)]
 
     def __iter__(self):
         for item in self.embedding_dims_and_hidden_dims:
@@ -21,9 +29,24 @@ class MetaFullyConnectedModels:
                 yield FullyConnectedModel(
                     self.vocab_size, embedding_dim=item[0], hidden_dim=item[1], depth=current_depth
                 )
+    
+    def __getitem__(self, idx):
+        if idx >= len(self.configurations):
+            raise IndexError("Configuration index out of range.")
+        config = self.configurations[idx]
+        return FullyConnectedModel(
+            vocab_size=self.vocab_size,
+            embedding_dim=config["embedding_dim"],
+            hidden_dim=config["hidden_dim"],
+            depth=config["depth"]
+        )
 
     def __len__(self):
         return len(self.configurations)
+    
+    def __iter__(self):
+        for idx in range(len(self.configurations)):
+            yield self[idx]
 
 
 class FullyConnectedModel(nn.Module):
@@ -34,23 +57,30 @@ class FullyConnectedModel(nn.Module):
         self.depth = depth
         self.embedding = nn.Embedding(vocab_size, self.embedding_dim)
         self.fc1 = nn.Linear(embedding_dim, self.hidden_dim)
-        self.relu = nn.ReLU()
-        self.dropout = nn.Dropout(0.2)
+        self.layernorm = nn.LayerNorm(self.hidden_dim)
+        self.leakyrelu = nn.LeakyReLU(negative_slope=0.01)
         self.inner_layers = nn.ModuleList()
         for _ in range(self.depth):
             self.inner_layers.append(nn.Linear(hidden_dim, hidden_dim))
-            self.inner_layers.append(nn.ReLU())
-            self.inner_layers.append(nn.Dropout(0.2))
+            self.inner_layers.append(nn.LayerNorm(self.hidden_dim))
+            self.inner_layers.append(nn.LeakyReLU(negative_slope=0.01))
         self.fc2 = nn.Linear(hidden_dim, vocab_size)
         self.num_params = sum(p.numel() for p in self.parameters())
 
     def forward(self, x, src_key_padding_mask=None):
         x = self.embedding(x)
-        x = self.relu(self.fc1(x))
-        x = self.dropout(x)
+        print(f"embedding is {x}")
+        x = self.fc1(x)
+        print(f"fc1 is {x}")
+        x = self.layernorm(x)
+        print(f"layernorm is {x}")
+        x = self.leakyrelu(x)
+        print(f"leakyrelu is {x}")
         for layer in self.inner_layers:
             x = layer(x)
+            print(f"layer output is {x}")
         x = self.fc2(x)
+        print(f"fc2 is {x}")
         return x
 
 class XTransformerModel(nn.Module):
@@ -96,14 +126,14 @@ class MetaXTransformers:
         # Predefined configurations to match target parameter counts, including varying d_ff
         self.configurations = [
             {"d_model": 2, "n_layers": 1, "n_heads": 1, "d_ff": 8},    # ~200k params
-            # {"d_model": 4, "n_layers": 1, "n_heads": 1, "d_ff": 16},    # ~400k params
-            # {"d_model": 8, "n_layers": 1, "n_heads": 1, "d_ff": 32},    # ~800k params
-            # {"d_model": 16, "n_layers": 1, "n_heads": 1, "d_ff": 64},    # ~1.6M params
-            # {"d_model": 32, "n_layers": 1, "n_heads": 1, "d_ff": 128},    # ~3.2M params
-            # {"d_model": 64, "n_layers": 2, "n_heads": 2, "d_ff": 256},    # ~6.5M params
-            # {"d_model": 128, "n_layers": 4, "n_heads": 4, "d_ff": 512},   # ~14M params
-            # {"d_model": 256, "n_layers": 8, "n_heads": 8, "d_ff": 1024},  # ~34M params
-            # {"d_model": 512, "n_layers": 10, "n_heads": 10, "d_ff": 2048},  # ~86M params
+            {"d_model": 4, "n_layers": 1, "n_heads": 1, "d_ff": 16},    # ~400k params
+            {"d_model": 8, "n_layers": 1, "n_heads": 1, "d_ff": 32},    # ~800k params
+            {"d_model": 16, "n_layers": 1, "n_heads": 1, "d_ff": 64},    # ~1.6M params
+            {"d_model": 32, "n_layers": 1, "n_heads": 1, "d_ff": 128},    # ~3.2M params
+            {"d_model": 64, "n_layers": 2, "n_heads": 2, "d_ff": 256},    # ~6.5M params
+            {"d_model": 128, "n_layers": 4, "n_heads": 4, "d_ff": 512},   # ~14M params
+            {"d_model": 256, "n_layers": 8, "n_heads": 8, "d_ff": 1024},  # ~34M params
+            {"d_model": 512, "n_layers": 10, "n_heads": 10, "d_ff": 2048},  # ~86M params
         ]
 
         self.vocab_size = vocab_size
@@ -169,6 +199,7 @@ def generate(meta_model, model_save_path, tokenizer, input_text, max_length, dev
         str: The generated text.
     """
     # Step 1: Encode the input text into token indices
+    print(input_text)
     input_ids = tokenizer.encode(input_text)
     input_ids = torch.tensor([input_ids], device=device)  # Make it a batch of 1
 
@@ -198,7 +229,7 @@ def generate(meta_model, model_save_path, tokenizer, input_text, max_length, dev
             probabilities = F.softmax(logits, dim=-1)
 
             # Plot top-k probability distribution
-            plot_top_k_probs(probabilities.squeeze(), top_k, tokenizer)
+            # plot_top_k_probs(probabilities.squeeze(), top_k, tokenizer)
 
             # Sample the next token based on the probability distribution
             next_token_id = torch.multinomial(probabilities, num_samples=1)
@@ -213,9 +244,6 @@ def generate(meta_model, model_save_path, tokenizer, input_text, max_length, dev
             if next_token_id.item() == tokenizer.eos_token_id:
                 break
 
-        # Decode the generated sequence back to text
-        generated_text = tokenizer.decode(generated_ids.squeeze().tolist())
-
     else:
         generated_ids = input_ids[0]
         for _ in range(max_length):
@@ -229,10 +257,12 @@ def generate(meta_model, model_save_path, tokenizer, input_text, max_length, dev
 
             # Step 4: Append generated token to the sequence
             generated_ids = torch.cat((generated_ids, next_token_id), dim=0)
+            plot_top_k_probs(probabilities.squeeze(), top_k, tokenizer)
             # If end-of-sequence token is generated, stop
             if next_token_id.item() == tokenizer.eos_token_id:
                 break
-
+    # Decode the generated sequence back to text
+    generated_text = tokenizer.decode(generated_ids.squeeze().tolist())
     return generated_text
 
 # Example Usage:
@@ -274,12 +304,12 @@ def generate(meta_model, model_save_path, tokenizer, input_text, max_length, dev
 #     # Verify model sizes
 #     verify_model_sizes(vocab_size)
 
-
-# print(generate(
-#     "saved_models/wikitext-2-v1_FCN_ts=2024_10_09-19:05:05/FCN_dv=small_df=1_p=86167121.pt",
-#     GPT2Tokenizer.from_pretrained("gpt2"),
-#     "we are trying to",
-#     100,
-#     torch.device("cpu"),
-#     0.3
-# ))
+print(generate(
+    MetaFullyConnectedModels(len(GPT2Tokenizer.from_pretrained("gpt2"))),
+    "saved_models/wikitext-2-raw-v1_FCN_ts=2024_10_17-05:24:32/FCN_dv=small_df=0.25_p=1661217_e=16_h=16_d=8.pt",
+    GPT2Tokenizer.from_pretrained("gpt2"),
+    "1 2 3 4",
+    10,
+    torch.device("cpu"),
+    0.3
+))
