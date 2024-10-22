@@ -98,6 +98,41 @@ def plot_data_fraction_summary(metrics, df_key, output_dir):
     plt.savefig(output_dir / f'combined_val_df{df_key}.png', dpi=100, bbox_inches='tight')
     plt.close()
 
+
+def update_plots(metrics_file, plots_dir="plots", current_df=None):
+    """
+    Update plots based on current training state.
+    If current_df is provided, only update that data fraction's plots.
+    """
+    plots_dir = Path(plots_dir)
+    plots_dir.mkdir(exist_ok=True)
+    
+    try:
+        with open(metrics_file, 'r') as f:
+            metrics = json.load(f)
+    except FileNotFoundError:
+        print(f"No metrics file found at {metrics_file}")
+        return
+    except json.JSONDecodeError:
+        print(f"Error reading metrics file at {metrics_file}")
+        return
+    
+    if current_df is not None:
+        # Update only the current data fraction's plots
+        df_key = str(current_df)
+        if df_key in metrics:
+            for params_key in metrics[df_key].keys():
+                plot_single_model(metrics, df_key, params_key, plots_dir)
+            plot_data_fraction_summary(metrics, df_key, plots_dir)
+        else:
+            print(f"No data found for fraction {current_df}")
+    else:
+        # Update all plots
+        for df_key in metrics.keys():
+            for params_key in metrics[df_key].keys():
+                plot_single_model(metrics, df_key, params_key, plots_dir)
+            plot_data_fraction_summary(metrics, df_key, plots_dir)
+
 def log_training_metrics(filename, data_fraction, model_params, epoch, train_loss, val_loss, best_val_loss, 
                         model_name, batch_size, learning_rate):
     """
