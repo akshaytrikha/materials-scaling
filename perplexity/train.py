@@ -15,6 +15,7 @@ from data import setup_dataset, get_dataloaders
 from model import *
 from train_utils import train_epoch, load_checkpoint
 from arg_parser import get_args
+from log_utils import log_training_metrics, update_plots
 
 if torch.cuda.is_available():
     DEVICE = torch.device("cuda")
@@ -53,8 +54,6 @@ if __name__ == "__main__":
     else:
         group_name = f"{dataset_name}_{args.architecture}_ts={timestamp}"  # for wandb, checkpoints
 
-    scaling_plot = defaultdict(list)
-
     for data_fraction in tqdm(args.data_fractions, desc="Data Iteration"):
         # Create a subset of the dataset
         train_loader, val_loader = get_dataloaders(
@@ -83,10 +82,7 @@ if __name__ == "__main__":
                 model_name = f"{args.architecture}_dv={args.dataset_version}_df={data_fraction}_p={model.num_params}"
 
             # Define checkpoint path
-            if args.kaggle:
-                checkpoint_dir = f"kaggle/working/saved_models/{group_name}"
-            else:
-                checkpoint_dir = f"saved_models/{group_name}"
+            checkpoint_dir = f"saved_models/{group_name}"
             os.makedirs(checkpoint_dir, exist_ok=True)
             checkpoint_path = os.path.join(checkpoint_dir, f"{model_name}.pt")
 
@@ -130,10 +126,6 @@ if __name__ == "__main__":
                     loss_fn,
                     DEVICE,
                 )
-                if epoch % 10 == 0:
-                    print(
-                        f"Dataset Size: {int(data_fraction*100)}%, Epoch: {epoch+1}, Train Loss: {train_loss}, Val Loss: {val_loss}"
-                    )
 
                 if val_loss < best_val_loss:
                     best_val_loss = val_loss
@@ -148,7 +140,25 @@ if __name__ == "__main__":
                         checkpoint_path,
                     )
 
-                # Logging
+                if epoch % 10 == 0:
+                    log_training_metrics(
+                        filename=f"{checkpoint_dir}/log_metrics.json",
+                        data_fraction=data_fraction,
+                        model_params=model.num_params,
+                        epoch=epoch,
+                        train_loss=train_loss,
+                        val_loss=val_loss,
+                        best_val_loss=best_val_loss
+                    )
+
+                    # Update plots for current model
+                    update_plots(
+                        metrics_file=f"{checkpoint_dir}/log_metrics.json",
+                        plots_dir=f"{checkpoint_dir}/plots",
+                        current_df=int(data_fraction * 100)
+                    )
+
+                # Wandb Logging
                 best_val_perplexity = torch.exp(torch.tensor(best_val_loss)).item()
                 if args.wandb_log:
                     wandb.log(
@@ -167,8 +177,14 @@ if __name__ == "__main__":
             print(
                 f"Dataset Size: {int(data_fraction*100)}%, Val Perplexity: {best_val_perplexity}\n"
             )
-            scaling_plot[model.num_params].append(best_val_perplexity)
+
             if args.wandb_log:
                 wandb.finish()
+        
+        # Update plots for current data fraction
+        update_plots(
+            metrics_file=f"{checkpoint_dir}/log_metrics.json",
+            plots_dir=f"{checkpoint_dir}/plots",
+            current_df=int(data_fraction * 100)
+        )
 
-    print(scaling_plot)

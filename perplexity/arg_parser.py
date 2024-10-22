@@ -51,11 +51,6 @@ def get_args():
         "--wandb_log", action="store_true", help="Enable Weights and Biases logging"
     )
     parser.add_argument(
-        "--kaggle",
-        action="store_true",
-        help="Save to Kaggle's filepath if training there",
-    )
-    parser.add_argument(
         "--checkpoint_group_name",
         type=str,
         default=None,

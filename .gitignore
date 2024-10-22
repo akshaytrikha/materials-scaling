@@ -10,3 +10,4 @@ saved_models/
 *.pkl
 perplexity/wikitext-103-raw-v1*
 perplexity/wikitext-2-raw-v1*
+local/
