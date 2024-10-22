@@ -140,7 +140,7 @@ if __name__ == "__main__":
                         checkpoint_path,
                     )
 
-                if epoch+1 % 10 == 0:
+                if (epoch+1) % 10 == 0:
 
                     log_training_metrics(
                         filename=f"{checkpoint_dir}/log_metrics.json",
