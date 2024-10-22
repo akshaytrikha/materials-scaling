@@ -275,12 +275,12 @@ def generate(meta_model, model_save_path, tokenizer, input_text, max_length, dev
 #     verify_model_sizes(vocab_size)
 
 
-# print(generate(
-#     MetaXTransformers(len(GPT2Tokenizer.from_pretrained("gpt2"))),
-#     "local/VanillaTransformer_dv=small_df=0.1_p=202612.pt",
-#     GPT2Tokenizer.from_pretrained("gpt2"),
-#     "we are trying to",
-#     10,
-#     torch.device("cpu"),
-#     0.3
-# ))
+print(generate(
+    MetaXTransformers(len(GPT2Tokenizer.from_pretrained("gpt2"))),
+    "local/VanillaTransformer_dv=small_df=0.5_p=1622688.pt",
+    GPT2Tokenizer.from_pretrained("gpt2"),
+    "we are trying to",
+    10,
+    torch.device("cpu"),
+    0.3
+))
