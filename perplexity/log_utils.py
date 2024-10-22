@@ -1,21 +1,18 @@
 import json
 from pathlib import Path
 import matplotlib.pyplot as plt
-import seaborn as sns
-
-import json
-from pathlib import Path
-import matplotlib.pyplot as plt
-import seaborn as sns
+import numpy as np
 
 def plot_single_model(metrics, df_key, params_key, output_dir):
     """Create/update plot for a single model's training progress"""
+    plt.style.use('default')  # Reset to default style
+    
     data = metrics[df_key][params_key]
     epochs = range(len(data['train_loss']))
     
     plt.figure(figsize=(10, 6))
-    plt.plot(epochs, data['train_loss'], label='Train Loss', marker='o')
-    plt.plot(epochs, data['val_loss'], label='Validation Loss', marker='s')
+    plt.plot(epochs, data['train_loss'], 'b-o', label='Train Loss', markersize=4)
+    plt.plot(epochs, data['val_loss'], 'g-s', label='Validation Loss', markersize=4)
     plt.axhline(y=data['best_val_loss'], color='r', linestyle='--', 
                 label=f'Best Val Loss: {data["best_val_loss"]:.4f}')
     
@@ -23,13 +20,15 @@ def plot_single_model(metrics, df_key, params_key, output_dir):
     plt.xlabel('Epoch (x10)')
     plt.ylabel('Loss')
     plt.legend()
-    plt.grid(True)
+    plt.grid(True, alpha=0.3)
     
-    plt.savefig(output_dir / f'individual_df{df_key}_params{params_key}.png')
+    plt.savefig(output_dir / f'individual_df{df_key}_params{params_key}.png', dpi=100, bbox_inches='tight')
     plt.close()
 
 def plot_data_fraction_summary(metrics, df_key, output_dir):
     """Create summary plots for all models in a data fraction"""
+    plt.style.use('default')  # Reset to default style
+    
     all_train_losses = []
     all_val_losses = []
     model_sizes = []
@@ -42,55 +41,57 @@ def plot_data_fraction_summary(metrics, df_key, output_dir):
         model_sizes.append(int(params_key))
         
     epochs = range(len(all_train_losses[0]))
+    colors = plt.cm.viridis(np.linspace(0, 1, len(model_sizes)))
     
     # Combined train loss plot
     plt.figure(figsize=(12, 7))
-    for i, params_key in enumerate(metrics[df_key].keys()):
+    for i, (params_key, color) in enumerate(zip(metrics[df_key].keys(), colors)):
         plt.plot(epochs, all_train_losses[i], 
-                label=f'{params_key} params', marker='o')
+                color=color, marker='o', markersize=4,
+                label=f'{params_key} params')
     
     plt.title(f'Training Loss Comparison - {df_key}% Data')
     plt.xlabel('Epoch (x10)')
     plt.ylabel('Training Loss')
     plt.legend()
-    plt.grid(True)
-    plt.savefig(output_dir / f'combined_train_df{df_key}.png')
+    plt.grid(True, alpha=0.3)
+    plt.savefig(output_dir / f'combined_train_df{df_key}.png', dpi=100, bbox_inches='tight')
     plt.close()
     
     # Combined validation loss plot
     plt.figure(figsize=(12, 7))
-    for i, params_key in enumerate(metrics[df_key].keys()):
+    for i, (params_key, color) in enumerate(zip(metrics[df_key].keys(), colors)):
         plt.plot(epochs, all_val_losses[i], 
-                label=f'{params_key} params', marker='s')
+                color=color, marker='s', markersize=4,
+                label=f'{params_key} params')
         plt.axhline(y=metrics[df_key][params_key]['best_val_loss'], 
-                   color=plt.gca().lines[-1].get_color(), 
-                   linestyle='--', 
+                   color=color, linestyle='--', 
                    label=f'Best Val ({params_key} params)')
     
     plt.title(f'Validation Loss Comparison - {df_key}% Data')
     plt.xlabel('Epoch (x10)')
     plt.ylabel('Validation Loss')
     plt.legend()
-    plt.grid(True)
-    plt.savefig(output_dir / f'combined_val_df{df_key}.png')
+    plt.grid(True, alpha=0.3)
+    plt.savefig(output_dir / f'combined_val_df{df_key}.png', dpi=100, bbox_inches='tight')
     plt.close()
     
     # Scaling plot
+    plt.figure(figsize=(10, 6))
     final_train_losses = [losses[-1] for losses in all_train_losses]
     final_val_losses = [losses[-1] for losses in all_val_losses]
     best_val_losses = [metrics[df_key][str(size)]['best_val_loss'] for size in model_sizes]
     
-    plt.figure(figsize=(10, 6))
-    plt.semilogx(model_sizes, final_train_losses, 'o-', label='Final Train Loss')
-    plt.semilogx(model_sizes, final_val_losses, 's-', label='Final Val Loss')
-    plt.semilogx(model_sizes, best_val_losses, 'D-', label='Best Val Loss')
+    plt.semilogx(model_sizes, final_train_losses, 'b-o', label='Final Train Loss')
+    plt.semilogx(model_sizes, final_val_losses, 'g-s', label='Final Val Loss')
+    plt.semilogx(model_sizes, best_val_losses, 'r-D', label='Best Val Loss')
     
     plt.title(f'Loss vs Model Size - {df_key}% Data')
     plt.xlabel('Number of Parameters (log scale)')
     plt.ylabel('Loss')
     plt.legend()
-    plt.grid(True)
-    plt.savefig(output_dir / f'scaling_df{df_key}.png')
+    plt.grid(True, alpha=0.3)
+    plt.savefig(output_dir / f'scaling_df{df_key}.png', dpi=100, bbox_inches='tight')
     plt.close()
 
 def update_plots(metrics_file, plots_dir="plots", current_df=None):
@@ -98,9 +99,6 @@ def update_plots(metrics_file, plots_dir="plots", current_df=None):
     Update plots based on current training state.
     If current_df is provided, only update that data fraction's plots.
     """
-    plt.style.use('seaborn')
-    sns.set_palette("husl")
-    
     plots_dir = Path(plots_dir)
     plots_dir.mkdir(exist_ok=True)
     
