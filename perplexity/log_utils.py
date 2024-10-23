@@ -63,6 +63,9 @@ def plot_data_fraction_summary(metrics, df_key, output_dir):
     model_names = []
     max_epochs = 0
     
+    # Define distinct markers for different models
+    markers = ['o', 's', 'D', '^', 'v', '<', '>', 'p', 'h', '8']
+    
     for params_key in metrics[df_key].keys():
         data = metrics[df_key][params_key]
         train_losses = data['train_loss']
@@ -77,8 +80,8 @@ def plot_data_fraction_summary(metrics, df_key, output_dir):
     # Create color gradients - handle single model case
     num_models = len(model_sizes)
     if num_models == 1:
-        train_colors = [plt.cm.Blues(0.6)]  # Single medium-dark blue
-        val_colors = [plt.cm.Oranges(0.6)]  # Single medium-dark orange
+        train_colors = [plt.cm.Blues(0.6)]
+        val_colors = [plt.cm.Oranges(0.6)]
     else:
         train_colors = [plt.cm.Blues(0.5 + 0.5 * i/(num_models-1)) for i in range(num_models)]
         val_colors = [plt.cm.Oranges(0.5 + 0.5 * i/(num_models-1)) for i in range(num_models)]
@@ -89,8 +92,9 @@ def plot_data_fraction_summary(metrics, df_key, output_dir):
     # Training loss subplot
     for i, (params_key, color) in enumerate(zip(metrics[df_key].keys(), train_colors)):
         model_epochs = range(len(all_train_losses[i]))
+        marker = markers[i % len(markers)]  # Cycle through markers if more models than markers
         ax1.plot(model_epochs, all_train_losses[i], 
-                color=color, marker='o', markersize=3,
+                color=color, marker=marker, markersize=5,
                 markerfacecolor='white', markeredgewidth=1,
                 label=f'{model_names[i]} ({params_key} params)')
     
@@ -102,8 +106,9 @@ def plot_data_fraction_summary(metrics, df_key, output_dir):
     # Validation loss subplot
     for i, (params_key, color) in enumerate(zip(metrics[df_key].keys(), val_colors)):
         model_epochs = range(len(all_val_losses[i]))
+        marker = markers[i % len(markers)]  # Use same marker as training plot for each model
         ax2.plot(model_epochs, all_val_losses[i], 
-                color=color, marker='s', markersize=3,
+                color=color, marker=marker, markersize=5,
                 markerfacecolor='white', markeredgewidth=1,
                 label=f'{model_names[i]} ({params_key} params)')
     
@@ -113,7 +118,6 @@ def plot_data_fraction_summary(metrics, df_key, output_dir):
     
     # Add single legend below the plots
     lines1, labels1 = ax1.get_legend_handles_labels()
-    lines2, labels2 = ax2.get_legend_handles_labels()
     fig.legend(lines1, labels1, loc='center', bbox_to_anchor=(0.5, 0.02),
               ncol=2, frameon=False, fontsize=8)
     
