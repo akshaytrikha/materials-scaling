@@ -115,7 +115,7 @@ if __name__ == "__main__":
 
             # Train model
             for epoch in tqdm(
-                range(start_epoch, args.num_epochs), desc="Epoch Progress", leave=True
+                range(start_epoch, args.num_epochs+1), desc="Epoch Progress", leave=True
             ):
                 train_loss, val_loss = train_epoch(
                     model,
@@ -140,7 +140,7 @@ if __name__ == "__main__":
                         checkpoint_path,
                     )
 
-                if (epoch+1) % 10 == 0:
+                if epoch % 10 == 0:
 
                     log_training_metrics(
                         filename=f"{checkpoint_dir}/log_metrics.json",

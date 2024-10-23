@@ -63,7 +63,7 @@ def plot_data_fraction_summary(metrics, df_key, output_dir):
     model_names = []
     max_epochs = 0
     
-    # Define distinct markers for different models
+    # Define a set of distinct markers
     markers = ['o', 's', 'D', '^', 'v', '<', '>', 'p', 'h', '8']
     
     for params_key in metrics[df_key].keys():
@@ -89,14 +89,24 @@ def plot_data_fraction_summary(metrics, df_key, output_dir):
     # Create subplot figure
     fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(8, 8), height_ratios=[1, 1])
     
+    legend_handles = []  # Store handles for combined legend
+    
     # Training loss subplot
-    for i, (params_key, color) in enumerate(zip(metrics[df_key].keys(), train_colors)):
+    for i, (params_key, color, marker) in enumerate(zip(metrics[df_key].keys(), train_colors, markers[:num_models])):
         model_epochs = range(len(all_train_losses[i]))
-        marker = markers[i % len(markers)]  # Cycle through markers if more models than markers
-        ax1.plot(model_epochs, all_train_losses[i], 
-                color=color, marker=marker, markersize=5,
-                markerfacecolor='white', markeredgewidth=1,
-                label=f'{model_names[i]} ({params_key} params)')
+        line = ax1.plot(model_epochs, all_train_losses[i], 
+                       color=color, marker=marker, markersize=4,
+                       markerfacecolor='white', markeredgewidth=1,
+                       label=f'{params_key} params')[0]
+        
+        if i == 0:  # Add a label for "Training" to the legend
+            legend_handles.append(plt.Line2D([], [], color=train_colors[0], label='Training',
+                                          linestyle='-', marker='None'))
+        
+        # Add model size to legend with just the marker
+        legend_handles.append(plt.Line2D([], [], color='gray', marker=marker,
+                                       label=f'{params_key} params', linestyle='None',
+                                       markerfacecolor='white', markersize=4))
     
     ax1.set_title(f"Loss Comparison - Data: {df_key}%, BS={data['batch_size']}, LR={data['learning_rate']}", 
                  pad=10)
@@ -104,22 +114,23 @@ def plot_data_fraction_summary(metrics, df_key, output_dir):
     ax1.grid(True, alpha=0.3)
     
     # Validation loss subplot
-    for i, (params_key, color) in enumerate(zip(metrics[df_key].keys(), val_colors)):
+    for i, (params_key, color, marker) in enumerate(zip(metrics[df_key].keys(), val_colors, markers[:num_models])):
         model_epochs = range(len(all_val_losses[i]))
-        marker = markers[i % len(markers)]  # Use same marker as training plot for each model
-        ax2.plot(model_epochs, all_val_losses[i], 
-                color=color, marker=marker, markersize=5,
-                markerfacecolor='white', markeredgewidth=1,
-                label=f'{model_names[i]} ({params_key} params)')
+        line = ax2.plot(model_epochs, all_val_losses[i], 
+                       color=color, marker=marker, markersize=4,
+                       markerfacecolor='white', markeredgewidth=1)[0]
+        
+        if i == 0:  # Add a label for "Validation" to the legend
+            legend_handles.append(plt.Line2D([], [], color=val_colors[0], label='Validation',
+                                          linestyle='-', marker='None'))
     
     ax2.set_xlabel('Epoch (x10)', labelpad=8)
     ax2.set_ylabel('Validation Loss', labelpad=8)
     ax2.grid(True, alpha=0.3)
     
-    # Add single legend below the plots
-    lines1, labels1 = ax1.get_legend_handles_labels()
-    fig.legend(lines1, labels1, loc='center', bbox_to_anchor=(0.5, 0.02),
-              ncol=2, frameon=False, fontsize=8)
+    # Add combined legend below the plots
+    fig.legend(handles=legend_handles, loc='center', bbox_to_anchor=(0.5, 0.02),
+              ncol=num_models + 1, frameon=False, fontsize=8)
     
     # Adjust layout to make room for legend
     plt.tight_layout()

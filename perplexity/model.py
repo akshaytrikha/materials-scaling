@@ -11,10 +11,10 @@ import matplotlib.pyplot as plt
 class MetaFullyConnectedModels:
     def __init__(self, vocab_size):
         self.configurations = [
-            # {"embedding_dim": 2, "hidden_dim": 2, "depth": 1},      # 251,297 params
+            {"embedding_dim": 2, "hidden_dim": 2, "depth": 1},      # 251,297 params
             # {"embedding_dim": 4, "hidden_dim": 4, "depth": 2},      # 452,373 params
             # {"embedding_dim": 8, "hidden_dim": 8, "depth": 4},      # 854,729 params
-            {"embedding_dim": 16, "hidden_dim": 16, "depth": 8},    # 1,660,929 params
+            # {"embedding_dim": 16, "hidden_dim": 16, "depth": 8},    # 1,660,929 params
             # {"embedding_dim": 32, "hidden_dim": 32, "depth": 12},   # 3,280,433 params
             # {"embedding_dim": 64, "hidden_dim": 64, "depth": 12},   # 6,537,233 params
             # {"embedding_dim": 128, "hidden_dim": 128, "depth": 12}, # 13,130,705 params
@@ -69,18 +69,18 @@ class FullyConnectedModel(nn.Module):
 
     def forward(self, x, src_key_padding_mask=None):
         x = self.embedding(x)
-        print(f"embedding is {x}")
+        # print(f"embedding is {x}")
         x = self.fc1(x)
-        print(f"fc1 is {x}")
+        # print(f"fc1 is {x}")
         x = self.layernorm(x)
-        print(f"layernorm is {x}")
+        # print(f"layernorm is {x}")
         x = self.leakyrelu(x)
-        print(f"leakyrelu is {x}")
+        # print(f"leakyrelu is {x}")
         for layer in self.inner_layers:
             x = layer(x)
-            print(f"layer output is {x}")
+            # print(f"layer output is {x}")
         x = self.fc2(x)
-        print(f"fc2 is {x}")
+        # print(f"fc2 is {x}")
         return x
 
 class XTransformerModel(nn.Module):
