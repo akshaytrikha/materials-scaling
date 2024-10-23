@@ -6,7 +6,7 @@ import torch.nn as nn
 import torch.optim as optim
 import wandb
 import pprint
-from tqdm import tqdm
+from tqdm.auto import tqdm
 import os
 from transformers import get_scheduler
 

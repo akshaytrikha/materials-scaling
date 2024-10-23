@@ -74,10 +74,14 @@ def plot_data_fraction_summary(metrics, df_key, output_dir):
         model_names.append(data['model_name'])
         max_epochs = max(max_epochs, len(train_losses))
 
-    # Create color gradients
+    # Create color gradients - handle single model case
     num_models = len(model_sizes)
-    train_colors = [plt.cm.Blues(0.5 + 0.5 * i/(num_models-1)) for i in range(num_models)]
-    val_colors = [plt.cm.Oranges(0.5 + 0.5 * i/(num_models-1)) for i in range(num_models)]
+    if num_models == 1:
+        train_colors = [plt.cm.Blues(0.6)]  # Single medium-dark blue
+        val_colors = [plt.cm.Oranges(0.6)]  # Single medium-dark orange
+    else:
+        train_colors = [plt.cm.Blues(0.5 + 0.5 * i/(num_models-1)) for i in range(num_models)]
+        val_colors = [plt.cm.Oranges(0.5 + 0.5 * i/(num_models-1)) for i in range(num_models)]
     
     # Create subplot figure
     fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(8, 8), height_ratios=[1, 1])
