@@ -12,7 +12,7 @@ def setup_plot_style():
         'axes.titlesize': 11,
         'xtick.labelsize': 9,
         'ytick.labelsize': 9,
-        'legend.fontsize': 9,
+        'legend.fontsize': 8,
         'lines.linewidth': 1.5,
         'axes.grid': True,
         'grid.alpha': 0.3,
@@ -37,9 +37,9 @@ def plot_single_model(metrics, df_key, params_key, output_dir):
                 f"BS={data['batch_size']}, LR={data['learning_rate']}")
     
     plt.figure(figsize=(8, 5))
-    plt.plot(epochs, data['train_loss'], color='#2878B5', marker='o', markersize=3, 
+    plt.plot(epochs, data['train_loss'], color='#1f77b4', marker='o', markersize=3, 
             label='Train Loss', markerfacecolor='white', markeredgewidth=1)
-    plt.plot(epochs, data['val_loss'], color='#9AC9DB', marker='s', markersize=3,
+    plt.plot(epochs, data['val_loss'], color='#ff7f0e', marker='s', markersize=3,
             label='Validation Loss', markerfacecolor='white', markeredgewidth=1)
     plt.axhline(y=data['best_val_loss'], color='#C82423', linestyle='--', linewidth=1,
             label=f'Best Val Loss: {data["best_val_loss"]:.4f}')
@@ -73,53 +73,51 @@ def plot_data_fraction_summary(metrics, df_key, output_dir):
         model_sizes.append(int(params_key))
         model_names.append(data['model_name'])
         max_epochs = max(max_epochs, len(train_losses))
+
+    # Create color gradients
+    num_models = len(model_sizes)
+    train_colors = [plt.cm.Blues(0.5 + 0.5 * i/(num_models-1)) for i in range(num_models)]
+    val_colors = [plt.cm.Oranges(0.5 + 0.5 * i/(num_models-1)) for i in range(num_models)]
     
-    epochs = range(max_epochs)
-    # Use a professional color palette
-    colors = ['#2878B5', '#9AC9DB', '#C82423', '#542788', '#33A02C', '#FB9A99']
-    if len(model_sizes) > len(colors):
-        colors = plt.cm.viridis(np.linspace(0, 1, len(model_sizes)))
+    # Create subplot figure
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(8, 8), height_ratios=[1, 1])
     
-    # Combined train loss plot
-    plt.figure(figsize=(8, 5))
-    for i, (params_key, color) in enumerate(zip(metrics[df_key].keys(), colors)):
+    # Training loss subplot
+    for i, (params_key, color) in enumerate(zip(metrics[df_key].keys(), train_colors)):
         model_epochs = range(len(all_train_losses[i]))
-        data = metrics[df_key][params_key]
-        plt.plot(model_epochs, all_train_losses[i], 
+        ax1.plot(model_epochs, all_train_losses[i], 
                 color=color, marker='o', markersize=3,
                 markerfacecolor='white', markeredgewidth=1,
                 label=f'{model_names[i]} ({params_key} params)')
     
-    title = (f"Training Loss Comparison\n"
-            f"Data: {df_key}%, BS={data['batch_size']}, LR={data['learning_rate']}")
-    plt.title(title, pad=10)
-    plt.xlabel('Epoch (x10)', labelpad=8)
-    plt.ylabel('Training Loss', labelpad=8)
-    plt.legend(frameon=False, bbox_to_anchor=(1.02, 1), loc='upper left')
-    plt.tight_layout()
+    ax1.set_title(f"Loss Comparison - Data: {df_key}%, BS={data['batch_size']}, LR={data['learning_rate']}", 
+                 pad=10)
+    ax1.set_ylabel('Training Loss', labelpad=8)
+    ax1.grid(True, alpha=0.3)
     
-    plt.savefig(output_dir / f'combined_train_df{df_key}.png', bbox_inches='tight')
-    plt.close()
-    
-    # Combined validation loss plot
-    plt.figure(figsize=(8, 5))
-    for i, (params_key, color) in enumerate(zip(metrics[df_key].keys(), colors)):
+    # Validation loss subplot
+    for i, (params_key, color) in enumerate(zip(metrics[df_key].keys(), val_colors)):
         model_epochs = range(len(all_val_losses[i]))
-        data = metrics[df_key][params_key]
-        plt.plot(model_epochs, all_val_losses[i], 
+        ax2.plot(model_epochs, all_val_losses[i], 
                 color=color, marker='s', markersize=3,
                 markerfacecolor='white', markeredgewidth=1,
                 label=f'{model_names[i]} ({params_key} params)')
     
-    title = (f"Validation Loss Comparison\n"
-            f"Data: {df_key}%, BS={data['batch_size']}, LR={data['learning_rate']}")
-    plt.title(title, pad=10)
-    plt.xlabel('Epoch (x10)', labelpad=8)
-    plt.ylabel('Validation Loss', labelpad=8)
-    plt.legend(frameon=False, bbox_to_anchor=(1.02, 1), loc='upper left')
-    plt.tight_layout()
+    ax2.set_xlabel('Epoch (x10)', labelpad=8)
+    ax2.set_ylabel('Validation Loss', labelpad=8)
+    ax2.grid(True, alpha=0.3)
     
-    plt.savefig(output_dir / f'combined_val_df{df_key}.png', bbox_inches='tight')
+    # Add single legend below the plots
+    lines1, labels1 = ax1.get_legend_handles_labels()
+    lines2, labels2 = ax2.get_legend_handles_labels()
+    fig.legend(lines1, labels1, loc='center', bbox_to_anchor=(0.5, 0.02),
+              ncol=2, frameon=False, fontsize=8)
+    
+    # Adjust layout to make room for legend
+    plt.tight_layout()
+    plt.subplots_adjust(bottom=0.15)
+    
+    plt.savefig(output_dir / f'combined_loss_df{df_key}.png', bbox_inches='tight')
     plt.close()
 
 # update_plots and log_training_metrics functions remain exactly the same
