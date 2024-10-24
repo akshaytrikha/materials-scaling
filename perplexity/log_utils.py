@@ -43,6 +43,7 @@ def plot_single_model(metrics, df_key, params_key, output_dir):
             label='Validation Loss', markerfacecolor='white', markeredgewidth=1)
     plt.axhline(y=data['best_val_loss'], color='#C82423', linestyle='--', linewidth=1,
             label=f'Best Val Loss: {data["best_val_loss"]:.4f}')
+    plt.axhline(y=10.4756, color='b', linestyle='--', label='Best n-Gram Loss')
     
     plt.title(title, pad=10)
     plt.xlabel('Epoch', labelpad=8)
