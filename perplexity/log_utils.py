@@ -45,7 +45,7 @@ def plot_single_model(metrics, df_key, params_key, output_dir):
             label=f'Best Val Loss: {data["best_val_loss"]:.4f}')
     
     plt.title(title, pad=10)
-    plt.xlabel('Epoch (x10)', labelpad=8)
+    plt.xlabel('Epoch', labelpad=8)
     plt.ylabel('Loss', labelpad=8)
     plt.legend(frameon=False)
     plt.tight_layout()
@@ -124,7 +124,7 @@ def plot_data_fraction_summary(metrics, df_key, output_dir):
             legend_handles.append(plt.Line2D([], [], color=val_colors[0], label='Validation',
                                           linestyle='-', marker='None'))
     
-    ax2.set_xlabel('Epoch (x10)', labelpad=8)
+    ax2.set_xlabel('Epoch', labelpad=8)
     ax2.set_ylabel('Validation Loss', labelpad=8)
     ax2.grid(True, alpha=0.3)
     

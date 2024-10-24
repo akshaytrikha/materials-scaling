@@ -139,21 +139,21 @@ if __name__ == "__main__":
                         },
                         checkpoint_path,
                     )
+                
+                log_training_metrics(
+                    filename=f"{checkpoint_dir}/log_metrics.json",
+                    data_fraction=data_fraction,
+                    model_params=model.num_params,
+                    epoch=epoch,
+                    train_loss=train_loss,
+                    val_loss=val_loss,
+                    best_val_loss=best_val_loss,
+                    model_name=args.architecture,
+                    batch_size=args.batch_size,
+                    learning_rate=args.lr
+                )
 
                 if epoch % 10 == 0:
-
-                    log_training_metrics(
-                        filename=f"{checkpoint_dir}/log_metrics.json",
-                        data_fraction=data_fraction,
-                        model_params=model.num_params,
-                        epoch=epoch,
-                        train_loss=train_loss,
-                        val_loss=val_loss,
-                        best_val_loss=best_val_loss,
-                        model_name=args.architecture,
-                        batch_size=args.batch_size,
-                        learning_rate=args.lr
-                    )
 
                     # Update plots for current model
                     update_plots(
