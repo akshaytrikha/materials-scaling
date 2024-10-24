@@ -12,7 +12,7 @@ class MetaFullyConnectedModels:
     def __init__(self, vocab_size):
         self.configurations = [
             {"embedding_dim": 2, "hidden_dim": 2, "depth": 1},      # 251,297 params
-            # {"embedding_dim": 4, "hidden_dim": 4, "depth": 2},      # 452,373 params
+            {"embedding_dim": 4, "hidden_dim": 4, "depth": 2},      # 452,373 params
             # {"embedding_dim": 8, "hidden_dim": 8, "depth": 4},      # 854,729 params
             # {"embedding_dim": 16, "hidden_dim": 16, "depth": 8},    # 1,660,929 params
             # {"embedding_dim": 32, "hidden_dim": 32, "depth": 12},   # 3,280,433 params
