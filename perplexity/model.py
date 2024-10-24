@@ -17,7 +17,7 @@ class MetaFullyConnectedModels:
             {"embedding_dim": 16, "hidden_dim": 16, "depth": 8},    # 1,660,929 params
             # {"embedding_dim": 32, "hidden_dim": 32, "depth": 12},   # 3,280,433 params
             # {"embedding_dim": 64, "hidden_dim": 64, "depth": 12},   # 6,537,233 params
-            {"embedding_dim": 128, "hidden_dim": 128, "depth": 12}, # 13,130,705 params
+            # {"embedding_dim": 128, "hidden_dim": 128, "depth": 12}, # 13,130,705 params
             # {"embedding_dim": 320, "hidden_dim": 320, "depth": 16}, # 33,960,977 params
             # {"embedding_dim": 640, "hidden_dim": 640, "depth": 54}  # 86,942,417 params
         ]
