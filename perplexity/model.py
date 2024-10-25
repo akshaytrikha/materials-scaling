@@ -382,7 +382,7 @@ def generate(meta_model, model_save_path, tokenizer_path, input_text, max_length
 
 generated_text = generate(
     meta_model=MetaXTransformers(vocab_size=10000),  # Use your vocab_size from tokenizer training
-    model_save_path="saved_models/VanillaTransformer_dv=small_df=1_p=41584.pt",
+    model_save_path="VanillaTransformer_dv=small_df=1_p=41584.pt",
     tokenizer_path="bpe_tokenizer/tokenizer.json",  # Path to your saved tokenizer
     input_text="hello this is a test",
     max_length=50,
