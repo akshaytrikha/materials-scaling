@@ -6,14 +6,13 @@ import os
 SEQ_LENGTH = 128
 
 
-def encode(examples, tokenizer, seq_length):
+def encode(examples, tokenizer):
     """
     Encode text examples using a specified tokenizer (GPT2Tokenizer or custom BPE tokenizer).
 
     Args:
         examples (dict): A batch of examples from the dataset.
         tokenizer (PreTrainedTokenizerFast or GPT2Tokenizer): The tokenizer to use for encoding.
-        seq_length (int): The maximum sequence length for tokenization.
 
     Returns:
         dict: A dictionary containing encoded input_ids, labels, label, and src_key_padding_mask.
@@ -30,7 +29,7 @@ def encode(examples, tokenizer, seq_length):
         examples["text"],
         padding="max_length",
         truncation=True,
-        max_length=seq_length,
+        max_length=SEQ_LENGTH,
         return_tensors=None,  # Ensure output is lists, not tensors
     )
 
