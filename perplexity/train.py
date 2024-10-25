@@ -34,7 +34,7 @@ if __name__ == "__main__":
         dataset_name = "wikitext-2-raw-v1"
     elif args.dataset_version == "large":
         dataset_name = "wikitext-103-raw-v1"
-    dataset, tokenizer = setup_dataset(dataset_name)
+    dataset, tokenizer = setup_dataset(dataset_name, args.tokenizer_name)
 
     # Models, Loss
     if args.architecture == "FCN":
@@ -115,7 +115,9 @@ if __name__ == "__main__":
 
             # Train model
             for epoch in tqdm(
-                range(start_epoch, args.num_epochs+1), desc="Epoch Progress", leave=True
+                range(start_epoch, args.num_epochs + 1),
+                desc="Epoch Progress",
+                leave=True,
             ):
                 train_loss, val_loss = train_epoch(
                     model,
@@ -139,7 +141,7 @@ if __name__ == "__main__":
                         },
                         checkpoint_path,
                     )
-                
+
                 log_training_metrics(
                     filename=f"{checkpoint_dir}/log_metrics.json",
                     data_fraction=data_fraction,
@@ -150,7 +152,7 @@ if __name__ == "__main__":
                     best_val_loss=best_val_loss,
                     model_name=args.architecture,
                     batch_size=args.batch_size,
-                    learning_rate=args.lr
+                    learning_rate=args.lr,
                 )
 
                 if epoch % 10 == 0:
@@ -159,7 +161,7 @@ if __name__ == "__main__":
                     update_plots(
                         metrics_file=f"{checkpoint_dir}/log_metrics.json",
                         plots_dir=f"{checkpoint_dir}/plots",
-                        current_df=int(data_fraction * 100)
+                        current_df=int(data_fraction * 100),
                     )
 
                 # Wandb Logging
@@ -184,11 +186,10 @@ if __name__ == "__main__":
 
             if args.wandb_log:
                 wandb.finish()
-        
+
         # Update plots for current data fraction
         update_plots(
             metrics_file=f"{checkpoint_dir}/log_metrics.json",
             plots_dir=f"{checkpoint_dir}/plots",
-            current_df=int(data_fraction * 100)
+            current_df=int(data_fraction * 100),
         )
-

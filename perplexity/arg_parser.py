@@ -56,4 +56,11 @@ def get_args():
         default=None,
         help="Name of the checkpoint group",
     )
+    parser.add_argument(
+        "--tokenizer_name",
+        type=str,
+        choices=["bpe", "gpt2"],
+        default="bpe",
+        help='Tokenizer to use: "bpe" or "gpt2"',
+    )
     return parser.parse_args()
