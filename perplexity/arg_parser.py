@@ -56,4 +56,5 @@ def get_args():
         default=None,
         help="Name of the checkpoint group",
     )
+    parser.add_argument("--ddp", action="store_true", help="Enable DDP training")
     return parser.parse_args()

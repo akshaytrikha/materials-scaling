@@ -16,7 +16,9 @@ def encode(examples, tokenizer, seq_length):
         "src_key_padding_mask": [],
     }
     # Encode all texts at once
-    tokens = tokenizer(examples["text"], padding="max_length", truncation=True, max_length=seq_length)
+    tokens = tokenizer(
+        examples["text"], padding="max_length", truncation=True, max_length=seq_length
+    )
 
     # Process the encoded tokens
     encoded_examples["input_ids"] = [ids[:-1] for ids in tokens["input_ids"]]
@@ -52,7 +54,7 @@ def setup_dataset(dataset_name: str):
         tokenizer.pad_token = tokenizer.eos_token
 
     # Filter out empty inputs first
-    dataset = dataset.filter(lambda x: len(x['text'].strip()) > 0)
+    dataset = dataset.filter(lambda x: len(x["text"].strip()) > 0)
 
     # Encode the dataset
     dataset = dataset.map(
@@ -68,7 +70,10 @@ def setup_dataset(dataset_name: str):
 
     return dataset, tokenizer
 
-def get_dataloaders(dataset: datasets.Dataset, data_fraction: float, batch_size: int):
+
+def get_dataloaders(
+    dataset: datasets.Dataset, data_fraction: float, batch_size: int, sampler=None
+):
     """Create train and validation dataloaders for a subset of the dataset.
 
     Args:
@@ -84,8 +89,13 @@ def get_dataloaders(dataset: datasets.Dataset, data_fraction: float, batch_size:
 
     train_subset = Subset(dataset["train"], indices=range(train_size))
 
-    train_loader = DataLoader(train_subset, batch_size=batch_size, shuffle=True)
-    val_loader = DataLoader(dataset["validation"], batch_size=batch_size, shuffle=True)
+    shuffle = sampler is None # sampler option is mutually exclusive with shuffle
+    train_loader = DataLoader(
+        train_subset, batch_size=batch_size, shuffle=shuffle, sampler=sampler
+    )
+    val_loader = DataLoader(
+        dataset["validation"], batch_size=batch_size, shuffle=shuffle, sampler=sampler
+    )
 
     return train_loader, val_loader
 
@@ -97,20 +107,21 @@ def count_train_tokens(train_loader):
         total_tokens += batch["input_ids"].numel()  # Sum the total number of tokens
     return total_tokens
 
-if __name__ == '__main__':
-    dataset_name = "wikitext-103-v1"  # You can switch to "wikitext-103-v1" for the larger version
+
+if __name__ == "__main__":
+    dataset_name = (
+        "wikitext-103-v1"  # You can switch to "wikitext-103-v1" for the larger version
+    )
     seq_length = 512
     batch_size = 8
     data_fractions = [0.01, 0.1, 0.25, 0.5, 0.75, 1]
-    
+
     # Setup dataset and tokenizer
     dataset, tokenizer = setup_dataset(dataset_name, seq_length)
 
     # Iterate over each data fraction
     for fraction in data_fractions:
-        train_loader, _ = get_dataloaders(dataset, data_fraction=fraction, batch_size=batch_size)
+        train_loader, _ = get_dataloaders(
+            dataset, data_fraction=fraction, batch_size=batch_size
+        )
         print(count_train_tokens(train_loader))
-
-
-
-
