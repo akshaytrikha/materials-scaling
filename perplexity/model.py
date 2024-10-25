@@ -380,12 +380,12 @@ def generate(meta_model, model_save_path, tokenizer_path, input_text, max_length
 #     # Verify model sizes
 #     verify_model_sizes(vocab_size)
 
-generated_text = generate(
-    meta_model=MetaXTransformers(vocab_size=10000),  # Use your vocab_size from tokenizer training
-    model_save_path="VanillaTransformer_dv=small_df=1_p=41584.pt",
-    tokenizer_path="bpe_tokenizer/tokenizer.json",  # Path to your saved tokenizer
-    input_text="hello this is a test",
-    max_length=50,
-    device=torch.device("cuda" if torch.cuda.is_available() else "cpu"),
-    temperature=0.7
-)
+# generated_text = generate(
+#     meta_model=MetaXTransformers(vocab_size=10000),  # Use your vocab_size from tokenizer training
+#     model_save_path="VanillaTransformer_dv=small_df=1_p=41584.pt",
+#     tokenizer_path="bpe_tokenizer/tokenizer.json",  # Path to your saved tokenizer
+#     input_text="hello this is a test",
+#     max_length=50,
+#     device=torch.device("cuda" if torch.cuda.is_available() else "cpu"),
+#     temperature=0.7
+# )
