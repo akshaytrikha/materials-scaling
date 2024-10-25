@@ -21,16 +21,13 @@ from log_utils import log_training_metrics, update_plots
 from torch.utils.data import DistributedSampler
 
 
-def train(args, device, is_master_process=True, device_ids=None, get_data_sampler=None):
+def train(args, device, is_master_process=True, device_ids=None):
     # Setup Dataset
     if args.dataset_version == "small":
         dataset_name = "wikitext-2-raw-v1"
     elif args.dataset_version == "large":
         dataset_name = "wikitext-103-raw-v1"
     dataset, tokenizer = setup_dataset(dataset_name)
-    dataset_sampler = (
-        get_data_sampler(dataset) if get_data_sampler is not None else None
-    )
 
     # Models, Loss
     if args.architecture == "FCN":
@@ -56,20 +53,15 @@ def train(args, device, is_master_process=True, device_ids=None, get_data_sample
     ):
         # Create a subset of the dataset
         train_loader, val_loader = get_dataloaders(
-            dataset, data_fraction, args.batch_size, sampler=dataset_sampler
+            dataset, data_fraction, args.batch_size, args.ddp
         )
 
         for model in models:
             model.to(device)
             if args.ddp:
-                model = (
-                    DDP(model, device_ids=device_ids)
-                    if device_ids is not None
-                    else model
-                )
-            print(
-                f"\nModel is on device {device} and has {model.num_params} parameters"
-            )
+                model = DDP(model, device_ids=device_ids)
+            num_params = sum(p.numel() for p in model.parameters())
+            print(f"\nModel is on device {device} and has {num_params} parameters")
             optimizer = optim.Adam(model.parameters(), lr=args.lr)
             total_steps = args.num_epochs * len(train_loader)
             num_warmup_steps = int(0.1 * total_steps)
@@ -82,9 +74,9 @@ def train(args, device, is_master_process=True, device_ids=None, get_data_sample
 
             # Define model name
             if args.architecture == "FCN":
-                model_name = f"{args.architecture}_dv={args.dataset_version}_df={data_fraction}_p={model.num_params}_e={model.embedding_dim}_h={model.hidden_dim}_d={model.depth}"
+                model_name = f"{args.architecture}_dv={args.dataset_version}_df={data_fraction}_p={num_params}"
             else:
-                model_name = f"{args.architecture}_dv={args.dataset_version}_df={data_fraction}_p={model.num_params}"
+                model_name = f"{args.architecture}_dv={args.dataset_version}_df={data_fraction}_p={num_params}"
 
             # Define checkpoint path
             checkpoint_dir = f"saved_models/{group_name}"
@@ -152,7 +144,7 @@ def train(args, device, is_master_process=True, device_ids=None, get_data_sample
                     log_training_metrics(
                         filename=f"{checkpoint_dir}/log_metrics.json",
                         data_fraction=data_fraction,
-                        model_params=model.num_params,
+                        model_params=num_params,
                         epoch=epoch,
                         train_loss=train_loss,
                         val_loss=val_loss,
@@ -179,7 +171,7 @@ def train(args, device, is_master_process=True, device_ids=None, get_data_sample
                             "val_loss": val_loss,
                             "val_perplexity": best_val_perplexity,
                             "learning_rate": scheduler.get_last_lr()[0],
-                            "num_params": model.num_params,
+                            "num_params": num_params,
                         }
                     )
 
@@ -207,18 +199,16 @@ def train_ddp(rank, world_size, master_addr, master_port, args):
     device = torch.device(
         f"cuda:{rank % torch.cuda.device_count()}"
         if torch.cuda.is_available()
-        else "mps" if torch.backends.mps.is_available() else "cpu"
+        else "cpu"
+        # mps is not supported in ddp
     )
     device_ids = (
         [rank % torch.cuda.device_count()] if torch.cuda.is_available() else None
     )
 
-    def get_data_sampler(dataset):
-        return DistributedSampler(dataset, num_replicas=world_size, rank=rank)
-
     print(f"Running DDP training on rank {rank} using device {device}.")
     setup_ddp(rank, world_size, master_addr, master_port)
-    train(args, device, is_master_process, device_ids, get_data_sampler)
+    train(args, device, is_master_process, device_ids)
     cleanup_ddp()
 
 
@@ -229,7 +219,7 @@ if __name__ == "__main__":
         num_processes = torch.cuda.device_count() if torch.cuda.is_available() else 2
         world_size = int(os.environ.get("WORLD_SIZE", num_processes))
         master_addr = os.environ.get("MASTER_ADDR", "localhost")
-        master_port = os.environ.get("MASTER_PORT", "12355")
+        master_port = os.environ.get("MASTER_PORT", "12357")
         mp.spawn(
             train_ddp,
             args=(world_size, master_addr, master_port, args),

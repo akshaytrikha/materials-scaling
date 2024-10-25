@@ -1,6 +1,7 @@
 import datasets
 from transformers import GPT2Tokenizer
 from torch.utils.data import DataLoader, Subset
+from torch.utils.data import DistributedSampler
 
 SEQ_LENGTH = 128
 
@@ -72,7 +73,7 @@ def setup_dataset(dataset_name: str):
 
 
 def get_dataloaders(
-    dataset: datasets.Dataset, data_fraction: float, batch_size: int, sampler=None
+    dataset: datasets.Dataset, data_fraction: float, batch_size: int, ddp: bool = False
 ):
     """Create train and validation dataloaders for a subset of the dataset.
 
@@ -86,15 +87,21 @@ def get_dataloaders(
     """
     # Create a subset of the dataset
     train_size = int(len(dataset["train"]) * data_fraction)
-
     train_subset = Subset(dataset["train"], indices=range(train_size))
-
-    shuffle = sampler is None # sampler option is mutually exclusive with shuffle
+    train_sampler = DistributedSampler(train_subset, shuffle=True) if ddp else None
     train_loader = DataLoader(
-        train_subset, batch_size=batch_size, shuffle=shuffle, sampler=sampler
+        train_subset,
+        batch_size=batch_size,
+        shuffle=train_sampler is None,
+        sampler=train_sampler,
     )
+
+    val_sampler = DistributedSampler(dataset["validation"], shuffle=False) if ddp else None
     val_loader = DataLoader(
-        dataset["validation"], batch_size=batch_size, shuffle=shuffle, sampler=sampler
+        dataset["validation"],
+        batch_size=batch_size,
+        shuffle=val_sampler is None,
+        sampler=val_sampler,
     )
 
     return train_loader, val_loader
