@@ -29,7 +29,7 @@ def encode(examples, tokenizer):
         examples["text"],
         padding="max_length",
         truncation=True,
-        max_length=SEQ_LENGTH,
+        max_length=SEQ_LENGTH + 1,  # Add 1 for the EOS token
         return_tensors=None,  # Ensure output is lists, not tensors
     )
 
@@ -48,41 +48,52 @@ def encode(examples, tokenizer):
 
 
 def setup_dataset(dataset_name: str, tokenizer_name: str):
-    """Load WikiText dataset and encode it using the custom BPE tokenizer.
+    """Load WikiText dataset and encode it using the specified tokenizer.
 
     Args:
         dataset_name (str): Name of the WikiText dataset (e.g., "wikitext-2-raw-v1" or "wikitext-103-raw-v1").
-        seq_length (int): Maximum sequence length for tokenization.
-        tokenizer_name (str): either "gpt2" or "bpe_tokenizer".
+        tokenizer_name (str): Either "gpt2" or "bpe".
 
     Returns:
         dataset (datasets.DatasetDict): The encoded WikiText dataset.
-        tokenizer (PreTrainedTokenizerFast): The custom BPE tokenizer.
+        tokenizer (PreTrainedTokenizerFast or GPT2Tokenizer): The configured tokenizer.
     """
     # Load the WikiText dataset
     dataset = datasets.load_dataset("wikitext", dataset_name)
 
-    if tokenizer_name == "gpt2":
+    # Initialize the tokenizer based on the specified name
+    if tokenizer_name.lower() == "gpt2":
         tokenizer = GPT2Tokenizer.from_pretrained("gpt2")
-    elif tokenizer_name == "bpe_tokenizer":
+    elif tokenizer_name.lower() in ["bpe", "bpe_tokenizer"]:
         tokenizer = PreTrainedTokenizerFast.from_pretrained("bpe_tokenizer")
+    else:
+        raise ValueError(f"Unsupported tokenizer_name: {tokenizer_name}")
 
-    # Set the pad token to the EOS token if it's not already defined
+    # Ensure the pad token is set
     if tokenizer.pad_token is None:
-        tokenizer.pad_token = tokenizer.eos_token
+        if "<pad>" in tokenizer.get_vocab():
+            tokenizer.pad_token = "<pad>"
+            print("Set pad_token to '<pad>'.")
+        elif tokenizer.eos_token is not None:
+            tokenizer.pad_token = tokenizer.eos_token
+            print(f"Set pad_token to eos_token: {tokenizer.eos_token}")
+        else:
+            # Add a new pad token if none exists
+            tokenizer.add_special_tokens({"pad_token": "[PAD]"})
+            print("Added and set pad_token to '[PAD]'.")
 
-    # Ensure special tokens are set (optional, based on your tokenizer training)
-    special_tokens = ["<s>", "<pad>", "</s>", "<unk>", "<mask>"]
+    # Ensure other special tokens are present
+    special_tokens = ["<s>", "</s>", "<unk>", "<mask>"]
     tokenizer.add_special_tokens({"additional_special_tokens": special_tokens})
 
-    # Filter out empty inputs first
+    # Filter out empty inputs
     dataset = dataset.filter(lambda x: len(x["text"].strip()) > 0)
 
     # Encode the dataset
     dataset = dataset.map(
         encode,
         batched=True,
-        fn_kwargs={"tokenizer": tokenizer, "seq_length": SEQ_LENGTH + 1},
+        fn_kwargs={"tokenizer": tokenizer},
         remove_columns=dataset["train"].column_names,
     )
 
@@ -105,15 +116,16 @@ def get_dataloaders(
         batch_size (int): Batch size for the dataloaders.
 
     Returns:
-        train_loader (torch.utils.data.DataLoader): Dataloader for the training subset.
-        val_loader (torch.utils.data.DataLoader): Dataloader for the validation subset.
+        tuple:
+            - train_loader (torch.utils.data.DataLoader): Dataloader for the training subset.
+            - val_loader (torch.utils.data.DataLoader): Dataloader for the validation subset.
     """
     # Determine the number of training samples based on the data fraction
     train_size = int(len(dataset["train"]) * data_fraction)
     train_subset = Subset(dataset["train"], indices=range(train_size))
 
     train_loader = DataLoader(train_subset, batch_size=batch_size, shuffle=True)
-    val_loader = DataLoader(dataset["validation"], batch_size=batch_size, shuffle=True)
+    val_loader = DataLoader(dataset["validation"], batch_size=batch_size, shuffle=False)
 
     return train_loader, val_loader
 
@@ -130,7 +142,6 @@ def count_train_tokens(train_loader):
 #     dataset_name = (
 #         "wikitext-103-raw-v1"  # Choose "wikitext-2-raw-v1" or "wikitext-103-raw-v1"
 #     )
-#     seq_length = 512
 #     batch_size = 8
 #     data_fractions = [0.01, 0.1, 0.25, 0.5, 0.75, 1]
 
@@ -141,7 +152,7 @@ def count_train_tokens(train_loader):
 #         )
 
 #     # Setup dataset and tokenizer
-#     dataset, tokenizer = setup_dataset(dataset_name, seq_length, "bpe_tokenizer")
+#     dataset, tokenizer = setup_dataset(dataset_name, "bpe")
 
 #     # Iterate over each data fraction and count tokens
 #     for fraction in data_fractions:
