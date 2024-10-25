@@ -1,5 +1,4 @@
 # External
-from collections import defaultdict
 from datetime import datetime
 import torch
 import torch.nn as nn
