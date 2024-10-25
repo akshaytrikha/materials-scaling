@@ -197,26 +197,30 @@ def load_bpe_tokenizer(tokenizer_path):
     Returns:
         Tokenizer: Loaded tokenizer with added convenience methods
     """
-    tokenizer = Tokenizer.from_file(tokenizer_path)
+    # Load the base tokenizer
+    base_tokenizer = Tokenizer.from_file(tokenizer_path)
     
-    # Add convenience methods to match the interface expected by generate function
-    def encode(text):
-        return tokenizer.encode(text).ids
+    # Create a wrapper class to add the required methods
+    class TokenizerWrapper:
+        def __init__(self, base_tokenizer):
+            self.tokenizer = base_tokenizer
+            self.pad_token_id = self.tokenizer.token_to_id("<pad>")
+            self.eos_token_id = self.tokenizer.token_to_id("</s>")
         
-    def decode(ids):
-        if isinstance(ids, torch.Tensor):
-            ids = ids.tolist()
-        return tokenizer.decode(ids)
+        def encode(self, text):
+            # Directly return the ids from the encoding
+            encoded = self.tokenizer.encode(text)
+            return encoded.ids
+            
+        def decode(self, ids):
+            if isinstance(ids, torch.Tensor):
+                ids = ids.tolist()
+            if isinstance(ids, int):
+                ids = [ids]
+            return self.tokenizer.decode(ids)
     
-    # Add the methods to the tokenizer object
-    tokenizer.encode = encode
-    tokenizer.decode = decode
-    
-    # Set special token attributes
-    tokenizer.pad_token_id = tokenizer.token_to_id("<pad>")
-    tokenizer.eos_token_id = tokenizer.token_to_id("</s>")
-    
-    return tokenizer
+    # Return wrapped tokenizer
+    return TokenizerWrapper(base_tokenizer)
 
 def generate(meta_model, model_save_path, tokenizer_path, input_text, max_length, device, temperature=1.0, top_k=10):
     """
@@ -261,7 +265,7 @@ def generate(meta_model, model_save_path, tokenizer_path, input_text, max_length
     def plot_top_k_probs(probabilities, k, tokenizer):
         """Plot the top-k probabilities as a bar chart."""
         top_k_probs, top_k_indices = torch.topk(probabilities, k)
-        top_k_tokens = [tokenizer.decode([idx.item()]) for idx in top_k_indices]
+        top_k_tokens = [tokenizer.decode(idx.item()) for idx in top_k_indices]
         
         plt.figure(figsize=(10, 5))
         plt.bar(top_k_tokens, top_k_probs.cpu().numpy())
