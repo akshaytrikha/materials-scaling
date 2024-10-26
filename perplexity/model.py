@@ -12,14 +12,14 @@ class MetaFullyConnectedModels:
     def __init__(self, vocab_size):
         self.configurations = [
             {"embedding_dim": 2, "hidden_dim": 2, "depth": 1},      # 251,297 params
-            # {"embedding_dim": 4, "hidden_dim": 4, "depth": 2},      # 452,373 params
-            # {"embedding_dim": 8, "hidden_dim": 8, "depth": 4},      # 854,729 params
+            {"embedding_dim": 4, "hidden_dim": 4, "depth": 2},      # 452,373 params
+            {"embedding_dim": 8, "hidden_dim": 8, "depth": 4},      # 854,729 params
             {"embedding_dim": 16, "hidden_dim": 16, "depth": 8},    # 1,660,929 params
-            # {"embedding_dim": 32, "hidden_dim": 32, "depth": 12},   # 3,280,433 params
-            # {"embedding_dim": 64, "hidden_dim": 64, "depth": 12},   # 6,537,233 params
-            # {"embedding_dim": 128, "hidden_dim": 128, "depth": 12}, # 13,130,705 params
-            # {"embedding_dim": 320, "hidden_dim": 320, "depth": 16}, # 33,960,977 params
-            # {"embedding_dim": 640, "hidden_dim": 640, "depth": 54}  # 86,942,417 params
+            {"embedding_dim": 32, "hidden_dim": 32, "depth": 12},   # 3,280,433 params
+            {"embedding_dim": 64, "hidden_dim": 64, "depth": 12},   # 6,537,233 params
+            {"embedding_dim": 128, "hidden_dim": 128, "depth": 12}, # 13,130,705 params
+            {"embedding_dim": 320, "hidden_dim": 320, "depth": 16}, # 33,960,977 params
+            {"embedding_dim": 640, "hidden_dim": 640, "depth": 54}  # 86,942,417 params
         ]
         self.vocab_size = vocab_size
 
