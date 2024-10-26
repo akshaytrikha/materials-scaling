@@ -128,7 +128,7 @@ class MetaXTransformers:
             {"d_model": 2, "n_layers": 1, "n_heads": 1, "d_ff": 8},    # ~200k params
             # {"d_model": 4, "n_layers": 1, "n_heads": 1, "d_ff": 16},    # ~400k params
             # {"d_model": 8, "n_layers": 1, "n_heads": 1, "d_ff": 32},    # ~800k params
-            {"d_model": 16, "n_layers": 1, "n_heads": 1, "d_ff": 64},    # ~1.6M params
+            # {"d_model": 16, "n_layers": 1, "n_heads": 1, "d_ff": 64},    # ~1.6M params
             # {"d_model": 32, "n_layers": 1, "n_heads": 1, "d_ff": 128},    # ~3.2M params
             # {"d_model": 64, "n_layers": 2, "n_heads": 2, "d_ff": 256},    # ~6.5M params
             {"d_model": 128, "n_layers": 4, "n_heads": 4, "d_ff": 512},   # ~14M params
@@ -181,14 +181,55 @@ def plot_top_k_probs(probabilities, k, tokenizer):
     plt.ylabel("Probabilities")
     plt.show()
 
-def generate(meta_model, model_save_path, tokenizer, input_text, max_length, device, temperature=1.0, top_k=10):
+from tokenizers import Tokenizer
+from tokenizers.models import BPE
+import torch
+import torch.nn.functional as F
+import matplotlib.pyplot as plt
+
+def load_bpe_tokenizer(tokenizer_path):
+    """
+    Load the saved ByteLevelBPE tokenizer
+    
+    Args:
+        tokenizer_path: Path to the saved tokenizer.json file
+    
+    Returns:
+        Tokenizer: Loaded tokenizer with added convenience methods
+    """
+    # Load the base tokenizer
+    base_tokenizer = Tokenizer.from_file(tokenizer_path)
+    
+    # Create a wrapper class to add the required methods
+    class TokenizerWrapper:
+        def __init__(self, base_tokenizer):
+            self.tokenizer = base_tokenizer
+            self.pad_token_id = self.tokenizer.token_to_id("<pad>")
+            self.eos_token_id = self.tokenizer.token_to_id("</s>")
+        
+        def encode(self, text):
+            # Directly return the ids from the encoding
+            encoded = self.tokenizer.encode(text)
+            return encoded.ids
+            
+        def decode(self, ids):
+            if isinstance(ids, torch.Tensor):
+                ids = ids.tolist()
+            if isinstance(ids, int):
+                ids = [ids]
+            return self.tokenizer.decode(ids)
+    
+    # Return wrapped tokenizer
+    return TokenizerWrapper(base_tokenizer)
+
+def generate(meta_model, model_save_path, tokenizer_path, input_text, max_length, device, temperature=1.0, top_k=10):
     """
     Generates text from the model given an input prompt using temperature-based sampling.
 
     Args:
         meta_model: A meta model instance like MetaVanillaTransformers or MetaFullyConnectedModels.
         model_save_path: str, path to the saved model's state dict.
-        tokenizer: A tokenizer instance (e.g., GPT2Tokenizer).
+        tokenizer_path: str, path to the saved tokenizer.json file
         input_text: str, input seed text for generating new text.
         max_length: int, the maximum number of tokens to generate.
         device: torch.device, the device to run computations on.
@@ -198,69 +239,104 @@ def generate(meta_model, model_save_path, tokenizer, input_text, max_length, dev
     Returns:
         str: The generated text.
     """
+    # Load the tokenizer
+    tokenizer = load_bpe_tokenizer(tokenizer_path)
+    
     # Step 1: Encode the input text into token indices
-    print(input_text)
+    print(f"Input text: {input_text}")
     input_ids = tokenizer.encode(input_text)
     input_ids = torch.tensor([input_ids], device=device)  # Make it a batch of 1
 
     # Step 2: Initialize the model using the provided meta_model
-    model = next(iter(meta_model))  # Get the first model configuration (you can modify this as needed)
+    model = next(iter(meta_model))  # Get the first model configuration
     
     # Step 3: Load the model state from the saved path
-    model.load_state_dict(torch.load(model_save_path, map_location=device))
+    checkpoint = torch.load(model_save_path, map_location=device)
+    model.load_state_dict(checkpoint['model_state_dict'])
     model = model.to(device)
     model.eval()
 
     # Check if the model is a Transformer or FCN
     is_transformer = isinstance(model, XTransformerModel)
+    
+    # Create padding mask (all False since we're not padding)
+    src_key_padding_mask = torch.zeros_like(input_ids, dtype=torch.bool, device=device)
 
-    if is_transformer:
-        # Transformer Model: Autoregressive Generation (token by token)
-        generated_ids = input_ids
+    def plot_top_k_probs(probabilities, k, tokenizer):
+        """Plot the top-k probabilities as a bar chart."""
+        top_k_probs, top_k_indices = torch.topk(probabilities, k)
+        top_k_tokens = [tokenizer.decode(idx.item()) for idx in top_k_indices]
+        
+        plt.figure(figsize=(10, 5))
+        plt.bar(top_k_tokens, top_k_probs.cpu().numpy())
+        plt.title(f"Top {k} Probability Distribution")
+        plt.xlabel("Tokens")
+        plt.ylabel("Probabilities")
+        plt.xticks(rotation=45)
+        plt.tight_layout()
+        plt.show()
 
-        for _ in range(max_length):
-            # Pass the input through the model
-            with torch.no_grad():
-                logits = model(generated_ids)  # Model forward pass
+    with torch.no_grad():
+        if is_transformer:
+            # Transformer Model: Autoregressive Generation (token by token)
+            generated_ids = input_ids
+
+            for _ in range(max_length):
+                # Update padding mask for the current sequence
+                current_mask = torch.zeros_like(generated_ids, dtype=torch.bool, device=device)
+                
+                # Pass the input through the model with padding mask
+                logits = model(generated_ids, src_key_padding_mask=current_mask)
                 logits = logits[:, -1, :]  # Only consider the last token's logits
 
-            # Apply temperature to the logits and convert to probabilities
-            logits = logits / temperature
-            probabilities = F.softmax(logits, dim=-1)
+                # Apply temperature and convert to probabilities
+                logits = logits / temperature
+                probabilities = F.softmax(logits, dim=-1)
 
-            # Plot top-k probability distribution
-            # plot_top_k_probs(probabilities.squeeze(), top_k, tokenizer)
+                # Optional: Plot top-k probability distribution
+                if top_k > 0:
+                    plot_top_k_probs(probabilities.squeeze(), top_k, tokenizer)
 
-            # Sample the next token based on the probability distribution
-            next_token_id = torch.multinomial(probabilities, num_samples=1)
+                # Sample the next token
+                next_token_id = torch.multinomial(probabilities, num_samples=1)
+                generated_ids = torch.cat((generated_ids, next_token_id), dim=1)
 
-            # Append the generated token to the sequence
-            generated_ids = torch.cat((generated_ids, next_token_id), dim=1)
+                # Print progress
+                print(f"Generated sequence so far: {tokenizer.decode(generated_ids.squeeze().tolist())}")
 
-            # Decode and print the generated sequence so far
-            print(f"Generated sequence so far: {tokenizer.decode(generated_ids.squeeze().tolist())}")
+                # Stop if EOS token is generated
+                if next_token_id.item() == tokenizer.eos_token_id:
+                    break
 
-            # Stop if the EOS token is generated
-            if next_token_id.item() == tokenizer.eos_token_id:
-                break
+        else:
+            # FCN Model: Single forward pass with attention to the last token
+            generated_ids = input_ids.squeeze()
+            for _ in range(max_length):
+                # Pass the sequence through the model
+                logits = model(generated_ids.unsqueeze(0), src_key_padding_mask=src_key_padding_mask)
+                
+                # Get predictions for the last token
+                last_token_logits = logits[0, -1, :]
+                
+                # Apply temperature and get probabilities
+                scaled_logits = last_token_logits / temperature
+                probabilities = F.softmax(scaled_logits, dim=-1)
 
-    else:
-        generated_ids = input_ids[0]
-        for _ in range(max_length):
-            # Step 2: Pass the input through the model
-            with torch.no_grad():
-                logits = model(generated_ids)
-            # Step 3: Sample the next token (using greedy sampling for simplicity)
-            logits = logits / temperature
-            probabilities = torch.softmax(logits, dim=-1).squeeze()[-1, :]
-            next_token_id = torch.multinomial(probabilities, num_samples=1)
+                # Optional: Plot top-k probability distribution
+                if top_k > 0:
+                    plot_top_k_probs(probabilities, top_k, tokenizer)
 
-            # Step 4: Append generated token to the sequence
-            generated_ids = torch.cat((generated_ids, next_token_id), dim=0)
-            plot_top_k_probs(probabilities.squeeze(), top_k, tokenizer)
-            # If end-of-sequence token is generated, stop
-            if next_token_id.item() == tokenizer.eos_token_id:
-                break
+                # Sample next token
+                next_token_id = torch.multinomial(probabilities, num_samples=1)
+                generated_ids = torch.cat((generated_ids, next_token_id), dim=0)
+
+                # Print progress
+                print(f"Generated sequence so far: {tokenizer.decode(generated_ids.tolist())}")
+
+                # Stop if EOS token is generated
+                if next_token_id.item() == tokenizer.eos_token_id:
+                    break
+
     # Decode the generated sequence back to text
     generated_text = tokenizer.decode(generated_ids.squeeze().tolist())
     return generated_text
@@ -304,12 +380,12 @@ def generate(meta_model, model_save_path, tokenizer, input_text, max_length, dev
 #     # Verify model sizes
 #     verify_model_sizes(vocab_size)
 
-# print(generate(
-#     MetaFullyConnectedModels(len(GPT2Tokenizer.from_pretrained("gpt2"))),
-#     "saved_models/wikitext-2-raw-v1_FCN_ts=2024_10_17-05:24:32/FCN_dv=small_df=0.25_p=1661217_e=16_h=16_d=8.pt",
-#     GPT2Tokenizer.from_pretrained("gpt2"),
-#     "1 2 3 4",
-#     10,
-#     torch.device("cpu"),
-#     0.3
-# ))
+# generated_text = generate(
+#     meta_model=MetaXTransformers(vocab_size=10000),  # Use your vocab_size from tokenizer training
+#     model_save_path="VanillaTransformer_dv=small_df=1_p=41584.pt",
+#     tokenizer_path="bpe_tokenizer/tokenizer.json",  # Path to your saved tokenizer
+#     input_text="hello this is a test",
+#     max_length=50,
+#     device=torch.device("cuda" if torch.cuda.is_available() else "cpu"),
+#     temperature=0.7
+# )

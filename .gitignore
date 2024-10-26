@@ -11,3 +11,5 @@ saved_models/
 perplexity/wikitext-103-raw-v1*
 perplexity/wikitext-2-raw-v1*
 local/
+bpe_tokenizer/
+wikitext_combined.txt

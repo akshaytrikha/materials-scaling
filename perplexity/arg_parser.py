@@ -38,9 +38,6 @@ def get_args():
         help='Dataset size to use: "small" or "big"',
     )
     parser.add_argument(
-        "--seq_max_length", type=int, default=512, help="Maximum sequence length"
-    )
-    parser.add_argument(
         "--data_fractions",
         type=float_or_int,
         nargs="+",
@@ -55,5 +52,12 @@ def get_args():
         type=str,
         default=None,
         help="Name of the checkpoint group",
+    )
+    parser.add_argument(
+        "--tokenizer_name",
+        type=str,
+        choices=["bpe", "gpt2"],
+        default="bpe",
+        help='Tokenizer to use: "bpe" or "gpt2"',
     )
     return parser.parse_args()
