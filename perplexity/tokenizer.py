@@ -7,9 +7,8 @@ dataset = load_dataset("wikitext", "wikitext-103-raw-v1")
 
 # Combine train, val text data into a single list
 texts = []
-for split in ["train", "validation"]:
-    for item in dataset[split]:
-        texts.append(item["text"])
+for item in dataset["train"]:
+    texts.append(item["text"])
 
 # Optionally, save the combined text to a single file
 with open("wikitext_combined.txt", "w", encoding="utf-8") as f:
