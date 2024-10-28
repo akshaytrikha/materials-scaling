@@ -6,3 +6,5 @@ matplotlib==3.9.2
 black==22.3.0
 tqdm==4.66.5
 x-transformers==1.37.10
+fairchem-core==1.2.0
+numpy==1.26.4
