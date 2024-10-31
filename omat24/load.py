@@ -1,9 +1,17 @@
-from fairchem.core.datasets import AseDBDataset
+# External
+from pathlib import Path
 
-dataset_path = "rattled-1000-subsampled"
-config_kwargs = {}  # see tutorial on additional configuration
+# Internal
+from data import OMat24Dataset, download_dataset
 
-dataset = AseDBDataset(config=dict(src=dataset_path, **config_kwargs))
 
-# atoms objects can be retrieved by index
-atoms = dataset.get_atoms(0)
+dataset_name = "rattled-300-subsampled"
+dataset_path = Path(f"datasets/{dataset_name}")
+
+if not dataset_path.exists():
+    # Fetch and uncompress dataset
+    download_dataset(dataset_name)
+
+dataset = OMat24Dataset(dataset_path=dataset_path)
+sample = dataset[0]
+print(sample["atomic_numbers"], sample["positions"], sample["energy"])
