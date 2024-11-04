@@ -1,3 +1,5 @@
+import datasets
+from torch.utils.data import DataLoader, Subset
 from pathlib import Path
 import torch
 from torch.utils.data import Dataset
@@ -34,6 +36,34 @@ def download_dataset(dataset_name: str):
         print(f"Deleted the compressed file {compressed_path}.")
     except Exception as e:
         print(f"An error occurred while deleting {compressed_path}: {e}")
+
+
+def get_dataloaders(
+    dataset: datasets.DatasetDict, data_fraction: float, batch_size: int
+):
+    """Create train and validation dataloaders for a subset of the dataset.
+
+    Args:
+        dataset (datasets.DatasetDict): The dataset to create dataloaders from.
+        data_fraction (float): Fraction of the dataset to use for training.
+        batch_size (int): Batch size for the dataloaders.
+
+    Returns:
+        tuple:
+            - train_loader (torch.utils.data.DataLoader): Dataloader for the training subset.
+            - val_loader (torch.utils.data.DataLoader): Dataloader for the validation subset.
+    """
+    # Determine the number of training samples based on the data fraction
+    dataset_size = int(len(dataset) * data_fraction)
+    train_size = int(dataset_size * 0.8)
+
+    train_subset = Subset(dataset, indices=range(train_size))
+    train_loader = DataLoader(train_subset, batch_size=batch_size, shuffle=True)
+
+    val_subset = Subset(dataset, indices=range(train_size, len(dataset)))
+    val_loader = DataLoader(val_subset, batch_size=batch_size, shuffle=True)
+
+    return train_loader, val_loader
 
 
 class OMat24Dataset(Dataset):
