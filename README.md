@@ -4,6 +4,8 @@
 2. `pyenv exec python -m venv materials-scaling-venv`
 3. `source materials-scaling-venv/bin/activate`
 4. `python3 -m pip install -q -r requirements.txt`
+5. `pip install torch-scatter -f https://data.pyg.org/whl/torch-2.4.0+cpu.html`
+6. `brew install python-tk`
 5. `wandb login`
 
 ### Running training
