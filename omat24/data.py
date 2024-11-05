@@ -1,4 +1,5 @@
 from torch.utils.data import DataLoader, Subset, Dataset
+from torch.nn.utils.rnn import pad_sequence
 from pathlib import Path
 import torch
 from fairchem.core.datasets import AseDBDataset
@@ -6,7 +7,9 @@ import ase
 import tarfile
 import gdown
 import os
-from torch.nn.utils.rnn import pad_sequence
+from typing import Dict
+
+MAX_ATOMS = 300
 
 DATASETS = {
     "rattled-300-subsampled": f"https://drive.google.com/uc?id=1vZE0J9ccC-SkoBYn3K0H0P3PUlpPy_NC"
@@ -49,81 +52,98 @@ def download_dataset(dataset_name: str):
         print(f"An error occurred while deleting {compressed_path}: {e}")
 
 
-# def custom_collate_fn(batch):
-#     """
-#     Custom collate function to handle batches with variable-sized tensors.
+def pad_tensor(
+    tensor: torch.Tensor, pad_size: int, dim: int = 0, padding_value: float = 0.0
+) -> torch.Tensor:
+    """
+    Pads a tensor to a specified size along a given dimension.
 
-#     This function organizes the batch data into dictionaries, keeping variable-length
-#     tensors (like atomic numbers, positions, and forces) as lists, while stacking
-#     fixed-length tensors (like energy and stress) into uniform tensors.
+    Args:
+        tensor (torch.Tensor): The tensor to pad.
+        pad_size (int): The desired size after padding.
+        dim (int, optional): The dimension to pad. Defaults to 0.
+        padding_value (float, optional): The value to use for padding. Defaults to 0.0.
 
-#     Args:
-#         batch (List[dict]): A list of samples where each sample is a dictionary containing:
-#             - 'atomic_numbers' (torch.Tensor): Tensor of shape [N_atoms]
-#             - 'positions' (torch.Tensor): Tensor of shape [N_atoms, 3]
-#             - 'energy' (torch.Tensor): Scalar tensor
-#             - 'forces' (torch.Tensor): Tensor of shape [N_atoms, 3]
-#             - 'stress' (torch.Tensor): Tensor of shape [6]
+    Returns:
+        torch.Tensor: The padded tensor.
+    """
+    pad_length = pad_size - tensor.size(dim)
+    if pad_length <= 0:
+        return tensor
+    padding = [padding_value] * pad_length
+    if dim == 0:
+        padding = torch.full(
+            (pad_length, *tensor.shape[1:]), padding_value, dtype=tensor.dtype
+        )
+        return torch.cat([tensor, padding], dim=dim)
+    elif dim == 1:
+        padding = torch.full(
+            (tensor.size(0), pad_length, *tensor.shape[2:]),
+            padding_value,
+            dtype=tensor.dtype,
+        )
+        return torch.cat([tensor, padding], dim=dim)
+    else:
+        raise ValueError("Only dimensions 0 and 1 are supported for padding.")
 
-#     Returns:
-#         dict: A dictionary with the following keys:
-#             - 'atomic_numbers' (List[torch.Tensor]): List of tensors with shape [N_atoms]
-#             - 'positions' (List[torch.Tensor]): List of tensors with shape [N_atoms, 3]
-#             - 'energy' (torch.Tensor): Tensor of shape [batch_size]
-#             - 'forces' (List[torch.Tensor]): List of tensors with shape [N_atoms, 3]
-#             - 'stress' (torch.Tensor): Tensor of shape [batch_size, 6]
-#     """
-#     # Initialize lists for variable-length data
-#     atomic_numbers = []
-#     positions = []
-#     forces = []
 
-#     # Initialize lists for fixed-length data
-#     energies = []
-#     stresses = []
+def custom_collate_fn_dataset_padded(batch: list) -> Dict[str, torch.Tensor]:
+    """Collate function that pads all samples to a fixed number of atoms (MAX_ATOMS).
 
-#     for sample in batch:
-#         atomic_numbers.append(sample["atomic_numbers"])
-#         positions.append(sample["positions"])
-#         energies.append(sample["energy"])
-#         forces.append(sample["forces"])
-#         stresses.append(sample["stress"])
+    Args:
+        batch (Dict[str]): A dictionary of a batch mapping to lists
+    Returns:
+        batch (Dict[str]): A dictionary of a batch mapping to lists
+    """
+    atomic_numbers = [sample["atomic_numbers"] for sample in batch]
+    positions = [sample["positions"] for sample in batch]
+    energies = torch.stack([sample["energy"] for sample in batch], dim=0)
+    forces = [sample["forces"] for sample in batch]
+    stresses = torch.stack([sample["stress"] for sample in batch], dim=0)
 
-#     # Stack fixed-length tensors
-#     energies = torch.stack(energies, dim=0)
-#     stresses = torch.stack(stresses, dim=0)
+    # Pad atomic_numbers, positions, and forces to MAX_ATOMS
+    padded_atomic_numbers = torch.stack(
+        [
+            pad_tensor(tensor, MAX_ATOMS, dim=0, padding_value=0)
+            for tensor in atomic_numbers
+        ],
+        dim=0,
+    )  # Shape: [batch_size, MAX_ATOMS]
 
-#     return {
-#         "atomic_numbers": atomic_numbers,  # List of tensors with shape [N_atoms]
-#         "positions": positions,  # List of tensors with shape [N_atoms, 3]
-#         "energy": energies,  # Tensor of shape [batch_size]
-#         "forces": forces,  # List of tensors with shape [N_atoms, 3]
-#         "stress": stresses,  # Tensor of shape [batch_size, 6]
-#     }
+    padded_positions = torch.stack(
+        [
+            pad_tensor(tensor, MAX_ATOMS, dim=0, padding_value=0.0)
+            for tensor in positions
+        ],
+        dim=0,
+    )  # Shape: [batch_size, MAX_ATOMS, 3]
+
+    padded_forces = torch.stack(
+        [pad_tensor(tensor, MAX_ATOMS, dim=0, padding_value=0.0) for tensor in forces],
+        dim=0,
+    )  # Shape: [batch_size, MAX_ATOMS, 3]
+
+    return {
+        "atomic_numbers": padded_atomic_numbers,  # [batch_size, MAX_ATOMS]
+        "positions": padded_positions,  # [batch_size, MAX_ATOMS, 3]
+        "energy": energies,  # [batch_size]
+        "forces": padded_forces,  # [batch_size, MAX_ATOMS, 3]
+        "stress": stresses,  # [batch_size, 6]
+    }
 
 
 def custom_collate_fn_batch_padded(batch):
-    """Custom collate function that pads variable-sized tensors to the maximum size within the batch.
+    """Collate function that pads variable-sized tensors to the maximum size within the batch.
 
     This function pads the `atomic_numbers`, `positions`, and `forces` tensors to ensure
     that all samples in the batch have the same number of atoms (`max_atoms`). Padding is
     applied with a default value of 0 for atomic numbers and 0.0 for positions and forces.
 
     Args:
-        batch (List[dict]): A list of samples where each sample is a dictionary containing:
-            - 'atomic_numbers' (torch.Tensor): Tensor of shape [N_atoms]
-            - 'positions' (torch.Tensor): Tensor of shape [N_atoms, 3]
-            - 'energy' (torch.Tensor): Scalar tensor
-            - 'forces' (torch.Tensor): Tensor of shape [N_atoms, 3]
-            - 'stress' (torch.Tensor): Tensor of shape [6]
+        batch (Dict[str]): A dictionary of a batch mapping to lists
 
     Returns:
-        dict: A dictionary with the following keys:
-            - 'atomic_numbers' (torch.Tensor): Padded tensor of shape [batch_size, max_atoms]
-            - 'positions' (torch.Tensor): Padded tensor of shape [batch_size, max_atoms, 3]
-            - 'energy' (torch.Tensor): Tensor of shape [batch_size]
-            - 'forces' (torch.Tensor): Padded tensor of shape [batch_size, max_atoms, 3]
-            - 'stress' (torch.Tensor): Tensor of shape [batch_size, 6]
+        batch (Dict[str]): A dictionary of a batch mapping to lists
     """
     # Separate each field
     atomic_numbers = [sample["atomic_numbers"] for sample in batch]
@@ -165,7 +185,7 @@ def get_dataloaders(
         dataset (Dataset): The dataset to create DataLoaders from.
         data_fraction (float): Fraction of the dataset to use (e.g., 0.9 for 90%).
         batch_size (int): Number of samples per batch.
-        padded (bool, optional): Whether to pad variable-length tensors. Defaults to False.
+        batch_padded (bool, optional): Whether to pad variable-length tensors. Defaults to True.
 
     Returns:
         tuple:
@@ -182,7 +202,8 @@ def get_dataloaders(
     # Select the appropriate collate function
     if batch_padded:
         collate_fn = custom_collate_fn_batch_padded
-
+    else:
+        collate_fn = custom_collate_fn_dataset_padded  # TODO: Implement this function
     # Create DataLoaders
     train_loader = DataLoader(
         train_subset, batch_size=batch_size, shuffle=True, collate_fn=collate_fn

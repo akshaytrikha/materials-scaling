@@ -1,6 +1,16 @@
 import torch.nn as nn
 
 
+def compute_mse_loss(pred_forces, pred_energy, pred_stress, batch):
+    """Compute the MSE loss for forces, energy, and stress and cosine similarity loss for forces."""
+    # Compute MSE loss for forces, energy, and stress
+    force_loss = nn.MSELoss()(pred_forces, batch["forces"])
+    energy_loss = nn.MSELoss()(pred_energy, batch["energy"])
+    stress_loss = nn.MSELoss()(pred_stress, batch["stress"])
+
+    return force_loss + energy_loss + stress_loss
+
+
 class CosineSimilarityLoss(nn.Module):
     def __init__(self, dim=1):
         """
