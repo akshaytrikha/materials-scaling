@@ -19,7 +19,7 @@ print(sample["atomic_numbers"], sample["positions"], sample["energy"])
 
 # dataloading
 train_loader, val_loader = get_dataloaders(
-    dataset, data_fraction=0.1, batch_size=32, batch_padded=True
+    dataset, data_fraction=0.1, batch_size=32, batch_padded=False
 )
 
 for batch in train_loader:
