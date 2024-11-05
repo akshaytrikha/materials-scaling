@@ -1,4 +1,3 @@
-import datasets
 from torch.utils.data import DataLoader, Subset, Dataset
 from pathlib import Path
 import torch
@@ -15,8 +14,7 @@ DATASETS = {
 
 
 def download_dataset(dataset_name: str):
-    """
-    Downloads a compressed dataset from a predefined URL and extracts it to the specified directory.
+    """Downloads a compressed dataset from a predefined URL and extracts it to the specified directory.
 
     Args:
         dataset_name (str): The key corresponding to the dataset in the DATASETS dictionary.
