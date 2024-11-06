@@ -203,7 +203,7 @@ def get_dataloaders(
     if batch_padded:
         collate_fn = custom_collate_fn_batch_padded
     else:
-        collate_fn = custom_collate_fn_dataset_padded  # TODO: Implement this function
+        collate_fn = custom_collate_fn_dataset_padded
     # Create DataLoaders
     train_loader = DataLoader(
         train_subset, batch_size=batch_size, shuffle=True, collate_fn=collate_fn
