@@ -6,8 +6,9 @@ import torch.nn as nn
 def compute_mse_loss(pred_forces, pred_energy, pred_stress, true_forces, true_energy, true_stress, mask):
     """Compute the MSE loss for forces, energy, and stress, considering the mask."""
     # Mask out padded atoms
-    pred_forces = pred_forces[mask]  # [num_valid_atoms, 3]
-    true_forces = true_forces[mask]  # [num_valid_atoms, 3]
+    mask = mask.unsqueeze(-1)  # Shape: [batch_size, max_atoms, 1]
+    pred_forces = pred_forces * mask.float()
+    true_forces = true_forces * mask.float()
 
     # Compute MSE losses
     force_loss = nn.MSELoss()(pred_forces, true_forces)
