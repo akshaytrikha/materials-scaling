@@ -14,7 +14,7 @@ if not dataset_path.exists():
 
 dataset = OMat24Dataset(dataset_path=dataset_path)
 sample = dataset[0]
-print(sample["atomic_numbers"], sample["positions"], sample["energy"])
+print(sample["atomic_numbers"], sample["positions"], sample["energy"], sample["forces"], sample["stress"] )
 
 
 # dataloading
