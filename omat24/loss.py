@@ -1,9 +1,9 @@
-# loss.py
-
-import torch
 import torch.nn as nn
 
-def compute_mse_loss(pred_forces, pred_energy, pred_stress, true_forces, true_energy, true_stress, mask):
+
+def compute_mse_loss(
+    pred_forces, pred_energy, pred_stress, true_forces, true_energy, true_stress, mask
+):
     """Compute the MSE loss for forces, energy, and stress, considering the mask."""
     # Mask out padded atoms
     mask = mask.unsqueeze(-1)  # Shape: [batch_size, max_atoms, 1]
@@ -16,6 +16,7 @@ def compute_mse_loss(pred_forces, pred_energy, pred_stress, true_forces, true_en
     stress_loss = nn.MSELoss()(pred_stress, true_stress)
 
     return force_loss + energy_loss + stress_loss
+
 
 class CosineSimilarityLoss(nn.Module):
     def __init__(self, dim=1):

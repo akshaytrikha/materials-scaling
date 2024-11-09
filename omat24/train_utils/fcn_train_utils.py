@@ -1,21 +1,27 @@
-# fcn_train_utils.py
-
+# External
 import torch
 import torch.optim as optim
+
+# Internal
 from loss import compute_mse_loss
+
 
 def get_optimizer(model, learning_rate=1e-3):
     return optim.Adam(model.parameters(), lr=learning_rate)
 
+
 def get_scheduler(optimizer):
-    # If you have a scheduler, define it here
     return None  # No scheduler for now
+
 
 def train(model, train_loader, val_loader, optimizer, scheduler, num_epochs, device):
     model = model.to(device)
+    losses = {}  # Dictionary to store losses per epoch
+
     for epoch in range(num_epochs):
         model.train()
-        total_loss = 0.0
+        total_train_loss = 0.0
+
         for batch in train_loader:
             # Move data to device
             atomic_numbers = batch["atomic_numbers"].to(device)
@@ -25,7 +31,7 @@ def train(model, train_loader, val_loader, optimizer, scheduler, num_epochs, dev
             stress_true = batch["stress"].to(device)
 
             # Create mask for valid atoms
-            mask = (atomic_numbers != 0)  # Shape: [batch_size, max_atoms]
+            mask = atomic_numbers != 0  # Shape: [batch_size, max_atoms]
 
             # Zero gradients
             optimizer.zero_grad()
@@ -35,31 +41,41 @@ def train(model, train_loader, val_loader, optimizer, scheduler, num_epochs, dev
 
             # Compute loss
             loss = compute_loss(
-                forces_pred, energy_pred, stress_pred,
-                forces_true, energy_true, stress_true, mask
+                forces_pred,
+                energy_pred,
+                stress_pred,
+                forces_true,
+                energy_true,
+                stress_true,
+                mask,
             )
 
             # Backward pass and optimization
             loss.backward()
             optimizer.step()
 
-            total_loss += loss.item()
+            total_train_loss += loss.item()
 
-        avg_loss = total_loss / len(train_loader)
-        print(f"Epoch {epoch+1}/{num_epochs}, Training Loss: {avg_loss:.4f}")
+        avg_train_loss = total_train_loss / len(train_loader)
+        print(f"Epoch {epoch+1}/{num_epochs}, Training Loss: {avg_train_loss:.4f}")
 
         # Validation step
-        validate(model, val_loader, device)
+        avg_val_loss = validate(model, val_loader, device)
+        print(f"Epoch {epoch+1}/{num_epochs}, Validation Loss: {avg_val_loss:.4f}")
+
+        # Store the losses in the dictionary with epoch as the key
+        losses[epoch] = {"train_loss": avg_train_loss, "val_loss": avg_val_loss}
 
         # Update scheduler if it's defined
         if scheduler is not None:
             scheduler.step()
 
-    return model
+    return model, losses
+
 
 def validate(model, val_loader, device):
     model.eval()
-    total_loss = 0.0
+    total_val_loss = 0.0
     with torch.no_grad():
         for batch in val_loader:
             # Move data to device
@@ -70,24 +86,37 @@ def validate(model, val_loader, device):
             stress_true = batch["stress"].to(device)
 
             # Create mask for valid atoms
-            mask = (atomic_numbers != 0)
+            mask = atomic_numbers != 0
 
             # Forward pass
             forces_pred, energy_pred, stress_pred = model(atomic_numbers, positions)
 
             # Compute loss
             loss = compute_loss(
-                forces_pred, energy_pred, stress_pred,
-                forces_true, energy_true, stress_true, mask
+                forces_pred,
+                energy_pred,
+                stress_pred,
+                forces_true,
+                energy_true,
+                stress_true,
+                mask,
             )
 
-            total_loss += loss.item()
+            total_val_loss += loss.item()
 
-    avg_loss = total_loss / len(val_loader)
-    print(f"Validation Loss: {avg_loss:.4f}")
+    avg_val_loss = total_val_loss / len(val_loader)
+    return avg_val_loss
 
-def compute_loss(pred_forces, pred_energy, pred_stress, true_forces, true_energy, true_stress, mask):
+
+def compute_loss(
+    pred_forces, pred_energy, pred_stress, true_forces, true_energy, true_stress, mask
+):
     return compute_mse_loss(
-        pred_forces, pred_energy, pred_stress,
-        true_forces, true_energy, true_stress, mask
+        pred_forces,
+        pred_energy,
+        pred_stress,
+        true_forces,
+        true_energy,
+        true_stress,
+        mask,
     )

@@ -9,8 +9,17 @@ from arg_parser import get_args
 from models.fcn import FCNModel
 import train_utils.fcn_train_utils as train_utils
 
+# Set seed & device
+seed = 1000
+torch.manual_seed(seed)
 if torch.cuda.is_available():
     DEVICE = torch.device("cuda")
+    torch.cuda.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)  # If using multi-GPU.
+    # Ensure deterministic behavior for CUDA operations
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+
 elif torch.backends.mps.is_available():
     DEVICE = torch.device("mps")
 else:
@@ -40,7 +49,7 @@ if __name__ == "__main__":
     scheduler = train_utils.get_scheduler(optimizer)
 
     # Train model
-    model = train_utils.train(
+    model, losses = train_utils.train(
         model,
         train_loader,
         val_loader,
@@ -49,6 +58,8 @@ if __name__ == "__main__":
         num_epochs=args.num_epochs,
         device=DEVICE,
     )
+
+    print(losses)
 
     # Save model
     torch.save(model.state_dict(), f"{args.architecture}_model.pth")
