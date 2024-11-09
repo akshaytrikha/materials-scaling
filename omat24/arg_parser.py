@@ -68,5 +68,6 @@ def get_args():
         default=119,
         help="Maximum number of unique elements in a sample",
     )
+    parser.add_argument("--augment", action="store_true", help="Rotation augmentation")
 
     return parser.parse_args()

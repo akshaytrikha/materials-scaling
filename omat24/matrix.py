@@ -1,36 +1,60 @@
 import torch
+from typing import Tuple
 
 
-def rotate_matrix(
-    matrices: torch.Tensor, k: int = 1, dims: tuple = (0, 1)
-) -> torch.Tensor:
-    """
-    Rotate a matrix or a batch of matrices by multiples of 90 degrees.
+def random_rotate_atoms(positions: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+    """Apply a random rotation around each axis (x, y, z) to a set of atomic positions using PyTorch.
 
     Args:
-        matrices (torch.Tensor):
-            - For a single matrix, shape should be [N, M].
-            - For a batch of matrices, shape should be [B, N, M], where B is the batch size.
-        k (int, optional): Number of times to rotate the matrix by 90 degrees.
-                           Positive values rotate counter-clockwise, negative values clockwise. Defaults to 1.
-        dims (tuple, optional): The two dimensions to rotate.
-                                For 2D matrices, the default is (0, 1).
-                                For higher-dimensional tensors, adjust accordingly.
-                                Defaults to (0, 1).
+        positions: torch tensor of shape (N, 3), where each row represents the (x, y, z) coordinates of an atom.
 
     Returns:
-        torch.Tensor: Rotated matrix or batch of rotated matrices with the same shape as input.
+        rotated_positions (torch.Tensor): rotated coordinates with shape (N, 3)
+        R (torch.Tensor): rotation matrix with shape  (3, 3).
     """
-    if matrices.dim() == 2:
-        # Single matrix: [N, M]
-        rotated = torch.rot90(matrices, k=k, dims=dims)
-    elif matrices.dim() == 3:
-        # Move batch dimension to the front if not already
-        rotated = torch.rot90(matrices, k=k, dims=dims)
-    else:
-        raise ValueError("Input tensor must be 2D or 3D (batch of matrices).")
+    # Generate random rotation angles in radians for each axis
+    theta_x = torch.rand(1) * 2 * torch.pi  # random angle for x-axis
+    theta_y = torch.rand(1) * 2 * torch.pi  # random angle for y-axis
+    theta_z = torch.rand(1) * 2 * torch.pi  # random angle for z-axi
 
-    return rotated
+    # Define the rotation matrices around each axis
+    R_x = torch.tensor(
+        [
+            [1, 0, 0],
+            [0, torch.cos(theta_x), -torch.sin(theta_x)],
+            [0, torch.sin(theta_x), torch.cos(theta_x)],
+        ],
+        dtype=positions.dtype,
+        device=positions.device,
+    )
+
+    R_y = torch.tensor(
+        [
+            [torch.cos(theta_y), 0, torch.sin(theta_y)],
+            [0, 1, 0],
+            [-torch.sin(theta_y), 0, torch.cos(theta_y)],
+        ],
+        dtype=positions.dtype,
+        device=positions.device,
+    )
+
+    R_z = torch.tensor(
+        [
+            [torch.cos(theta_z), -torch.sin(theta_z), 0],
+            [torch.sin(theta_z), torch.cos(theta_z), 0],
+            [0, 0, 1],
+        ],
+        dtype=positions.dtype,
+        device=positions.device,
+    )
+
+    # Combine the rotations: first apply x, then y, then z
+    R = R_z @ R_y @ R_x
+
+    # Apply the combined rotation matrix to each atomic position
+    rotated_positions = positions @ R.T
+
+    return rotated_positions, R
 
 
 def compute_distance_matrix(positions: torch.Tensor) -> torch.Tensor:
@@ -47,6 +71,7 @@ def compute_distance_matrix(positions: torch.Tensor) -> torch.Tensor:
 
     # Compute pairwise distances using torch.cdist
     distance_matrix = torch.cdist(positions, positions, p=2)
+
     return distance_matrix
 
 
@@ -67,6 +92,7 @@ def factorize_matrix(distance_matrix: torch.Tensor) -> tuple:
 
     # Perform SVD
     U, S, Vh = torch.linalg.svd(distance_matrix, full_matrices=True)
+
     return U, S, Vh
 
 
@@ -95,4 +121,5 @@ def low_rank_approximation(distance_matrix: torch.Tensor, rank: int) -> torch.Te
     # Note: S needs to be a diagonal matrix for reconstruction
     S_reduced_diag = torch.diag(S_reduced)
     low_rank_matrix = U_reduced @ S_reduced_diag @ Vh_reduced
+
     return low_rank_matrix

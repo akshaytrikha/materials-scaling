@@ -11,7 +11,7 @@ import os
 from typing import Dict
 
 # Internal
-from matrix import compute_distance_matrix
+from matrix import compute_distance_matrix, random_rotate_atoms
 
 MAX_ATOMS = 300
 
@@ -264,7 +264,10 @@ def custom_collate_fn_batch_padded(batch: list) -> Dict[str, torch.Tensor]:
 
 
 def get_dataloaders(
-    dataset: Dataset, data_fraction: float, batch_size: int, batch_padded: bool = True
+    dataset: Dataset,
+    data_fraction: float,
+    batch_size: int,
+    batch_padded: bool = True,
 ):
     """Creates training and validation DataLoaders from a given dataset.
 
@@ -312,14 +315,17 @@ def get_dataloaders(
 
 
 class OMat24Dataset(Dataset):
-    """
+    """Dataset class for the OMat24 dataset with data augmentation via random rotations.
+
     Args:
         dataset_path (Path): Path to the extracted dataset directory.
         config_kwargs (dict, optional): Additional configuration parameters for AseDBDataset. Defaults to {}.
+        augment (bool, optional): Whether to apply data augmentation (random rotations). Defaults to True.
     """
 
-    def __init__(self, dataset_path: Path, config_kwargs={}):
+    def __init__(self, dataset_path: Path, config_kwargs={}, augment: bool = False):
         self.dataset = AseDBDataset(config=dict(src=str(dataset_path), **config_kwargs))
+        self.augment = augment
 
     def __len__(self):
         return len(self.dataset)
@@ -336,11 +342,6 @@ class OMat24Dataset(Dataset):
         atomic_numbers = torch.tensor(atomic_numbers, dtype=torch.long)
         positions = torch.tensor(positions, dtype=torch.float)
 
-        # Compute the distance matrix
-        distance_matrix = compute_distance_matrix(
-            positions
-        )  # Shape: [N_atoms, N_atoms]
-
         # Extract target properties (e.g., energy, forces, stress)
         energy = torch.tensor(atoms.get_potential_energy(), dtype=torch.float)
         forces = torch.tensor(
@@ -350,6 +351,16 @@ class OMat24Dataset(Dataset):
             atoms.get_stress(), dtype=torch.float
         )  # Shape: (6,) if stress tensor
 
+        if self.augment:
+            # Apply random rotation to positions and forces
+            positions, R = random_rotate_atoms(positions)
+            forces = forces @ R.T
+
+        # Compute the distance matrix from (possibly rotated) positions
+        distance_matrix = compute_distance_matrix(
+            positions
+        )  # Shape: [N_atoms, N_atoms]
+
         # Package the input and labels into a dictionary for model processing
         sample = {
             "atomic_numbers": atomic_numbers,  # Element types
@@ -357,7 +368,7 @@ class OMat24Dataset(Dataset):
             "distance_matrix": distance_matrix,  # [N_atoms, N_atoms]
             "energy": energy,  # Target energy
             "forces": forces,  # Target forces on each atom
-            "stress": stress,
+            "stress": stress,  # Target stress tensor
         }
 
         return sample

@@ -12,9 +12,15 @@ if not dataset_path.exists():
     # Fetch and uncompress dataset
     download_dataset(dataset_name)
 
-dataset = OMat24Dataset(dataset_path=dataset_path)
+dataset = OMat24Dataset(dataset_path=dataset_path, augment=False)
 sample = dataset[0]
-print(sample["atomic_numbers"], sample["positions"], sample["energy"], sample["forces"], sample["stress"] )
+print(
+    sample["atomic_numbers"],
+    sample["positions"],
+    sample["energy"],
+    sample["forces"],
+    sample["stress"],
+)
 
 
 # dataloading

@@ -32,7 +32,7 @@ if __name__ == "__main__":
     # Load dataset
     dataset_name = "rattled-300-subsampled"
     dataset_path = Path(f"datasets/{dataset_name}")
-    dataset = OMat24Dataset(dataset_path=dataset_path)
+    dataset = OMat24Dataset(dataset_path=dataset_path, augment=args.augment)
     train_loader, val_loader = get_dataloaders(
         dataset, data_fraction=args.data_fraction, batch_size=args.batch_size
     )
