@@ -38,12 +38,15 @@ def get_args():
     #     help='Dataset size to use: "small" or "big"',
     # )
     parser.add_argument(
-        "--data_fractions",
-        type=float_or_int,
-        nargs="+",
-        default=[0.01, 0.1, 0.25, 0.5, 0.75, 1.0],
-        help="List of data fractions to use for training",
+        "--data_fraction", type=float, default=1.0, help="Fraction of data to use"
     )
+    # parser.add_argument(
+    #     "--data_fractions",
+    #     type=float_or_int,
+    #     nargs="+",
+    #     default=[0.01, 0.1, 0.25, 0.5, 0.75, 1.0],
+    #     help="List of data fractions to use for training",
+    # )
     parser.add_argument(
         "--wandb_log", action="store_true", help="Enable Weights and Biases logging"
     )

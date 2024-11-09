@@ -1,56 +1,54 @@
-# train.py
-
+# External
 import torch
-import argparse
 from pathlib import Path
+import pprint
 
-# Import data handling
+# Internal
 from data import OMat24Dataset, get_dataloaders
+from arg_parser import get_args
+from models.fcn import FCNModel
+import train_utils.fcn_train_utils as train_utils
 
-def main():
-    parser = argparse.ArgumentParser(description="Train Model")
-    parser.add_argument("--dataset_path", type=str, default="datasets/rattled-300-subsampled", help="Path to dataset")
-    parser.add_argument("--model", type=str, required=True, help="Model architecture to use")
-    parser.add_argument("--batch_size", type=int, default=32, help="Batch size")
-    parser.add_argument("--data_fraction", type=float, default=1.0, help="Fraction of data to use")
-    parser.add_argument("--num_epochs", type=int, default=10, help="Number of epochs")
-    parser.add_argument("--learning_rate", type=float, default=1e-3, help="Learning rate")
-    args = parser.parse_args()
+if torch.cuda.is_available():
+    DEVICE = torch.device("cuda")
+elif torch.backends.mps.is_available():
+    DEVICE = torch.device("mps")
+else:
+    DEVICE = torch.device("cpu")
 
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+if __name__ == "__main__":
+    args = get_args()
 
     # Load dataset
-    dataset_path = Path(args.dataset_path)
+    dataset_name = "rattled-300-subsampled"
+    dataset_path = Path(f"datasets/{dataset_name}")
     dataset = OMat24Dataset(dataset_path=dataset_path)
     train_loader, val_loader = get_dataloaders(
         dataset, data_fraction=args.data_fraction, batch_size=args.batch_size
     )
 
-    print(args.model)
+    # Initialize FCN model
+    model = FCNModel()
 
-    # Dynamically import the model and training utilities based on the model name
-    if args.model == "fcn":
-        from models.fcn import FCNModel as Model
-        import train_utils.fcn_train_utils as train_utils
-    else:
-        raise ValueError(f"Unknown model architecture: {args.model}")
-
-    # Initialize model
-    model = Model()
+    # User Hyperparam Feedback
+    pprint.pprint(vars(args))
+    print()
 
     # Initialize optimizer and scheduler
-    optimizer = train_utils.get_optimizer(model, learning_rate=args.learning_rate)
+    optimizer = train_utils.get_optimizer(model, learning_rate=args.lr)
     scheduler = train_utils.get_scheduler(optimizer)
 
     # Train model
     model = train_utils.train(
-        model, train_loader, val_loader, optimizer, scheduler,
-        num_epochs=args.num_epochs, device=device
+        model,
+        train_loader,
+        val_loader,
+        optimizer,
+        scheduler,
+        num_epochs=args.num_epochs,
+        device=DEVICE,
     )
 
     # Save model
-    torch.save(model.state_dict(), f"{args.model}_model.pth")
-    print("Model saved.")
-
-if __name__ == "__main__":
-    main()
+    torch.save(model.state_dict(), f"{args.architecture}_model.pth")
