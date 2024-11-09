@@ -132,7 +132,7 @@ def custom_collate_fn_dataset_padded(batch: list) -> Dict[str, torch.Tensor]:
     }
 
 
-def custom_collate_fn_batch_padded(batch):
+def custom_collate_fn_batch_padded(batch) -> Dict[str, torch.Tensor]:
     """Collate function that pads variable-sized tensors to the maximum size within the batch.
 
     This function pads the `atomic_numbers`, `positions`, and `forces` tensors to ensure
