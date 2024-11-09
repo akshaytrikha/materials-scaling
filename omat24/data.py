@@ -1,3 +1,4 @@
+# External
 from torch.utils.data import DataLoader, Subset, Dataset
 from torch.nn.utils.rnn import pad_sequence
 from pathlib import Path
@@ -8,6 +9,9 @@ import tarfile
 import gdown
 import os
 from typing import Dict
+
+# Internal
+from matrix import compute_distance_matrix
 
 MAX_ATOMS = 300
 
@@ -73,7 +77,10 @@ def pad_tensor(
     padding = [padding_value] * pad_length
     if dim == 0:
         padding = torch.full(
-            (pad_length, *tensor.shape[1:]), padding_value, dtype=tensor.dtype
+            (pad_length, *tensor.shape[1:]),
+            padding_value,
+            dtype=tensor.dtype,
+            device=tensor.device,
         )
         return torch.cat([tensor, padding], dim=dim)
     elif dim == 1:
@@ -81,27 +88,73 @@ def pad_tensor(
             (tensor.size(0), pad_length, *tensor.shape[2:]),
             padding_value,
             dtype=tensor.dtype,
+            device=tensor.device,
         )
         return torch.cat([tensor, padding], dim=dim)
     else:
         raise ValueError("Only dimensions 0 and 1 are supported for padding.")
 
 
+def pad_matrix(
+    matrix: torch.Tensor, pad_size: int, padding_value: float = 0.0
+) -> torch.Tensor:
+    """
+    Pad a 2D matrix to [pad_size, pad_size].
+
+    Args:
+        matrix (torch.Tensor): Tensor of shape [N, M].
+        pad_size (int): Desired size after padding.
+        padding_value (float, optional): Value to use for padding. Defaults to 0.0.
+
+    Returns:
+        torch.Tensor: Padded matrix of shape [pad_size, pad_size].
+    """
+    current_size = matrix.size(0)
+    if current_size > pad_size or matrix.size(1) > pad_size:
+        raise ValueError(f"Matrix size {matrix.size()} exceeds pad_size {pad_size}.")
+
+    # Pad rows (dimension 0)
+    pad_rows = pad_size - matrix.size(0)
+    if pad_rows > 0:
+        pad_row = torch.full(
+            (pad_rows, matrix.size(1)),
+            padding_value,
+            dtype=matrix.dtype,
+            device=matrix.device,
+        )
+        matrix = torch.cat([matrix, pad_row], dim=0)
+
+    # Pad columns (dimension 1)
+    pad_cols = pad_size - matrix.size(1)
+    if pad_cols > 0:
+        pad_col = torch.full(
+            (matrix.size(0), pad_cols),
+            padding_value,
+            dtype=matrix.dtype,
+            device=matrix.device,
+        )
+        matrix = torch.cat([matrix, pad_col], dim=1)
+
+    return matrix
+
+
 def custom_collate_fn_dataset_padded(batch: list) -> Dict[str, torch.Tensor]:
     """Collate function that pads all samples to a fixed number of atoms (MAX_ATOMS).
 
     Args:
-        batch (Dict[str]): A dictionary of a batch mapping to lists
+        batch (List[Dict[str, torch.Tensor]]): A list of samples.
+
     Returns:
-        batch (Dict[str]): A dictionary of a batch mapping to lists
+        Dict[str, torch.Tensor]: A dictionary of batched and padded tensors.
     """
     atomic_numbers = [sample["atomic_numbers"] for sample in batch]
     positions = [sample["positions"] for sample in batch]
+    distance_matrices = [sample["distance_matrix"] for sample in batch]
     energies = torch.stack([sample["energy"] for sample in batch], dim=0)
     forces = [sample["forces"] for sample in batch]
     stresses = torch.stack([sample["stress"] for sample in batch], dim=0)
 
-    # Pad atomic_numbers, positions, and forces to MAX_ATOMS
+    # Pad atomic_numbers, positions, forces to MAX_ATOMS
     padded_atomic_numbers = torch.stack(
         [
             pad_tensor(tensor, MAX_ATOMS, dim=0, padding_value=0)
@@ -123,31 +176,43 @@ def custom_collate_fn_dataset_padded(batch: list) -> Dict[str, torch.Tensor]:
         dim=0,
     )  # Shape: [batch_size, MAX_ATOMS, 3]
 
-    return {
+    # Pad distance matrices to [MAX_ATOMS, MAX_ATOMS]
+    padded_distance_matrices = torch.stack(
+        [
+            pad_matrix(tensor, MAX_ATOMS, padding_value=0.0)
+            for tensor in distance_matrices
+        ],
+        dim=0,
+    )  # Shape: [batch_size, MAX_ATOMS, MAX_ATOMS]
+
+    return_dict = {
         "atomic_numbers": padded_atomic_numbers,  # [batch_size, MAX_ATOMS]
         "positions": padded_positions,  # [batch_size, MAX_ATOMS, 3]
+        "distance_matrix": padded_distance_matrices,  # [batch_size, MAX_ATOMS, MAX_ATOMS]
         "energy": energies,  # [batch_size]
         "forces": padded_forces,  # [batch_size, MAX_ATOMS, 3]
         "stress": stresses,  # [batch_size, 6]
     }
 
+    return return_dict
 
-def custom_collate_fn_batch_padded(batch):
+
+def custom_collate_fn_batch_padded(batch: list) -> Dict[str, torch.Tensor]:
     """Collate function that pads variable-sized tensors to the maximum size within the batch.
 
-    This function pads the `atomic_numbers`, `positions`, and `forces` tensors to ensure
+    This function pads the `atomic_numbers`, `positions`, `forces`, and `distance_matrix` tensors to ensure
     that all samples in the batch have the same number of atoms (`max_atoms`). Padding is
-    applied with a default value of 0 for atomic numbers and 0.0 for positions and forces.
+    applied with a default value of 0 for atomic numbers and 0.0 for positions, forces, and distance matrices.
 
     Args:
-        batch (Dict[str]): A dictionary of a batch mapping to lists
+        batch (List[Dict[str, torch.Tensor]]): A list of samples.
 
     Returns:
-        batch (Dict[str]): A dictionary of a batch mapping to lists
+        Dict[str, torch.Tensor]: A dictionary of batched and padded tensors.
     """
-    # Separate each field
     atomic_numbers = [sample["atomic_numbers"] for sample in batch]
     positions = [sample["positions"] for sample in batch]
+    distance_matrices = [sample["distance_matrix"] for sample in batch]
     energies = torch.stack([sample["energy"] for sample in batch], dim=0)
     forces = [sample["forces"] for sample in batch]
     stresses = torch.stack([sample["stress"] for sample in batch], dim=0)
@@ -155,20 +220,47 @@ def custom_collate_fn_batch_padded(batch):
     # Determine the maximum number of atoms in the batch
     max_atoms = max(sample.size(0) for sample in atomic_numbers)
 
-    # Pad atomic_numbers and positions
-    padded_atomic_numbers = pad_sequence(
-        atomic_numbers, batch_first=True, padding_value=0
-    )
-    padded_positions = pad_sequence(positions, batch_first=True, padding_value=0.0)
-    padded_forces = pad_sequence(forces, batch_first=True, padding_value=0.0)
+    # Pad atomic_numbers, positions, forces to max_atoms
+    padded_atomic_numbers = torch.stack(
+        [
+            pad_tensor(tensor, max_atoms, dim=0, padding_value=0)
+            for tensor in atomic_numbers
+        ],
+        dim=0,
+    )  # Shape: [batch_size, max_atoms]
 
-    return {
-        "atomic_numbers": padded_atomic_numbers,  # Tensor of shape [batch_size, max_atoms]
-        "positions": padded_positions,  # Tensor of shape [batch_size, max_atoms, 3]
-        "energy": energies,  # Tensor of shape [batch_size]
-        "forces": padded_forces,  # Tensor of shape [batch_size, max_atoms, 3]
-        "stress": stresses,  # Tensor of shape [batch_size, 6]
+    padded_positions = torch.stack(
+        [
+            pad_tensor(tensor, max_atoms, dim=0, padding_value=0.0)
+            for tensor in positions
+        ],
+        dim=0,
+    )  # Shape: [batch_size, max_atoms, 3]
+
+    padded_forces = torch.stack(
+        [pad_tensor(tensor, max_atoms, dim=0, padding_value=0.0) for tensor in forces],
+        dim=0,
+    )  # Shape: [batch_size, max_atoms, 3]
+
+    # Pad distance matrices to [max_atoms, max_atoms]
+    padded_distance_matrices = torch.stack(
+        [
+            pad_matrix(tensor, max_atoms, padding_value=0.0)
+            for tensor in distance_matrices
+        ],
+        dim=0,
+    )  # Shape: [batch_size, max_atoms, max_atoms]
+
+    return_dict = {
+        "atomic_numbers": padded_atomic_numbers,  # [batch_size, max_atoms]
+        "positions": padded_positions,  # [batch_size, max_atoms, 3]
+        "distance_matrix": padded_distance_matrices,  # [batch_size, max_atoms, max_atoms]
+        "energy": energies,  # [batch_size]
+        "forces": padded_forces,  # [batch_size, max_atoms, 3]
+        "stress": stresses,  # [batch_size, 6]
     }
+
+    return return_dict
 
 
 def get_dataloaders(
@@ -244,6 +336,11 @@ class OMat24Dataset(Dataset):
         atomic_numbers = torch.tensor(atomic_numbers, dtype=torch.long)
         positions = torch.tensor(positions, dtype=torch.float)
 
+        # Compute the distance matrix
+        distance_matrix = compute_distance_matrix(
+            positions
+        )  # Shape: [N_atoms, N_atoms]
+
         # Extract target properties (e.g., energy, forces, stress)
         energy = torch.tensor(atoms.get_potential_energy(), dtype=torch.float)
         forces = torch.tensor(
@@ -257,6 +354,7 @@ class OMat24Dataset(Dataset):
         sample = {
             "atomic_numbers": atomic_numbers,  # Element types
             "positions": positions,  # 3D atomic coordinates
+            "distance_matrix": distance_matrix,  # [N_atoms, N_atoms]
             "energy": energy,  # Target energy
             "forces": forces,  # Target forces on each atom
             "stress": stress,
