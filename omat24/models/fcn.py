@@ -11,7 +11,7 @@ class FCNModel(nn.Module):
         self.hidden_dim = hidden_dim
 
         # Embedding for atomic numbers
-        self.embedding = nn.Embedding(118, embedding_dim)  # Assuming atomic numbers < 118
+        self.embedding = nn.Embedding(119, embedding_dim)  # Assuming atomic numbers < 119
 
         # Fully connected layers
         self.fc1 = nn.Linear(embedding_dim + 3, hidden_dim)
@@ -34,7 +34,7 @@ class FCNModel(nn.Module):
             stress: Tensor of shape [batch_size, 6]
         """
         # Create a mask for valid atoms (non-padded)
-        mask = (atomic_numbers != 0)  # Shape: [batch_size, max_atoms]
+        mask = (atomic_numbers != 0).unsqueeze(-1)  # Shape: [batch_size, max_atoms, 1]
 
         # Embed atomic numbers
         atomic_embeddings = self.embedding(atomic_numbers)  # [batch_size, max_atoms, embedding_dim]
@@ -48,16 +48,16 @@ class FCNModel(nn.Module):
 
         # Predict forces
         forces = self.force_output(x)  # [batch_size, max_atoms, 3]
-        forces = forces * mask.unsqueeze(-1).float()  # Mask padded atoms
+        forces = forces * mask.float()  # Mask padded atoms
 
         # Predict per-atom energy contributions and sum
         energy_contrib = self.energy_output(x).squeeze(-1)  # [batch_size, max_atoms]
-        energy_contrib = energy_contrib * mask.float()
+        energy_contrib = energy_contrib * mask.squeeze(-1).float()
         energy = energy_contrib.sum(dim=1)  # [batch_size]
 
         # Predict per-atom stress contributions and sum
         stress_contrib = self.stress_output(x)  # [batch_size, max_atoms, 6]
-        stress_contrib = stress_contrib * mask.unsqueeze(-1).float()
+        stress_contrib = stress_contrib * mask.float()
         stress = stress_contrib.sum(dim=1)  # [batch_size, 6]
 
         return forces, energy, stress

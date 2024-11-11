@@ -1,105 +1,42 @@
-# train.py
-
+# External
 import torch
-import torch.nn as nn
-from torch.utils.data import DataLoader
-import argparse
 from pathlib import Path
+import pprint
 
-# Import data handling
+# Internal
 from data import OMat24Dataset, get_dataloaders
 from arg_parser import get_args
-from models.transformer_models import XTransformerModel
 from models.fcn import FCNModel
+import train_utils.fcn_train_utils as train_utils
+from models.transformer_models import XTransformerModel
 
 # Import optimizer and training utilities
 from train_utils.fcn_train_utils import get_optimizer, compute_loss
 
+# Set seed & device
+seed = 1000
+torch.manual_seed(seed)
+if torch.cuda.is_available():
+    DEVICE = torch.device("cuda")
+    torch.cuda.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)  # If using multi-GPU.
+    # Ensure deterministic behavior for CUDA operations
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
 
-def train(model, train_loader, val_loader, optimizer, num_epochs, device):
-    model = model.to(device)
-    for epoch in range(num_epochs):
-        model.train()
-        total_loss = 0.0
-        for batch in train_loader:
-            # Move data to device
-            atomic_numbers = batch["atomic_numbers"].to(device)
-            positions = batch["positions"].to(device)
-            forces_true = batch["forces"].to(device)
-            energy_true = batch["energy"].to(device)
-            stress_true = batch["stress"].to(device)
-
-            # Create mask for valid atoms
-            mask = atomic_numbers != 0  # Shape: [batch_size, max_atoms]
-
-            # Zero gradients
-            optimizer.zero_grad()
-
-            # Forward pass
-            forces_pred, energy_pred, stress_pred = model(atomic_numbers, positions)
-
-            # Compute loss
-            loss = compute_loss(
-                forces_pred,
-                energy_pred,
-                stress_pred,
-                forces_true,
-                energy_true,
-                stress_true,
-                mask,
-            )
-
-            # Backward pass and optimization
-            loss.backward()
-            optimizer.step()
-
-            total_loss += loss.item()
-
-        avg_loss = total_loss / len(train_loader)
-        print(f"Epoch {epoch+1}/{num_epochs}, Training Loss: {avg_loss:.4f}")
-
-        # # Validation step
-        # validate(model, val_loader, device)
-
-    return model
+elif torch.backends.mps.is_available():
+    DEVICE = torch.device("mps")
+else:
+    DEVICE = torch.device("cpu")
 
 
-# def validate(model, val_loader, device):
-#     model.eval()
-#     total_loss = 0.0
-#     with torch.no_grad():
-#         for batch in val_loader:
-#             # Move data to device
-#             atomic_numbers = batch["atomic_numbers"].to(device)
-#             positions = batch["positions"].to(device)
-#             forces_true = batch["forces"].to(device)
-#             energy_true = batch["energy"].to(device)
-#             stress_true = batch["stress"].to(device)
-
-#             # Create mask for valid atoms
-#             mask = atomic_numbers != 0
-
-#             # Forward pass
-#             forces_pred, energy_pred, stress_pred = model(atomic_numbers, positions)
-
-#             # Compute loss
-#             loss = compute_loss(
-#                 forces_pred, energy_pred, stress_pred,
-#                 forces_true, energy_true, stress_true, mask
-#             )
-
-#             total_loss += loss.item()
-
-#     avg_loss = total_loss / len(val_loader)
-#     print(f"Validation Loss: {avg_loss:.4f}")
-
-
-def main():
+if __name__ == "__main__":
     args = get_args()
 
     # Load dataset
-    dataset_path = Path("datasets/rattled-300-subsampled")
-    dataset = OMat24Dataset(dataset_path=dataset_path)
+    dataset_name = "rattled-300-subsampled"
+    dataset_path = Path(f"datasets/{dataset_name}")
+    dataset = OMat24Dataset(dataset_path=dataset_path, augment=args.augment)
     train_loader, val_loader = get_dataloaders(
         dataset, data_fraction=0.1, batch_size=args.batch_size, batch_padded=False
     )
@@ -116,23 +53,26 @@ def main():
         d_ff=64,
     )
 
-    # Initialize optimizer
-    optimizer = get_optimizer(model, learning_rate=args.lr)
+    # Initialize optimizer and scheduler
+    optimizer = train_utils.get_optimizer(model, learning_rate=args.lr)
+    scheduler = train_utils.get_scheduler(optimizer)
+
+    # User Hyperparam Feedback
+    pprint.pprint(vars(args))
+    print()
 
     # Train model
-    model = train(
+    model, losses = train_utils.train(
         model,
         train_loader,
         val_loader,
         optimizer,
+        scheduler,
         num_epochs=args.num_epochs,
-        device="mps",
+        device=DEVICE,
     )
 
-    # # Save model
-    # torch.save(model.state_dict(), "fcn_model.pth")
-    # print("Model saved.")
+    print(losses)
 
-
-if __name__ == "__main__":
-    main()
+    # Save model
+    torch.save(model.state_dict(), f"{args.architecture}_model.pth")
