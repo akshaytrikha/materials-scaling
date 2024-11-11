@@ -10,9 +10,6 @@ from models.fcn import FCNModel
 import train_utils.fcn_train_utils as train_utils
 from models.transformer_models import XTransformerModel
 
-# Import optimizer and training utilities
-from train_utils.fcn_train_utils import get_optimizer, compute_loss
-
 # Set seed & device
 seed = 1000
 torch.manual_seed(seed)
