@@ -4,6 +4,7 @@ from pathlib import Path
 import pprint
 import json
 from datetime import datetime
+from tqdm import tqdm
 
 # Internal
 from data import OMat24Dataset, get_dataloaders
@@ -12,7 +13,7 @@ from models.fcn import MetaFCNModels
 import train_utils.fcn_train_utils as train_utils
 
 # Set seed & device
-seed = 1000
+seed = 1024
 torch.manual_seed(seed)
 if torch.cuda.is_available():
     DEVICE = torch.device("cuda")
@@ -30,6 +31,9 @@ def train_model(model, train_loader, val_loader, args):
     optimizer = train_utils.get_optimizer(model, learning_rate=args.lr)
     scheduler = train_utils.get_scheduler(optimizer)
 
+    # Create progress bar for epochs
+    pbar = tqdm(range(args.num_epochs), desc='Training')
+    
     # Train model
     model, losses = train_utils.train(
         model,
@@ -37,7 +41,7 @@ def train_model(model, train_loader, val_loader, args):
         val_loader,
         optimizer,
         scheduler,
-        num_epochs=args.num_epochs,
+        pbar,
         device=DEVICE,
     )
 
@@ -51,21 +55,20 @@ if __name__ == "__main__":
     dataset_path = Path(f"datasets/{dataset_name}")
     dataset = OMat24Dataset(dataset_path=dataset_path, augment=args.augment)
     train_loader, val_loader = get_dataloaders(
-        dataset, data_fraction=args.data_fraction, batch_size=args.batch_size
+        dataset, data_fraction=args.data_fraction, batch_size=args.batch_size, batch_padded=True
     )
 
     # Initialize meta model class
-    meta_models = MetaFCNModels(max_atoms=args.max_n_atoms)
+    meta_models = MetaFCNModels(vocab_size=args.max_n_elements)
     
     # Dictionary to store results for all models
     all_results = {}
     
     # Train each model configuration
+    print("\nStarting training for multiple architectures...")
     for model_idx, model in enumerate(meta_models):
-        print(f"\nTraining Model {model_idx + 1}/{len(meta_models)}")
-        print(f"Architecture: embedding_dim={model.embedding_dim}, "
-              f"hidden_dim={model.hidden_dim}, depth={model.depth}")
-        print(f"Number of parameters: {model.num_params:,}")
+        print(f"\nModel {model_idx + 1}/{len(meta_models)}")
+        print(f"Config: e{model.embedding_dim}_h{model.hidden_dim}_d{model.depth} ({model.num_params:,} params)")
 
         # Train the model
         trained_model, losses = train_model(model, train_loader, val_loader, args)
@@ -98,7 +101,8 @@ if __name__ == "__main__":
         }
     
     # Save all results to JSON
-    results_path = f"results_{timestamp}.json"
+    results_path = Path("results") / f"results_{timestamp}.json"
+    Path("results").mkdir(exist_ok=True)
     with open(results_path, 'w') as f:
         json.dump(all_results, f, indent=4)
     
