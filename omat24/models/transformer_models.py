@@ -1,40 +1,73 @@
 import torch
+import torch.nn as nn
 from x_transformers import TransformerWrapper, Decoder
 
-# embedding
-
-class TokenEmbedding(torch.nn.Module):
-    def __init__(self, dim, num_tokens, l2norm_embed = False):
-        super().__init__()
-        self.l2norm_embed = l2norm_embed
-        self.emb = torch.nn.Embedding(num_tokens, dim)
-
-    def forward(self, x):
-        token_emb = self.emb(x.long())
-        return torch.l2norm(token_emb) if self.l2norm_embed else token_emb
 
 class XTransformerModel(torch.nn.Module):
-    def __init__(self, vocab_size, max_seq_len, d_model, n_layers, n_heads, d_ff):
+    def __init__(
+        self, num_elements, d_model, n_layers, n_heads, d_ff, transformer_output_dim
+    ):
         super().__init__()
-        self.position_embedding = torch.nn.Linear(3, d_model)  # Assuming positions are 3D
+        # Atomic embedding for atomic numbers
+        self.atomic_emb = nn.Embedding(num_elements, d_model)
+
+        # Transformer definition
         self.transformer = TransformerWrapper(
-            num_tokens=vocab_size,
-            max_seq_len=max_seq_len,
+            num_tokens=None,  # No token-based sequence; we use embeddings directly
+            max_seq_len=None,  # No explicit sequence length
             attn_layers=Decoder(
                 dim=d_model,
                 depth=n_layers,
                 heads=n_heads,
                 ff_mult=d_ff // d_model,
             ),
-            token_emb=TokenEmbedding(d_model, vocab_size)
         )
-        self.energy_predictor = torch.nn.Linear(d_model, 1)  # Example for energy prediction
+
+        # Predictors for Energy, Forces, and Stresses
+        self.energy_predictor = nn.Linear(
+            transformer_output_dim, 1
+        )  # Energy: [M, 1, 1]
+        self.forces_predictor = nn.Linear(
+            transformer_output_dim, 3
+        )  # Forces: [M, A, 3]
+        self.stresses_predictor = nn.Linear(
+            transformer_output_dim, 3
+        )  # Stresses: [M, 1, 3]
 
     def forward(self, atomic_numbers, positions, src_key_padding_mask=None):
-        # atomic_emb = self.atomic_embedding(atomic_numbers)  # [batch, seq, d_model]
-        positions_emb = self.position_embedding(positions)
-        print(positions_emb.shape)
-        transformer_output = self.transformer(atomic_numbers, mask=src_key_padding_mask, pos=positions_emb)
-        breakpoint()
-        energy = self.energy_predictor(transformer_output)  # Example aggregation
-        return energy
+        """
+        Args:
+            atomic_numbers: Tensor of shape [M, A, 1] (atomic numbers for each atom in a batch)
+            positions: Tensor of shape [M, A, 3] (positions of atoms in 3D space)
+            src_key_padding_mask: Optional mask for padding
+
+        Returns:
+            energy: Tensor of shape [M, 1, 1]
+            forces: Tensor of shape [M, A, 3]
+            stresses: Tensor of shape [M, 1, 3]
+        """
+        # Embedding atomic numbers
+        atomic_emb = self.atomic_emb(atomic_numbers)  # Shape: [M, A, d_model]
+
+        # Concatenate embeddings and positions
+        emb = torch.cat([atomic_emb, positions], dim=-1)  # Shape: [M, A, d_model + 3]
+
+        # Pass concatenated data through the transformer
+        transformer_output = self.transformer(
+            emb, mask=src_key_padding_mask
+        )  # Shape: [M, A, transformer_output_dim]
+
+        # Energy: Global pooling and linear layer
+        energy = self.energy_predictor(
+            transformer_output.mean(dim=1)
+        )  # Shape: [M, 1, 1]
+
+        # Forces: Per-atom output via linear layer
+        forces = self.forces_predictor(transformer_output)  # Shape: [M, A, 3]
+
+        # Stresses: Global pooling and linear layer
+        stresses = self.stresses_predictor(
+            transformer_output.mean(dim=1)
+        )  # Shape: [M, 1, 3]
+
+        return energy, forces, stresses
