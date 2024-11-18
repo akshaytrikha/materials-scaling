@@ -34,6 +34,7 @@ class XTransformerModel(torch.nn.Module):
         # atomic_emb = self.atomic_embedding(atomic_numbers)  # [batch, seq, d_model]
         positions_emb = self.position_embedding(positions)
         print(positions_emb.shape)
-        logits = self.transformer(atomic_numbers, mask=src_key_padding_mask, pos=positions_emb)
-        energy = self.energy_predictor(logits.mean(dim=1))  # Example aggregation
+        transformer_output = self.transformer(atomic_numbers, mask=src_key_padding_mask, pos=positions_emb)
+        breakpoint()
+        energy = self.energy_predictor(transformer_output)  # Example aggregation
         return energy

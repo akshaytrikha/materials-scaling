@@ -63,15 +63,6 @@ if __name__ == "__main__":
 
     # # # Initialize model
 
-    # model = XTransformerModel(
-    #     vocab_size=args.max_n_elements,
-    #     max_seq_len=args.max_n_atoms,
-    #     d_model=64,
-    #     n_layers=6,
-    #     n_heads=8,
-    #     d_ff=64,
-    # )
-
     # # Initialize optimizer and scheduler
     # optimizer = train_utils.get_optimizer(model, learning_rate=args.lr)
     # scheduler = train_utils.get_scheduler(optimizer)
@@ -97,7 +88,18 @@ if __name__ == "__main__":
     # torch.save(model.state_dict(), f"{args.architecture}_model.pth")
 
     # Initialize meta model class
-    meta_models = MetaFCNModels(vocab_size=args.max_n_elements)
+    if args.architecture == "FCN":
+        meta_models = MetaFCNModels(vocab_size=args.max_n_elements)
+    else:
+        model = XTransformerModel(
+            vocab_size=args.max_n_elements,
+            max_seq_len=args.max_n_atoms,
+            d_model=64,
+            n_layers=6,
+            n_heads=8,
+            d_ff=64
+        )
+        meta_models = [model]
 
     # Dictionary to store results for all models
     all_results = {}
@@ -106,9 +108,9 @@ if __name__ == "__main__":
     print("\nStarting training for multiple architectures...")
     for model_idx, model in enumerate(meta_models):
         print(f"\nModel {model_idx + 1}/{len(meta_models)}")
-        print(
-            f"Config: e{model.embedding_dim}_h{model.hidden_dim}_d{model.depth} ({model.num_params:,} params)"
-        )
+        # print(
+        #     f"Config: e{model.embedding_dim}_h{model.hidden_dim}_d{model.depth} ({model.num_params:,} params)"
+        # )
 
         # Train the model
         trained_model, losses = train_model(model, train_loader, val_loader, args)
