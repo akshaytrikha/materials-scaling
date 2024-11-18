@@ -13,7 +13,7 @@ class XTransformerModel(torch.nn.Module):
 
         # Transformer definition
         self.transformer = TransformerWrapper(
-            num_tokens=None,  # No token-based sequence; we use embeddings directly
+            num_tokens=119,  # No token-based sequence; we use embeddings directly
             max_seq_len=None,  # No explicit sequence length
             attn_layers=Decoder(
                 dim=d_model,
@@ -56,7 +56,7 @@ class XTransformerModel(torch.nn.Module):
         transformer_output = self.transformer(
             emb, mask=src_key_padding_mask
         )  # Shape: [M, A, transformer_output_dim]
-
+        breakpoint()
         # Energy: Global pooling and linear layer
         energy = self.energy_predictor(
             transformer_output.mean(dim=1)
