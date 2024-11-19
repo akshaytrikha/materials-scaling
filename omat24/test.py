@@ -1,5 +1,5 @@
 import subprocess
-import ast
+import json
 import re
 import numpy as np
 
@@ -22,29 +22,21 @@ result = subprocess.run(
     text=True,
 )
 
-# ------------------ Extract stdout ------------------
-stdout = result.stdout
-
-# regex to match dictionaries in stdout
-dict_pattern = re.compile(r"\{(?:[^{}]|(?:\{[^{}]*\}))*\}")
-dict_strings = dict_pattern.findall(stdout)
-
-dicts = []
-for ds in dict_strings:
-    try:
-        parsed_dict = ast.literal_eval(ds)
-        dicts += [parsed_dict]
-    except (ValueError, SyntaxError) as e:
-        print(f"Failed to parse dictionary: {ds}\nError: {e}")
+match = re.search(r"Results saved to (?P<results_path>.+)", result.stdout)
+results_path = match.group("results_path")  # results path is a json file
 
 # ------------------ Test cases ------------------
-setup = dicts[0]
-losses = dicts[1][0]
+# Load results
+with open(results_path, "r") as f:
+    result_json = json.load(f)
+    config = result_json["model_0"]["config"]
+    losses = result_json["model_0"]["losses"]["0"]
 
-assert setup["architecture"] == "FCN"
-assert setup["epochs"] == 1
-assert setup["data_fraction"] == 0.01
-assert setup["batch_size"] == 32
+# Test config
+assert config["embedding_dim"] == 32
+assert config["depth"] == 2
+assert config["num_params"] == 15338
 
-np.testing.assert_allclose(losses["train_loss"], 1713, rtol=0.1)
-np.testing.assert_allclose(losses["val_loss"], 967, rtol=0.1)
+# Test losses
+np.testing.assert_allclose(losses["train_loss"], 761, rtol=0.1)
+np.testing.assert_allclose(losses["val_loss"], 535, rtol=0.1)

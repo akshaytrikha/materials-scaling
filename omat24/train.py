@@ -56,7 +56,7 @@ if __name__ == "__main__":
         )
         meta_models = [model]
 
-    # Dictionary to store results for all models
+    # Store results for all models
     all_results = {}
 
     # Train each model configuration
