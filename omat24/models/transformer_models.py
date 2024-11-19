@@ -91,7 +91,9 @@ class CombinedEmbedding(nn.Module):
         """
         token_embeddings = self.token_emb(x)  # [M, A, d_model]
         pos_embeddings = self.position_proj(positions)  # [M, A, d_model]
-        combined_emb = token_embeddings + pos_embeddings  # [M, A, d_model]
+        combined_emb = (
+            token_embeddings + pos_embeddings
+        )  # TODO: this should be concat such that dim is [M, A, d_model + 3]
         return combined_emb
 
 
@@ -109,11 +111,15 @@ class XTransformerModel(TransformerWrapper):
                 ff_mult=kwargs.get("d_ff_mult", 4),
             ),
             use_abs_pos_emb=False,  # Disable internal pos embeddings, ensure no additional embeddings are used
-            # embeds=None,
         )
 
         # Initialize the combined embedding
         self.emb = CombinedEmbedding(num_tokens, d_model)
+
+        # Predictors for Energy, Forces, and Stresses
+        self.energy_predictor = nn.Linear(d_model, 1)  # Energy: [M, 1]
+        self.forces_predictor = nn.Linear(d_model, 3)  # Forces: [M, A, 3]
+        self.stresses_predictor = nn.Linear(d_model, 3)  # Stresses: [M, 3]
 
     def forward(self, x, positions, mask=None):
         """
@@ -130,6 +136,14 @@ class XTransformerModel(TransformerWrapper):
         # Pass combined embeddings to the transformer
         output = self.attn_layers(x=combined_emb, mask=mask)  # [M, A, d_model]
 
-        breakpoint()
+        # Energy: Global pooling and linear layer
+        pooled_output = output.mean(dim=1)  # Shape: [M, transformer_input_dim]
+        energy = self.energy_predictor(pooled_output)  # Shape: [M, 1]
 
-        return output
+        # Forces: Per-atom output via linear layer
+        forces = self.forces_predictor(output)  # Shape: [M, A, 3]
+
+        # Stresses: Global pooling and linear layer
+        stresses = self.stresses_predictor(pooled_output)  # Shape: [M, 3]
+
+        return energy, forces, stresses
