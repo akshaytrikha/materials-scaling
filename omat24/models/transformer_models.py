@@ -1,76 +1,3 @@
-# import torch
-# import torch.nn as nn
-# from x_transformers import TransformerWrapper, Encoder
-
-
-# class XTransformerModel(torch.nn.Module):
-#     def __init__(self, num_elements, d_model, n_layers, n_heads, d_ff_mult):
-#         super().__init__()
-#         # Atomic embedding for atomic numbers
-#         self.atomic_emb = nn.Embedding(num_elements, d_model)
-
-#         # Total input dimension to transformer
-#         transformer_input_dim = d_model + 3
-
-#         # Transformer definition
-#         self.transformer = TransformerWrapper(
-#             use_token_emb=False,  # Disable internal token embedding
-#             attn_layers=Encoder(
-#                 dim=transformer_input_dim,
-#                 depth=n_layers,
-#                 heads=n_heads,
-#                 ff_mult=d_ff_mult,  # Set feedforward dimension multiplier
-#             ),
-#             use_abs_pos_emb=False,  # Disable absolute positional embeddings
-#             use_rotary_pos_emb=False,  # Disable rotary positional embeddings
-#         )
-
-#         # Predictors for Energy, Forces, and Stresses
-#         self.energy_predictor = nn.Linear(transformer_input_dim, 1)  # Energy: [M, 1]
-#         self.forces_predictor = nn.Linear(transformer_input_dim, 3)  # Forces: [M, A, 3]
-#         self.stresses_predictor = nn.Linear(
-#             transformer_input_dim, 3
-#         )  # Stresses: [M, 3]
-
-#     def forward(self, atomic_numbers, positions, src_key_padding_mask=None):
-#         """
-#         Args:
-#             atomic_numbers: Tensor of shape [M, A] (atomic numbers for each atom in a batch)
-#             positions: Tensor of shape [M, A, 3] (positions of atoms in 3D space)
-#             src_key_padding_mask: Optional mask for padding
-
-#         Returns:
-#             energy: Tensor of shape [M, 1]
-#             forces: Tensor of shape [M, A, 3]
-#             stresses: Tensor of shape [M, 3]
-#         """
-#         # Embedding atomic numbers
-#         atomic_emb = self.atomic_emb(atomic_numbers)  # Shape: [M, A, d_model]
-
-#         # Concatenate embeddings and positions
-#         emb = torch.cat([atomic_emb, positions], dim=-1)  # Shape: [M, A, d_model + 3]
-
-#         # Pass concatenated data through the transformer
-#         transformer_output = self.transformer(
-#             emb, mask=src_key_padding_mask
-#         )  # Shape: [M, A, transformer_input_dim]
-
-#         # Energy: Global pooling and linear layer
-#         pooled_output = transformer_output.mean(
-#             dim=1
-#         )  # Shape: [M, transformer_input_dim]
-#         energy = self.energy_predictor(pooled_output)  # Shape: [M, 1]
-
-#         # Forces: Per-atom output via linear layer
-#         forces = self.forces_predictor(transformer_output)  # Shape: [M, A, 3]
-
-#         # Stresses: Global pooling and linear layer
-#         stresses = self.stresses_predictor(pooled_output)  # Shape: [M, 3]
-
-#         return energy, forces, stresses
-
-
-import torch
 import torch.nn as nn
 from x_transformers import TransformerWrapper, Encoder
 
@@ -89,17 +16,16 @@ class CombinedEmbedding(nn.Module):
         Returns:
             combined_emb: Tensor of shape [M, A, d_model]
         """
-        token_embeddings = self.token_emb(x)  # [M, A, d_model]
-        pos_embeddings = self.position_proj(positions)  # [M, A, d_model]
-        combined_emb = (
-            token_embeddings + pos_embeddings
-        )  # TODO: this should be concat such that dim is [M, A, d_model + 3]
+        token_embeddings = self.token_emb(x)
+        pos_embeddings = self.position_proj(positions)
+        combined_emb = token_embeddings + pos_embeddings  # [M, A, d_model]
+
         return combined_emb
 
 
 class XTransformerModel(TransformerWrapper):
     def __init__(self, num_tokens, d_model, **kwargs):
-        # Initialize the base TransformerWrapper without its own embedding
+        # Init base TransformerWrapper without its own embedding
         super().__init__(
             num_tokens=num_tokens,
             max_seq_len=300,
