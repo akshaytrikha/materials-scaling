@@ -24,7 +24,12 @@ class CombinedEmbedding(nn.Module):
 
 
 class XTransformerModel(TransformerWrapper):
-    def __init__(self, num_tokens, d_model, **kwargs):
+    def __init__(self, num_tokens, d_model, depth, n_heads, d_ff_mult):
+        self.embedding_dim = d_model
+        self.depth = depth
+        self.n_heads = n_heads
+        self.d_ff_mult = d_ff_mult
+
         # Init base TransformerWrapper without its own embedding
         super().__init__(
             num_tokens=num_tokens,
@@ -32,9 +37,9 @@ class XTransformerModel(TransformerWrapper):
             emb_dim=d_model,
             attn_layers=Encoder(
                 dim=d_model,
-                depth=kwargs.get("n_layers", 6),
-                heads=kwargs.get("n_heads", 8),
-                ff_mult=kwargs.get("d_ff_mult", 4),
+                depth=depth,
+                heads=n_heads,
+                ff_mult=d_ff_mult,
             ),
             use_abs_pos_emb=False,  # Disable internal pos embeddings, ensure no additional embeddings are used
         )
@@ -45,7 +50,10 @@ class XTransformerModel(TransformerWrapper):
         # Predictors for Energy, Forces, and Stresses
         self.energy_predictor = nn.Linear(d_model, 1)  # Energy: [M, 1]
         self.forces_predictor = nn.Linear(d_model, 3)  # Forces: [M, A, 3]
-        self.stresses_predictor = nn.Linear(d_model, 3)  # Stresses: [M, 3]
+        self.stresses_predictor = nn.Linear(d_model, 6)  # Stresses: [M, 3]
+
+        # Count parameters
+        self.num_params = sum(p.numel() for p in self.parameters())
 
     def forward(self, x, positions, mask=None):
         """
@@ -64,7 +72,7 @@ class XTransformerModel(TransformerWrapper):
 
         # Energy: Global pooling and linear layer
         pooled_output = output.mean(dim=1)  # Shape: [M, transformer_input_dim]
-        energy = self.energy_predictor(pooled_output)  # Shape: [M, 1]
+        energy = self.energy_predictor(pooled_output).squeeze()  # Shape: [M]
 
         # Forces: Per-atom output via linear layer
         forces = self.forces_predictor(output)  # Shape: [M, A, 3]
@@ -72,4 +80,4 @@ class XTransformerModel(TransformerWrapper):
         # Stresses: Global pooling and linear layer
         stresses = self.stresses_predictor(pooled_output)  # Shape: [M, 3]
 
-        return energy, forces, stresses
+        return forces, energy, stresses

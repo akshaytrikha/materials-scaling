@@ -9,7 +9,7 @@
 5. `wandb login`
 
 ### Running training
-`python3 train.py --architecture=FCN --batch_size=64 --num_epochs=5 --lr=0.001 --dataset_version=small --wandb_log`
+`python3 train.py --architecture=FCN --batch_size=64 --epochs=5 --lr=0.001 --dataset_version=small --wandb_log`
 
 ### Black formatting setup
 1. Open VSCode settings and search for `editor: default formatter`

@@ -1,11 +1,12 @@
 import torch
 import torch.nn as nn
 
+
 class MetaFCNModels:
     def __init__(self, vocab_size=119):
         self.configurations = [
-            {"embedding_dim": 32, "hidden_dim": 64, "depth": 2},    # Small
-            {"embedding_dim": 64, "hidden_dim": 128, "depth": 4},   # Medium
+            {"embedding_dim": 32, "hidden_dim": 64, "depth": 2},  # Small
+            {"embedding_dim": 64, "hidden_dim": 128, "depth": 4},  # Medium
             # {"embedding_dim": 128, "hidden_dim": 256, "depth": 8},  # Large
         ]
         self.vocab_size = vocab_size
@@ -18,15 +19,16 @@ class MetaFCNModels:
             vocab_size=self.vocab_size,
             embedding_dim=config["embedding_dim"],
             hidden_dim=config["hidden_dim"],
-            depth=config["depth"]
+            depth=config["depth"],
         )
 
     def __len__(self):
         return len(self.configurations)
-    
+
     def __iter__(self):
         for idx in range(len(self.configurations)):
             yield self[idx]
+
 
 class FCNModel(nn.Module):
     def __init__(self, vocab_size=119, embedding_dim=128, hidden_dim=256, depth=4):
@@ -37,18 +39,20 @@ class FCNModel(nn.Module):
         self.depth = depth
 
         # Embedding for atomic numbers
-        self.embedding = nn.Embedding(vocab_size, embedding_dim)  # Assuming atomic numbers < 119
+        self.embedding = nn.Embedding(
+            vocab_size, embedding_dim
+        )  # Assuming atomic numbers < 119
 
         # Initial layer
         self.fc1 = nn.Linear(embedding_dim + 3, hidden_dim)
-        
+
         # Inner layers with residual connections
         self.inner_layers = nn.ModuleList()
         for _ in range(depth):
             layer = nn.Sequential(
                 nn.Linear(hidden_dim, hidden_dim),
                 nn.LayerNorm(hidden_dim),
-                nn.LeakyReLU()
+                nn.LeakyReLU(),
             )
             self.inner_layers.append(layer)
 
@@ -75,9 +79,13 @@ class FCNModel(nn.Module):
         mask = (atomic_numbers != 0).unsqueeze(-1)  # Shape: [batch_size, vocab_size, 1]
 
         # Embed atomic numbers
-        atomic_embeddings = self.embedding(atomic_numbers)  # [batch_size, vocab_size, embedding_dim]
+        atomic_embeddings = self.embedding(
+            atomic_numbers
+        )  # [batch_size, vocab_size, embedding_dim]
         # Concatenate embeddings with positions
-        x = torch.cat([atomic_embeddings, positions], dim=-1)  # [batch_size, vocab_size, embedding_dim + 3]
+        x = torch.cat(
+            [atomic_embeddings, positions], dim=-1
+        )  # [batch_size, vocab_size, embedding_dim + 3]
 
         # Initial layer
         x = self.fc1(x)

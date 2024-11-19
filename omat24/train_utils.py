@@ -5,11 +5,14 @@ import torch.optim as optim
 # Internal
 from loss import compute_mse_loss
 
+
 def get_optimizer(model, learning_rate=1e-3):
     return optim.Adam(model.parameters(), lr=learning_rate)
 
+
 def get_scheduler(optimizer):
     return None  # No scheduler for now
+
 
 def train(model, train_loader, val_loader, optimizer, scheduler, pbar, device):
     model = model.to(device)
@@ -37,7 +40,7 @@ def train(model, train_loader, val_loader, optimizer, scheduler, pbar, device):
             forces_pred, energy_pred, stress_pred = model(atomic_numbers, positions)
 
             # Compute loss
-            loss = compute_loss(
+            loss = compute_mse_loss(
                 forces_pred,
                 energy_pred,
                 stress_pred,
@@ -54,13 +57,13 @@ def train(model, train_loader, val_loader, optimizer, scheduler, pbar, device):
             total_train_loss += loss.item()
 
         avg_train_loss = total_train_loss / len(train_loader)
-        
+
         # Validation step
         avg_val_loss = validate(model, val_loader, device)
-        
+
         # Store the losses
         losses[epoch] = {"train_loss": avg_train_loss, "val_loss": avg_val_loss}
-        
+
         # Update progress bar
         pbar.set_description(f"Train: {avg_train_loss:.4f} | Val: {avg_val_loss:.4f}")
 
@@ -69,6 +72,7 @@ def train(model, train_loader, val_loader, optimizer, scheduler, pbar, device):
             scheduler.step()
 
     return model, losses
+
 
 def validate(model, val_loader, device):
     model.eval()
@@ -89,7 +93,7 @@ def validate(model, val_loader, device):
             forces_pred, energy_pred, stress_pred = model(atomic_numbers, positions)
 
             # Compute loss
-            loss = compute_loss(
+            loss = compute_mse_loss(
                 forces_pred,
                 energy_pred,
                 stress_pred,
@@ -103,16 +107,3 @@ def validate(model, val_loader, device):
 
     avg_val_loss = total_val_loss / len(val_loader)
     return avg_val_loss
-
-def compute_loss(
-    pred_forces, pred_energy, pred_stress, true_forces, true_energy, true_stress, mask
-):
-    return compute_mse_loss(
-        pred_forces,
-        pred_energy,
-        pred_stress,
-        true_forces,
-        true_energy,
-        true_stress,
-        mask,
-    )

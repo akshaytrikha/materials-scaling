@@ -11,7 +11,7 @@ result = subprocess.run(
         "train.py",
         "--architecture",
         "FCN",
-        "--num_epochs",
+        "--epochs",
         "1",
         "--data_fraction",
         "0.01",
@@ -42,7 +42,7 @@ setup = dicts[0]
 losses = dicts[1][0]
 
 assert setup["architecture"] == "FCN"
-assert setup["num_epochs"] == 1
+assert setup["epochs"] == 1
 assert setup["data_fraction"] == 0.01
 assert setup["batch_size"] == 32
 
