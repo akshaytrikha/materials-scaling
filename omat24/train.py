@@ -92,12 +92,11 @@ if __name__ == "__main__":
         meta_models = MetaFCNModels(vocab_size=args.max_n_elements)
     else:
         model = XTransformerModel(
-            num_elements = args.max_n_elements,
-            d_model = 64,
-            n_layers = 6,
-            n_heads = 8,
-            d_ff = 64,
-            transformer_output_dim = 64
+            num_tokens=args.max_n_elements,  # Equivalent to the number of atomic types/elements
+            d_model=64,
+            n_layers=6,
+            n_heads=8,
+            d_ff_mult=64,
         )
         meta_models = [model]
 

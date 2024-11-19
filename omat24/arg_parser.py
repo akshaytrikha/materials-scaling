@@ -24,7 +24,7 @@ def get_args():
         help='Model architecture to use: "FCN" or "VanillaTransformer"',
     )
     parser.add_argument(
-        "--batch_size", type=int, default=64, help="Batch size for training"
+        "--batch_size", type=int, default=2, help="Batch size for training"
     )
     parser.add_argument(
         "--num_epochs", type=int, default=5, help="Number of  epochs for training"
