@@ -65,7 +65,7 @@ if __name__ == "__main__":
                 f"\nModel is on device {DEVICE} and has {model.num_params} parameters"
             )
             optimizer = optim.Adam(model.parameters(), lr=args.lr)
-            total_steps = args.num_epochs * len(train_loader)
+            total_steps = args.epochs * len(train_loader)
             num_warmup_steps = int(0.1 * total_steps)
             scheduler = get_scheduler(
                 name="cosine",
@@ -105,7 +105,7 @@ if __name__ == "__main__":
                     group=group_name,
                     config={
                         "learning_rate": args.lr,
-                        "num_epochs": args.num_epochs,
+                        "epochs": args.epochs,
                         "batch_size": args.batch_size,
                         "data_fraction": f"{int(data_fraction*100)}%",
                     },
@@ -114,7 +114,7 @@ if __name__ == "__main__":
 
             # Train model
             for epoch in tqdm(
-                range(start_epoch, args.num_epochs + 1),
+                range(start_epoch, args.epochs + 1),
                 desc="Epoch Progress",
                 leave=True,
             ):

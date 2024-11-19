@@ -26,7 +26,7 @@ runs_df = pd.DataFrame(
 # print(summary_list[0])
 # # {'_runtime': 4.2593889236450195, '_step': 5, '_timestamp': 1725991199.82478, '_wandb': {'runtime': 4}, 'loss': 3.1876030762990317, 'perplexity': 21.68320655822754}
 # print(config_list[0])
-# # {'fraction': '1%', 'batch_size': 64, 'num_epochs': 5, 'learning_rate': 0.001}
+# # {'fraction': '1%', 'batch_size': 64, 'epochs': 5, 'learning_rate': 0.001}
 
 
 # Extract perplexity and run names
@@ -95,6 +95,7 @@ plt.tight_layout()
 # Save the plot as an image file
 plt.savefig("perplexity_vs_percentage.png")
 
+
 def create_log_log_perplexity(entity_name, project_name, batch_name):
     api = wandb.Api()
     group_filter = {"group": batch_name}
@@ -110,9 +111,15 @@ def create_log_log_perplexity(entity_name, project_name, batch_name):
         train_perplexities.append(train_perplexity)
         validation_perplexities.append(validation_perplexity)
     plt.figure(figsize=(8, 6))
-    plt.loglog(data_proportions, train_perplexities, marker="o", linestyle="-", color="blue")
     plt.loglog(
-        data_proportions, validation_perplexities, marker="o", linestyle="-", color="green"
+        data_proportions, train_perplexities, marker="o", linestyle="-", color="blue"
+    )
+    plt.loglog(
+        data_proportions,
+        validation_perplexities,
+        marker="o",
+        linestyle="-",
+        color="green",
     )
     plt.legend()
     plt.xlabel("Data Set Size")
@@ -120,5 +127,6 @@ def create_log_log_perplexity(entity_name, project_name, batch_name):
     plt.title(batch_name)
     plt.grid(True, which="both", ls="--")
     plt.savefig(batch_name)
+
 
 create_log_log_perplexity("material-scaling", "wikitext-scaling", "")
