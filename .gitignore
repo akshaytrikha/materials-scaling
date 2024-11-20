@@ -16,3 +16,4 @@ bpe_tokenizer/
 wikitext_combined.txt
 *.npz
 *.aselmdb
+omat24/results

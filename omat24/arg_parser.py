@@ -19,15 +19,15 @@ def get_args():
     parser.add_argument(
         "--architecture",
         type=str,
-        choices=["FCN", "VanillaTransformer"],
+        choices=["FCN", "Transformer"],
         default="FCN",
-        help='Model architecture to use: "FCN" or "VanillaTransformer"',
+        help='Model architecture to use: "FCN" or "Transformer"',
     )
     parser.add_argument(
-        "--batch_size", type=int, default=64, help="Batch size for training"
+        "--batch_size", type=int, default=2, help="Batch size for training"
     )
     parser.add_argument(
-        "--num_epochs", type=int, default=5, help="Number of  epochs for training"
+        "--epochs", type=int, default=5, help="Number of  epochs for training"
     )
     parser.add_argument("--lr", type=float, default=0.001, help="Learning rate")
     # parser.add_argument(
