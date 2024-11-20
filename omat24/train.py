@@ -54,15 +54,7 @@ if __name__ == "__main__":
             depth=2,
             n_heads=2,
             d_ff_mult=8,
-        )
-        meta_models = [model]
-    else:
-        model = XTransformerConcatenatedModel(
-            num_tokens=args.max_n_elements,  # Equivalent to the number of atomic types/elements
-            d_model=8,
-            depth=2,
-            n_heads=2,
-            d_ff_mult=8,
+            concatenated=args.concatenated
         )
         meta_models = [model]
     # Store results for all models

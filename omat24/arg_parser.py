@@ -19,7 +19,7 @@ def get_args():
     parser.add_argument(
         "--architecture",
         type=str,
-        choices=["FCN", "Transformer", "TransformerConcatenated"],
+        choices=["FCN", "Transformer"],
         default="FCN",
         help='Model architecture to use: "FCN", "Transformer", or "TransformerConcatenated"',
     )
@@ -49,6 +49,9 @@ def get_args():
     # )
     parser.add_argument(
         "--wandb_log", action="store_true", help="Enable Weights and Biases logging"
+    )
+    parser.add_argument(
+        "--concatenated", action="store_true", help="Enable concatenation"
     )
     parser.add_argument(
         "--checkpoint_group_name",
