@@ -78,6 +78,6 @@ class XTransformerModel(TransformerWrapper):
         forces = self.forces_predictor(output)  # Shape: [M, A, 3]
 
         # Stresses: Global pooling and linear layer
-        stresses = self.stresses_predictor(pooled_output)  # Shape: [M, 3]
+        stresses = self.stresses_predictor(pooled_output)  # Shape: [M, 6]
 
         return forces, energy, stresses
