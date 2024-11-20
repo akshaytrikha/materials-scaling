@@ -12,6 +12,7 @@ from arg_parser import get_args
 from models.fcn import MetaFCNModels
 import train_utils as train_utils
 from models.transformer_models import XTransformerModel
+from models.transformer_models import XTransformerConcatenatedModel
 
 # Set seed & device
 seed = 1024
@@ -46,7 +47,7 @@ if __name__ == "__main__":
     # Initialize meta model class
     if args.architecture == "FCN":
         meta_models = MetaFCNModels(vocab_size=args.max_n_elements)
-    else:
+    elif args.architecture == "Transformer":
         model = XTransformerModel(
             num_tokens=args.max_n_elements,  # Equivalent to the number of atomic types/elements
             d_model=8,
@@ -55,7 +56,15 @@ if __name__ == "__main__":
             d_ff_mult=8,
         )
         meta_models = [model]
-
+    else:
+        model = XTransformerConcatenatedModel(
+            num_tokens=args.max_n_elements,  # Equivalent to the number of atomic types/elements
+            d_model=8,
+            depth=2,
+            n_heads=2,
+            d_ff_mult=8,
+        )
+        meta_models = [model]
     # Store results for all models
     all_results = {}
 

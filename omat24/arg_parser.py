@@ -19,9 +19,9 @@ def get_args():
     parser.add_argument(
         "--architecture",
         type=str,
-        choices=["FCN", "Transformer"],
+        choices=["FCN", "Transformer", "TransformerConcatenated"],
         default="FCN",
-        help='Model architecture to use: "FCN" or "Transformer"',
+        help='Model architecture to use: "FCN", "Transformer", or "TransformerConcatenated"',
     )
     parser.add_argument(
         "--batch_size", type=int, default=2, help="Batch size for training"
