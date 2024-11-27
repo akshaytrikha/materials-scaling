@@ -3,7 +3,7 @@ import torch
 import torch.optim as optim
 
 # Internal
-from loss import compute_mse_loss
+from loss import compute_mae_loss
 
 
 def get_optimizer(model, learning_rate=1e-3):
@@ -40,7 +40,7 @@ def train(model, train_loader, val_loader, optimizer, scheduler, pbar, device):
             forces_pred, energy_pred, stress_pred = model(atomic_numbers, positions)
 
             # Compute loss
-            loss = compute_mse_loss(
+            loss = compute_mae_loss(
                 forces_pred,
                 energy_pred,
                 stress_pred,
@@ -93,7 +93,7 @@ def validate(model, val_loader, device):
             forces_pred, energy_pred, stress_pred = model(atomic_numbers, positions)
 
             # Compute loss
-            loss = compute_mse_loss(
+            loss = compute_mae_loss(
                 forces_pred,
                 energy_pred,
                 stress_pred,
