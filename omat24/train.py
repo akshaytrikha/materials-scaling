@@ -7,7 +7,7 @@ from datetime import datetime
 from tqdm import tqdm
 
 # Internal
-from data import OMat24Dataset, get_dataloaders
+from data import download_dataset, OMat24Dataset, get_dataloaders
 from arg_parser import get_args
 from models.fcn import MetaFCNModels
 import train_utils as train_utils
@@ -34,6 +34,8 @@ if __name__ == "__main__":
     # Load dataset
     dataset_name = "rattled-300-subsampled"
     dataset_path = Path(f"datasets/{dataset_name}")
+    if not dataset_path.exists():
+        download_dataset(dataset_name)
     dataset = OMat24Dataset(dataset_path=dataset_path, augment=args.augment)
     train_loader, val_loader = get_dataloaders(
         dataset, data_fraction=0.1, batch_size=args.batch_size, batch_padded=False
@@ -51,7 +53,7 @@ if __name__ == "__main__":
             num_tokens=args.max_n_elements,  # Equivalent to the number of atomic types/elements
             d_model=8,
             depth=2,
-            n_heads=2,
+            n_heads=4,
             d_ff_mult=8,
             concatenated=args.concatenated,
         )

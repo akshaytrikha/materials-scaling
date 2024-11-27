@@ -49,7 +49,6 @@ def create_loss_plots(results):
 
         # Create label with model parameters
         config = model_data["config"]
-        breakpoint()
         if config["architecture"] == "FCN":
             label = f"{config['embedding_dim']}_h{config['hidden_dim']}_d{config['depth']} ({num_params:,} params)"
         elif config["architecture"] == "Transformer":
