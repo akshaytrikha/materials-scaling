@@ -10,8 +10,9 @@ from tqdm import tqdm
 from data import download_dataset, OMat24Dataset, get_dataloaders
 from arg_parser import get_args
 from models.fcn import MetaFCNModels
+from models.transformer_models import MetaTransformerModels
 import train_utils as train_utils
-from models.transformer_models import XTransformerModel
+
 
 # Set seed & device
 seed = 1024
@@ -47,17 +48,13 @@ if __name__ == "__main__":
 
     # Initialize meta model class
     if args.architecture == "FCN":
-        meta_models = MetaFCNModels(vocab_size=args.max_n_elements)
+        meta_models = MetaFCNModels(vocab_size=args.n_elements)
     elif args.architecture == "Transformer":
-        model = XTransformerModel(
-            num_tokens=args.max_n_elements,  # Equivalent to the number of atomic types/elements
-            d_model=8,
-            depth=2,
-            n_heads=4,
-            d_ff_mult=8,
-            concatenated=args.concatenated,
+        meta_models = MetaTransformerModels(
+            vocab_size=args.n_elements,
+            max_seq_len=args.max_n_atoms,
+            concatenated=False,
         )
-        meta_models = [model]
     # Store results for all models
     all_results = {}
 

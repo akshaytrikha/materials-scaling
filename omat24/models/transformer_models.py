@@ -23,6 +23,7 @@ class CombinedEmbedding(nn.Module):
 
         return combined_emb
 
+
 class ConcatenatedEmbedding(nn.Module):
     def __init__(self, num_tokens, d_model):
         super().__init__()
@@ -37,21 +38,112 @@ class ConcatenatedEmbedding(nn.Module):
             combined_emb: Tensor of shape [M, A, d_model + 3]
         """
         token_embeddings = self.token_emb(x)
-        combined_emb = torch.cat([token_embeddings, positions], dim=-1)  # [M, A, d_model + 3]
+        combined_emb = torch.cat(
+            [token_embeddings, positions], dim=-1
+        )  # [M, A, d_model + 3]
         return combined_emb
+
+
+class MetaTransformerModels:
+    def __init__(
+        self,
+        vocab_size,
+        max_seq_len,
+        concatenated=False,
+    ):
+        """Initializes TransformerModels with a list of configurations.
+
+        Args:
+            vocab_size (int): Number of unique tokens (atomic numbers).
+            max_seq_len (int): Maximum sequence length for the transformer.
+        """
+        self.configurations = [
+            {
+                "d_model": 8,
+                "depth": 2,
+                "n_heads": 4,
+                "d_ff_mult": 8,
+                "concatenated": concatenated,
+            },  # XS
+            {
+                "d_model": 32,
+                "depth": 2,
+                "n_heads": 4,
+                "d_ff_mult": 4,
+                "concatenated": concatenated,
+            },  # Small
+            {
+                "d_model": 64,
+                "depth": 4,
+                "n_heads": 8,
+                "d_ff_mult": 4,
+                "concatenated": concatenated,
+            },  # Medium
+            {
+                "d_model": 128,
+                "depth": 8,
+                "n_heads": 16,
+                "d_ff_mult": 4,
+                "concatenated": concatenated,
+            },  # Large
+        ]
+
+        self.vocab_size = vocab_size
+        self.max_seq_len = max_seq_len
+
+    def __getitem__(self, idx):
+        """Retrieves transformer model corresponding to the configuration at index `idx`.
+
+        Args:
+            idx (int): Index of the desired configuration.
+
+        Returns:
+            XTransformerModel: An instance of the transformer model with the specified configuration.
+
+        Raises:
+            IndexError: If the index is out of range.
+        """
+        if idx >= len(self.configurations):
+            raise IndexError("Configuration index out of range")
+        config = self.configurations[idx]
+        return XTransformerModel(
+            num_tokens=self.vocab_size,
+            d_model=config["d_model"],
+            depth=config["depth"],
+            n_heads=config["n_heads"],
+            d_ff_mult=config["d_ff_mult"],
+            concatenated=config["concatenated"],
+        )
+
+    def __len__(self):
+        """Returns the number of configurations."""
+        return len(self.configurations)
+
+    def __iter__(self):
+        """Allows iteration over all transformer models."""
+        for idx in range(len(self.configurations)):
+            yield self[idx]
 
 
 class XTransformerModel(TransformerWrapper):
     def __init__(self, num_tokens, d_model, depth, n_heads, d_ff_mult, concatenated):
+        """Initializes XTransformerModel with specified configurations.
+
+        Args:
+            num_tokens (int): Number of unique tokens (atomic numbers).
+            d_model (int): Dimension of the token embeddings.
+            depth (int): Number of transformer layers.
+            n_heads (int): Number of attention heads.
+            d_ff_mult (int): Multiplier for the feed-forward network dimension.
+            concatenated (bool): Whether to concatenate positional information.
+        """
         self.embedding_dim = d_model
         self.depth = depth
         self.n_heads = n_heads
         self.d_ff_mult = d_ff_mult
-        self.additional_dim = 0
-        if concatenated:
-            self.additional_dim = 3
+        self.additional_dim = 3 if concatenated else 0  # For concatenated positions
 
-        # Init base TransformerWrapper without its own embedding
+        # Initialize base TransformerWrapper without its own embedding
         super().__init__(
             num_tokens=num_tokens,
             max_seq_len=300,
@@ -62,31 +154,42 @@ class XTransformerModel(TransformerWrapper):
                 heads=n_heads,
                 ff_mult=d_ff_mult,
             ),
-            use_abs_pos_emb=False,  # Disable internal pos embeddings, ensure no additional embeddings are used
+            use_abs_pos_emb=False,  # Disable internal positional embeddings
         )
 
-        # Initialize the combined embedding
+        # Initialize the combined or concatenated embedding
         if concatenated:
             self.emb = ConcatenatedEmbedding(num_tokens, d_model)
         else:
             self.emb = CombinedEmbedding(num_tokens, d_model)
 
         # Predictors for Energy, Forces, and Stresses
-        self.energy_predictor = nn.Linear(d_model + self.additional_dim, 1)  # Energy: [M, 1]
-        self.forces_predictor = nn.Linear(d_model + self.additional_dim, 3)  # Forces: [M, A, 3]
-        self.stresses_predictor = nn.Linear(d_model + self.additional_dim, 6)  # Stresses: [M, 3]
+        self.energy_predictor = nn.Linear(
+            d_model + self.additional_dim, 1
+        )  # Energy: [M, 1]
+        self.forces_predictor = nn.Linear(
+            d_model + self.additional_dim, 3
+        )  # Forces: [M, A, 3]
+        self.stresses_predictor = nn.Linear(
+            d_model + self.additional_dim, 6
+        )  # Stresses: [M, 6]
 
         # Count parameters
         self.num_params = sum(p.numel() for p in self.parameters())
 
     def forward(self, x, positions, mask=None):
-        """
+        """Forward pass of the transformer model.
+
         Args:
-            x: Tensor of shape [M, A] containing atomic numbers.
-            positions: Tensor of shape [M, A, 3] containing 3D atomic positions.
-            mask: Optional tensor of shape [M, A] indicating padding.
+            x (Tensor): Tensor of shape [M, A] containing atomic numbers.
+            positions (Tensor): Tensor of shape [M, A, 3] containing 3D atomic positions.
+            mask (Tensor, optional): Tensor of shape [M, A] indicating padding.
+
         Returns:
-            Transformer output: Tensor of shape [M, A, d_model]
+            tuple: (forces, energy, stresses)
+                - forces (Tensor): [M, A, 3]
+                - energy (Tensor): [M]
+                - stresses (Tensor): [M, 6]
         """
         # Obtain combined embeddings
         combined_emb = self.emb(x, positions)  # [M, A, d_model]
@@ -95,7 +198,7 @@ class XTransformerModel(TransformerWrapper):
         output = self.attn_layers(x=combined_emb, mask=mask)  # [M, A, d_model]
 
         # Energy: Global pooling and linear layer
-        pooled_output = output.mean(dim=1)  # Shape: [M, transformer_input_dim]
+        pooled_output = output.mean(dim=1)  # Shape: [M, d_model]
         energy = self.energy_predictor(pooled_output).squeeze()  # Shape: [M]
 
         # Forces: Per-atom output via linear layer

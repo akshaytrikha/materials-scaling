@@ -66,7 +66,7 @@ def get_args():
         help="Maximum number of atoms in a sample",
     )
     parser.add_argument(
-        "--max_n_elements",
+        "--n_elements",
         type=int,
         default=119,
         help="Maximum number of unique elements in a sample",
