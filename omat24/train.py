@@ -12,7 +12,6 @@ from arg_parser import get_args
 from models.fcn import MetaFCNModels
 import train_utils as train_utils
 from models.transformer_models import XTransformerModel
-from models.transformer_models import XTransformerConcatenatedModel
 
 # Set seed & device
 seed = 1024
@@ -54,7 +53,7 @@ if __name__ == "__main__":
             depth=2,
             n_heads=2,
             d_ff_mult=8,
-            concatenated=args.concatenated
+            concatenated=args.concatenated,
         )
         meta_models = [model]
     # Store results for all models
@@ -101,6 +100,7 @@ if __name__ == "__main__":
         # Store results
         all_results[f"model_{model_idx}"] = {
             "config": {
+                "architecture": args.architecture,
                 "embedding_dim": model.embedding_dim,
                 # "hidden_dim": model.hidden_dim,
                 "depth": model.depth,
