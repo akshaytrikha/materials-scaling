@@ -1,3 +1,4 @@
+import torch
 import torch.nn as nn
 from x_transformers import TransformerWrapper, Encoder
 
@@ -22,13 +23,33 @@ class CombinedEmbedding(nn.Module):
 
         return combined_emb
 
+class ConcatenatedEmbedding(nn.Module):
+    def __init__(self, num_tokens, d_model):
+        super().__init__()
+        self.token_emb = nn.Embedding(num_tokens, d_model)
+
+    def forward(self, x, positions):
+        """
+        Args:
+            x: Tensor of shape [M, A] containing atomic numbers.
+            positions: Tensor of shape [M, A, 3] containing 3D atomic positions.
+        Returns:
+            combined_emb: Tensor of shape [M, A, d_model + 3]
+        """
+        token_embeddings = self.token_emb(x)
+        combined_emb = torch.cat([token_embeddings, positions], dim=-1)  # [M, A, d_model + 3]
+        return combined_emb
+
 
 class XTransformerModel(TransformerWrapper):
-    def __init__(self, num_tokens, d_model, depth, n_heads, d_ff_mult):
+    def __init__(self, num_tokens, d_model, depth, n_heads, d_ff_mult, concatenated):
         self.embedding_dim = d_model
         self.depth = depth
         self.n_heads = n_heads
         self.d_ff_mult = d_ff_mult
+        self.additional_dim = 0
+        if concatenated:
+            self.additional_dim = 3
 
         # Init base TransformerWrapper without its own embedding
         super().__init__(
@@ -36,7 +57,7 @@ class XTransformerModel(TransformerWrapper):
             max_seq_len=300,
             emb_dim=d_model,
             attn_layers=Encoder(
-                dim=d_model,
+                dim=d_model + self.additional_dim,
                 depth=depth,
                 heads=n_heads,
                 ff_mult=d_ff_mult,
@@ -45,12 +66,15 @@ class XTransformerModel(TransformerWrapper):
         )
 
         # Initialize the combined embedding
-        self.emb = CombinedEmbedding(num_tokens, d_model)
+        if concatenated:
+            self.emb = ConcatenatedEmbedding(num_tokens, d_model)
+        else:
+            self.emb = CombinedEmbedding(num_tokens, d_model)
 
         # Predictors for Energy, Forces, and Stresses
-        self.energy_predictor = nn.Linear(d_model, 1)  # Energy: [M, 1]
-        self.forces_predictor = nn.Linear(d_model, 3)  # Forces: [M, A, 3]
-        self.stresses_predictor = nn.Linear(d_model, 6)  # Stresses: [M, 3]
+        self.energy_predictor = nn.Linear(d_model + self.additional_dim, 1)  # Energy: [M, 1]
+        self.forces_predictor = nn.Linear(d_model + self.additional_dim, 3)  # Forces: [M, A, 3]
+        self.stresses_predictor = nn.Linear(d_model + self.additional_dim, 6)  # Stresses: [M, 3]
 
         # Count parameters
         self.num_params = sum(p.numel() for p in self.parameters())

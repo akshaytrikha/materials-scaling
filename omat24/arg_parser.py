@@ -21,7 +21,7 @@ def get_args():
         type=str,
         choices=["FCN", "Transformer"],
         default="FCN",
-        help='Model architecture to use: "FCN" or "Transformer"',
+        help='Model architecture to use: "FCN", "Transformer", or "TransformerConcatenated"',
     )
     parser.add_argument(
         "--batch_size", type=int, default=2, help="Batch size for training"
@@ -49,6 +49,9 @@ def get_args():
     # )
     parser.add_argument(
         "--wandb_log", action="store_true", help="Enable Weights and Biases logging"
+    )
+    parser.add_argument(
+        "--concatenated", action="store_true", help="Enable concatenation"
     )
     parser.add_argument(
         "--checkpoint_group_name",
