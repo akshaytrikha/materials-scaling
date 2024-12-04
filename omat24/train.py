@@ -13,7 +13,6 @@ from models.fcn import MetaFCNModels
 from models.transformer_models import MetaTransformerModels
 import train_utils as train_utils
 
-
 # Set seed & device
 seed = 1024
 torch.manual_seed(seed)
@@ -42,6 +41,11 @@ if __name__ == "__main__":
         dataset, data_fraction=0.1, batch_size=args.batch_size, batch_padded=False
     )
 
+    dataset_name_to_max_n_atoms = {
+        "rattled-300-subsampled": 104,
+        "rattled-1000": 136
+    }   
+
     # User Hyperparam Feedback
     pprint.pprint(vars(args))
     print()
@@ -52,7 +56,7 @@ if __name__ == "__main__":
     elif args.architecture == "Transformer":
         meta_models = MetaTransformerModels(
             vocab_size=args.n_elements,
-            max_seq_len=args.max_n_atoms,
+            max_seq_len=dataset_name_to_max_n_atoms[dataset_name],
             concatenated=False,
         )
     # Store results for all models
