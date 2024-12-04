@@ -1,4 +1,4 @@
-torch==2.4.0
+torch==2.5.1
 datasets==2.21.0
 transformers==4.44.2
 wandb==0.17.9
@@ -12,4 +12,5 @@ torch_geometric==2.6.1
 gdown==5.2.0
 pyvista==0.44.1
 scikit_learn==1.5.2
-# pip install torch-scatter -f https://data.pyg.org/whl/torch-2.4.0+cpu.html
+# pip install torch-scatter -f https://data.pyg.org/whl/torch-2.4.0+cpu.html  # CPU
+# pip install -q torch-scatter -f https://data.pyg.org/whl/torch-2.4.0+cu121.html  # CUDA 12.1
