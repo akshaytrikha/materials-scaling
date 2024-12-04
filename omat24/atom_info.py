@@ -36,4 +36,4 @@ for i, batch in tqdm(enumerate(ase_dataset)):
     df.at[i, "forces"] = forces
     df.at[i, "stress"] = stress
 
-df.to_csv("atom_info.csv", index=False)
+df.to_csv(f"{dataset_name}_atom_info.csv", index=False)

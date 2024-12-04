@@ -11,4 +11,5 @@ numpy==1.26.4
 torch_geometric==2.6.1
 gdown==5.2.0
 pyvista==0.44.1
+scikit_learn==1.5.2
 # pip install torch-scatter -f https://data.pyg.org/whl/torch-2.4.0+cpu.html

@@ -17,3 +17,5 @@ wikitext_combined.txt
 *.npz
 *.aselmdb
 omat24/results
+*atom_info.csv
+energy_regression.csv
