@@ -43,6 +43,11 @@ if __name__ == "__main__":
         "rattled-1000": 136
     }   
 
+    dataset_name_to_max_n_atoms = {
+        "rattled-300-subsampled": 104,
+        "rattled-1000": 136
+    }   
+
     # User Hyperparam Feedback
     pprint.pprint(vars(args))
     print()

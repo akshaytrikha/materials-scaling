@@ -41,5 +41,5 @@ assert config["depth"] == 2
 assert config["num_params"] == 15338
 
 # Test losses
-np.testing.assert_allclose(losses["train_loss"], 386.99095837, rtol=0.1)
-np.testing.assert_allclose(losses["val_loss"], 282.811146, rtol=0.1)
+np.testing.assert_allclose(losses["train_loss"], 386.99096026, rtol=0.1)
+np.testing.assert_allclose(losses["val_loss"], 282.811145, rtol=0.1)
