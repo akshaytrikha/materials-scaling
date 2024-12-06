@@ -35,7 +35,6 @@ if __name__ == "__main__":
     loss = 0
     for i in tqdm(range(len(ase_dataset))):
         atoms = ase_dataset.get_atoms(i)
-
         true_energy = atoms.get_potential_energy()
         true_forces = atoms.get_forces()
         true_stress = atoms.get_stress()

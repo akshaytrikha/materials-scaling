@@ -31,7 +31,6 @@ class NaiveAtomModel:
             forces = atoms.get_forces()
             stress = atoms.get_stress()
             positions = atoms.get_positions()
-
             num_atoms = len(atoms)
 
             # Compute distance matrix
