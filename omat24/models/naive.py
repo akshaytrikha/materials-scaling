@@ -7,12 +7,12 @@ from tqdm.auto import tqdm
 class NaiveAtomModel:
     def __init__(self):
         # Mapping from (atom_type, neighbor_type) to sum of forces and counts
-        self.force_sum = defaultdict(self.zero_vector)
-        self.force_count = defaultdict(int)
+        self.force_sum = {}
+        self.force_count = {}
 
         # Mapping from (atom_type, neighbor_type) to sum of energy contributions and counts
-        self.energy_sum = defaultdict(float)
-        self.energy_count = defaultdict(int)
+        self.energy_sum = {}
+        self.energy_count = {}
 
         # For stress, we'll store sum and count separately
         self.stress_sum = np.zeros(6)
@@ -50,15 +50,25 @@ class NaiveAtomModel:
                 neighbor_idx = nearest_indices[idx]
                 neighbor_type = symbols[neighbor_idx]
 
-                key = (atom_type, neighbor_type)
-
                 # Accumulate forces
-                self.force_sum[key] += forces[idx]
-                self.force_count[key] += 1
+                if atom_type not in self.force_sum.keys():
+                    self.force_sum[atom_type] = {}
+                    self.force_count[atom_type] = {}
+                if neighbor_type not in self.force_sum[atom_type].keys():
+                    self.force_sum[atom_type][neighbor_type] = 0
+                    self.force_count[atom_type][neighbor_type] = 0
+                self.force_sum[atom_type][neighbor_type] += forces[idx]
+                self.force_count[atom_type][neighbor_type] += 1
 
                 # Accumulate energy
-                self.energy_sum[key] += energy_per_atom
-                self.energy_count[key] += 1
+                if atom_type not in self.energy_sum.keys():
+                    self.energy_sum[atom_type] = {}
+                    self.energy_count[atom_type] = {}
+                if neighbor_type not in self.energy_sum[atom_type].keys():
+                    self.energy_sum[atom_type][neighbor_type] = 0
+                    self.energy_count[atom_type][neighbor_type] = 0
+                self.energy_sum[atom_type][neighbor_type] += energy_per_atom
+                self.energy_count[atom_type][neighbor_type] += 1
 
             # Accumulate stress
             self.stress_sum += stress
@@ -78,14 +88,50 @@ class NaiveAtomModel:
     def finalize(self):
         """Compute the mean forces and energy contributions after training."""
         self.mean_forces = {}
-        for key in self.force_sum:
-            if self.force_count[key] > 0:
-                self.mean_forces[key] = self.force_sum[key] / self.force_count[key]
+        overall_sum = 0
+        overall_count = 0
+        for atom_type in self.force_sum.keys():
+            self.mean_forces[atom_type] = {}
+            atom_type_sum = 0
+            atom_type_count = 0
+            for neighbor_type in self.force_sum[atom_type].keys():
+                if self.force_count[atom_type][neighbor_type] > 0:
+                    atom_type_sum += self.force_sum[atom_type][neighbor_type]
+                    atom_type_count += self.force_count[atom_type][neighbor_type]
+                    self.mean_forces[atom_type][neighbor_type] = self.force_sum[atom_type][neighbor_type] / self.force_count[atom_type][neighbor_type]
+            if atom_type_count == 0:
+                self.mean_forces[atom_type]["atom_type"] = 0
+            else:
+                self.mean_forces[atom_type]["atom_type"] = atom_type_sum / atom_type_count
+            overall_sum += atom_type_sum
+            overall_count += atom_type_count
+        if overall_count == 0:
+            self.mean_forces["overall"] = 0
+        else:
+            self.mean_forces["overall"] = overall_sum / overall_count
 
-        self.mean_energy = {}
-        for key in self.energy_sum:
-            if self.energy_count[key] > 0:
-                self.mean_energy[key] = self.energy_sum[key] / self.energy_count[key]
+        self.mean_energies = {}
+        overall_sum = 0
+        overall_count = 0
+        for atom_type in self.energy_sum.keys():
+            self.mean_energies[atom_type] = {}
+            atom_type_sum = 0
+            atom_type_count = 0
+            for neighbor_type in self.energy_sum[atom_type].keys():
+                if self.energy_count[atom_type][neighbor_type] > 0:
+                    atom_type_sum += self.energy_sum[atom_type][neighbor_type]
+                    atom_type_count += self.energy_count[atom_type][neighbor_type]
+                    self.mean_energies[atom_type][neighbor_type] = self.energy_sum[atom_type][neighbor_type] / self.energy_count[atom_type][neighbor_type]
+            if atom_type_count == 0:
+                self.mean_energies[atom_type]["atom_type"] = 0
+            else:
+                self.mean_energies[atom_type]["atom_type"] = atom_type_sum / atom_type_count
+            overall_sum += atom_type_sum
+            overall_count += atom_type_count
+        if overall_count == 0:
+            self.mean_energies["overall"] = 0
+        else:
+            self.mean_energies["overall"] = overall_sum / overall_count
 
         # Compute mean stress
         self.mean_stress = (
@@ -119,22 +165,25 @@ class NaiveAtomModel:
             atom_type = symbols[idx]
             neighbor_idx = nearest_indices[idx]
             neighbor_type = symbols[neighbor_idx]
-
-            key = (atom_type, neighbor_type)
-
             # Predict forces
-            if key in self.mean_forces:
-                predicted_forces[idx] = self.mean_forces[key]
+            if atom_type in self.mean_forces.keys():
+                if neighbor_type in self.mean_forces[atom_type].keys():
+                    predicted_forces[idx] = self.mean_forces[atom_type][neighbor_type]
+                else:
+                    predicted_forces[idx] = self.mean_forces[atom_type]["atom_type"]
             else:
                 # If unseen configuration, assign zero force or some default
-                predicted_forces[idx] = np.zeros(3)
+                predicted_forces[idx] = self.mean_forces["overall"]
 
             # Predict energy
-            if key in self.mean_energy:
-                predicted_energy += self.mean_energy[key]
+            if atom_type in self.mean_energies.keys():
+                if neighbor_type in self.mean_energies[atom_type].keys():
+                    predicted_energy += self.mean_energies[atom_type][neighbor_type]
+                else:
+                    predicted_energy += self.mean_energies[atom_type]["atom_type"]
             else:
-                # If unseen configuration, assign zero energy contribution or some default
-                predicted_energy += 0.0
+                # If unseen configuration, assign zero force or some default
+                predicted_energy += self.mean_energies["overall"]
 
         # Predict stress as the mean stress from training
         predicted_stress = self.mean_stress.copy()
