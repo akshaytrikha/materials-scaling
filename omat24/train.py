@@ -32,7 +32,7 @@ if __name__ == "__main__":
     args = get_args()
 
     # Load dataset
-    dataset_name = "train-rattled-500"
+    dataset_name = "rattled-1000"
     dataset_path = Path(f"datasets/{dataset_name}")
     if not dataset_path.exists():
         download_dataset(dataset_name)

@@ -9,7 +9,7 @@ from fairchem.core.datasets import AseDBDataset
 from data import download_dataset
 
 # setup dataset
-dataset_name = "val-rattled-300-subsampled"
+dataset_name = "rattled-300-subsampled"
 dataset_path = Path(f"datasets/{dataset_name}")
 
 if not dataset_path.exists():

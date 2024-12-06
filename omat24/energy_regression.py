@@ -12,7 +12,7 @@ import torch.nn as nn
 from data import download_dataset
 
 # Setup dataset
-dataset_name = "val-rattled-300-subsampled"
+dataset_name = "rattled-300-subsampled"
 dataset_path = Path(f"datasets/{dataset_name}")
 energy_df_path = Path("energy_regression.csv")
 
