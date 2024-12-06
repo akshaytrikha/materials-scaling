@@ -13,15 +13,28 @@ from typing import Dict
 # Internal
 from matrix import compute_distance_matrix, random_rotate_atoms
 
-MAX_ATOMS = 300
+MAX_ATOMS = 200
 
 DATASETS = {
-    "rattled-300-subsampled": "https://drive.google.com/uc?id=1vZE0J9ccC-SkoBYn3K0H0P3PUlpPy_NC",
-    "rattled-1000": "https://drive.google.com/file/d/1XoqQc_5POqLgDQQ0Z-oGCVW72Ohtkv2O",
+    "val": {
+        "rattled-300-subsampled": {
+            "url": "https://drive.google.com/uc?id=1vZE0J9ccC-SkoBYn3K0H0P3PUlpPy_NC",
+            "max_n_atoms": 104,
+        },
+        "rattled-1000": {
+            "url": "https://drive.google.com/uc?id=1XoqQc_5POqLgDQQ0Z-oGCVW72Ohtkv2O",
+            "max_n_atoms": 136,
+        },
+    },
+    "train": {
+        "rattled-500": {
+            "url": "https://drive.google.com/uc?id=1gP_p2uIgNGFpfm-eAR-FoRMh-Sf-wrAd",
+        },
+    },
 }
 
 
-def download_dataset(dataset_name: str):
+def download_dataset(dataset_name: str, split_name: str):
     """Downloads a compressed dataset from a predefined URL and extracts it to the specified directory.
 
     Args:
@@ -32,13 +45,14 @@ def download_dataset(dataset_name: str):
         Exception: If there is an error during the extraction or deletion of the compressed file.
     """
     os.makedirs("./datasets", exist_ok=True)
+    os.makedirs(f"./datasets/{split_name}", exist_ok=True)
 
     try:
-        url = DATASETS[dataset_name]
+        url = DATASETS[split_name][dataset_name]["url"]
     except KeyError:
         raise KeyError(f"Dataset '{dataset_name}' not found in DATASETS dictionary.")
 
-    dataset_path = Path(f"datasets/{dataset_name}")
+    dataset_path = Path(f"datasets/{split_name}/{dataset_name}")
     compressed_path = dataset_path.with_suffix(".tar.gz")
     print(f"Starting download from {url}...")
     gdown.download(url, str(compressed_path), quiet=False)
@@ -327,6 +341,11 @@ class OMat24Dataset(Dataset):
     def __init__(self, dataset_path: Path, config_kwargs={}, augment: bool = False):
         self.dataset = AseDBDataset(config=dict(src=str(dataset_path), **config_kwargs))
         self.augment = augment
+        split_name = dataset_path.parent.name  # Parent directory's name
+        dataset_name = dataset_path.name
+        self.max_n_atoms = DATASETS[split_name][dataset_name].get(
+            "max_n_atoms", MAX_ATOMS
+        )
 
     def __len__(self):
         return len(self.dataset)

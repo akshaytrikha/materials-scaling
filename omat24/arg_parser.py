@@ -24,12 +24,22 @@ def get_args():
         help='Model architecture to use: "FCN", "Transformer", or "TransformerConcatenated"',
     )
     parser.add_argument(
-        "--batch_sizes", type=int, nargs="+", default=[16, 32, 64], help="Batch sizes for training"
+        "--batch_sizes",
+        type=int,
+        nargs="+",
+        default=[16, 32, 64],
+        help="Batch sizes for training",
     )
     parser.add_argument(
         "--epochs", type=int, default=5, help="Number of epochs for training"
     )
-    parser.add_argument("--lrs", type=float, nargs="+", default=[0.1, 0.01, 0.001, 0.0001], help="Learning rates")
+    parser.add_argument(
+        "--lrs",
+        type=float,
+        nargs="+",
+        default=[0.1, 0.01, 0.001, 0.0001],
+        help="Learning rates",
+    )
     # parser.add_argument(
     #     "--dataset_version",
     #     type=str,
@@ -58,12 +68,6 @@ def get_args():
         type=str,
         default=None,
         help="Name of the checkpoint group",
-    )
-    parser.add_argument(
-        "--max_n_atoms",
-        type=int,
-        default=300,
-        help="Maximum number of atoms in a sample",
     )
     parser.add_argument(
         "--n_elements",
