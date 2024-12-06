@@ -45,7 +45,7 @@ def initialize_model(device: str):
     Returns:
         EScAIPBackbone: The instantiated model.
     """
-    backbone_config = {
+    config = {
         "global_cfg": {
             "regress_forces": True,
             "direct_force": True,
@@ -86,17 +86,8 @@ def initialize_model(device: str):
         },
     }
 
-    heads_config = {
-        "energy": {},
-        "force": {},
-        "rank2": {"output_name": "stress"},
-        # 'gradient_energy_force': {},
-    }
-
     # Initialize the Combined EScAIP Model
-    model = EScAIPModel(backbone_config=backbone_config, heads_config=heads_config).to(
-        device
-    )
+    model = EScAIPModel(config=config).to(device)
 
     return model
 

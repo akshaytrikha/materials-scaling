@@ -25,45 +25,25 @@ from .utils.graph_utils import unpad_results, compilable_scatter
 
 
 class EScAIPModel(nn.Module):
-    def __init__(self, backbone_config, heads_config):
+    def __init__(self, config):
         """
-        Initializes the EScAIPModel with a backbone and specified output heads.
+        Initializes the EScAIPModel with a backbone and output heads.
 
         Args:
-            backbone_config (dict): Configuration dictionary for the EScAIPBackbone.
-            heads_config (dict): Dictionary specifying which heads to include and their configurations.
-                Example:
-                {
-                    'energy': {},
-                    'force': {},
-                    'gradient_energy_force': {},
-                    'rank2': {'output_name': 'stress'}
-                }
+            config (dict): Configuration dictionary for the EScAIPBackbone.
         """
         super(EScAIPModel, self).__init__()
 
         # Initialize the backbone
-        self.backbone = EScAIPBackbone(**backbone_config)
+        self.backbone = EScAIPBackbone(**config)
 
-        # Initialize the heads using a ModuleDict for flexibility
-        self.heads = nn.ModuleDict()
-        for head_type, config in heads_config.items():
-            if head_type == "energy":
-                self.heads["energy"] = EScAIPEnergyHead(
-                    backbone=self.backbone, **config
-                )
-            elif head_type == "force":
-                self.heads["force"] = EScAIPDirectForceHead(
-                    backbone=self.backbone, **config
-                )
-            elif head_type == "gradient_energy_force":
-                self.heads["gradient_energy_force"] = EScAIPGradientEnergyForceHead(
-                    backbone=self.backbone, **config
-                )
-            elif head_type == "rank2":
-                self.heads["rank2"] = EScAIPRank2Head(backbone=self.backbone, **config)
-            else:
-                raise ValueError(f"Unknown head type: {head_type}")
+        # Initialize output heads with default configurations
+        self.energy_head = EScAIPEnergyHead(backbone=self.backbone)
+        self.force_head = EScAIPDirectForceHead(backbone=self.backbone)
+        self.gradient_energy_force_head = EScAIPGradientEnergyForceHead(
+            backbone=self.backbone
+        )
+        self.stress_head = EScAIPRank2Head(backbone=self.backbone)
 
     def forward(self, batch):
         """
@@ -74,28 +54,49 @@ class EScAIPModel(nn.Module):
 
         Returns:
             dict: A flat dictionary containing outputs from each head.
-                Example:
-                {
-                    'energy': tensor of shape [batch_size],
-                    'forces': tensor of shape [batch_size, num_atoms, 3],
-                    'stress_isotropic': tensor of shape [batch_size],
-                    'stress_anisotropic': tensor of shape [batch_size, 5]
-                }
+                  Example:
+                  {
+                      'energy': tensor of shape [batch_size],
+                      'forces': tensor of shape [batch_size, num_atoms, 3],
+                      'gradient_energy_force': tensor,
+                      'stress_isotropic': tensor of shape [batch_size, 1],
+                      'stress_anisotropic': tensor of shape [batch_size, 5],
+                  }
         """
         # Pass through the backbone
         backbone_output = self.backbone(batch)
 
-        # Collect and merge outputs from each head
+        # Collect outputs from each head
         outputs = {}
-        for head_name, head in self.heads.items():
-            head_output = head(batch, backbone_output)
-            # Merge the head's output dictionary into the main outputs dictionary
-            for key, value in head_output.items():
-                if key in outputs:
-                    raise KeyError(
-                        f"Duplicate key detected: {key}. Ensure each head outputs unique keys."
-                    )
-                outputs[key] = value
+
+        # Energy Head
+        energy_output = self.energy_head(batch, backbone_output)
+        # Assuming energy_output is a dict with key 'energy'
+        outputs["energy"] = energy_output["energy"]
+
+        # Force Head
+        force_output = self.force_head(batch, backbone_output)
+        # Assuming force_output is a dict with key 'forces'
+        outputs["forces"] = force_output["forces"]
+
+        # Gradient Energy Force Head
+        # Only invoke if direct_force is False
+        if (
+            self.backbone.global_cfg.regress_forces
+            and not self.backbone.global_cfg.direct_force
+        ):
+            # Ensure that data.pos requires grad
+            batch.pos.requires_grad_(True)
+            gef_output = self.gradient_energy_force_head(batch, backbone_output)
+            # Assuming gef_output is a dict with key 'gradient_energy_force'
+            outputs["gradient_energy_force"] = gef_output["gradient_energy_force"]
+
+        # Rank2 Head (if initialized)
+        if hasattr(self, "stress_head") and self.rank2_head is not None:
+            rank2_output = self.rank2_head(batch, backbone_output)
+            # Assuming rank2_output contains 'stress_isotropic' and 'stress_anisotropic'
+            outputs["stress_isotropic"] = rank2_output["stress_isotropic"]
+            outputs["stress_anisotropic"] = rank2_output["stress_anisotropic"]
 
         return outputs
 
