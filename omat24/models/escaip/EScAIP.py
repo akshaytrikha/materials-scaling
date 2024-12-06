@@ -24,10 +24,50 @@ from .utils.nn_utils import no_weight_decay, init_linear_weights
 from .utils.graph_utils import unpad_results, compilable_scatter
 
 
+def reconstruct_full_stress(stress_isotropic, stress_anisotropic):
+    """Reconstruct the full 6-element Voigt stress tensor from isotropic and anisotropic components.
+
+    Args:
+        stress_isotropic (torch.Tensor): Shape [batch_size, 1]
+        stress_anisotropic (torch.Tensor): Shape [batch_size, 5]
+
+    Returns:
+        torch.Tensor: Reconstructed stress tensor in Voigt notation. Shape [batch_size, 6]
+    """
+    batch_size = stress_isotropic.shape[0]
+
+    # Create the isotropic part: [σ_iso, σ_iso, σ_iso, 0, 0, 0]
+    sigma_iso = stress_isotropic  # Shape: [batch_size, 1]
+    isotropic_part = torch.cat(
+        [
+            sigma_iso,  # σ_xx
+            sigma_iso,  # σ_yy
+            sigma_iso,  # σ_zz
+            torch.zeros((batch_size, 3), device=sigma_iso.device),  # σ_yz, σ_xz, σ_xy
+        ],
+        dim=1,
+    )  # Shape: [batch_size, 6]
+
+    # Anisotropic part: [0, 0, 0, σ_yz, σ_xz, σ_xy]
+    # Extract only the first 3 components assuming they correspond to shear stresses
+    stress_anisotropic_shear = stress_anisotropic[:, :3]  # Shape: [batch_size, 3]
+    anisotropic_part = torch.cat(
+        [
+            torch.zeros((batch_size, 3), device=stress_anisotropic.device),  # [0, 0, 0]
+            stress_anisotropic_shear,  # [σ_yz, σ_xz, σ_xy]
+        ],
+        dim=1,
+    )  # Shape: [batch_size, 6]
+
+    # Full stress tensor
+    sigma_pred = isotropic_part + anisotropic_part  # Shape: [batch_size, 6]
+
+    return sigma_pred
+
+
 class EScAIPModel(nn.Module):
     def __init__(self, config):
-        """
-        Initializes the EScAIPModel with a backbone and output heads.
+        """Initializes the EScAIPModel with a backbone and output heads.
 
         Args:
             config (dict): Configuration dictionary for the EScAIPBackbone.
@@ -50,8 +90,7 @@ class EScAIPModel(nn.Module):
         self.stress_head = EScAIPRank2Head(backbone=self.backbone)
 
     def forward(self, batch):
-        """
-        Forward pass through the backbone and each of the output heads.
+        """Forward pass through the backbone and each of the output heads.
 
         Args:
             batch (torch_geometric.data.Batch): The input batch in PyG Batch format.
@@ -62,7 +101,7 @@ class EScAIPModel(nn.Module):
                   {
                       'energy': tensor of shape [batch_size],
                       'forces': tensor of shape [batch_size, num_atoms, 3],
-                      'gradient_energy_force': tensor,
+                      'gradient_energy_force': Optional[tensor],
                       'stress_isotropic': tensor of shape [batch_size, 1],
                       'stress_anisotropic': tensor of shape [batch_size, 5],
                   }
@@ -97,10 +136,12 @@ class EScAIPModel(nn.Module):
 
         # Rank2 Head (if initialized)
         if hasattr(self, "stress_head") and self.stress_head is not None:
-            rank2_output = self.stress_head(batch, backbone_output)
-            # Assuming rank2_output contains 'stress_isotropic' and 'stress_anisotropic'
-            outputs["stress_isotropic"] = rank2_output["stress_isotropic"]
-            outputs["stress_anisotropic"] = rank2_output["stress_anisotropic"]
+            stress_output = self.stress_head(batch, backbone_output)
+            stress_isotropic = stress_output["stress_isotropic"]
+            stress_anisotropic = stress_output["stress_anisotropic"]
+            outputs["stress"] = reconstruct_full_stress(
+                stress_isotropic, stress_anisotropic
+            )
 
         return outputs
 

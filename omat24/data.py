@@ -264,39 +264,6 @@ def custom_collate_fn_batch_padded(batch: list) -> Dict[str, torch.Tensor]:
     return return_dict
 
 
-def convert_sample_to_data(sample):
-    atomic_numbers = sample["atomic_numbers"]
-    positions = sample["positions"]
-    num_nodes = atomic_numbers.size(0)
-
-    # Node features: can be atomic numbers or any embedding you choose.
-    # For example, just use positions or random features:
-    x = positions  # Using positions as node features is one simple choice
-
-    data = Data(
-        x=x,
-        pos=positions,
-        atomic_numbers=atomic_numbers,
-        natoms=torch.tensor([num_nodes]),
-    )
-
-    # If EScAIP is configured to generate graphs on the fly, you may not need edge_index or edge_attr.
-    # Otherwise, you could use radius_graph or knn_graph to build edges:
-    # from torch_geometric.nn import radius_graph
-    # radius = 6.0  # Example cutoff
-    # data.edge_index = radius_graph(data.pos, r=radius, loop=False)
-    # You could also define edge_attr if needed. For now, you may leave them out.
-
-    return data
-
-
-def pyg_collate_fn(batch):
-    # batch is a list of samples (dicts)
-    data_list = [convert_sample_to_data(sample) for sample in batch]
-    pyg_batch = Batch.from_data_list(data_list)
-    return pyg_batch
-
-
 def get_dataloaders(
     dataset: Dataset,
     data_fraction: float,

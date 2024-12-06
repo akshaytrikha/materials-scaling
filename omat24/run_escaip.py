@@ -104,5 +104,4 @@ if __name__ == "__main__":
     output = model(batch)
     energy = output["energy"]
     forces = output["forces"]
-    stress_isotropic = output["stress_isotropic"]
-    stress_anisotropic = output["stress_anisotropic"]
+    stress_isotropic = output["stress"]
