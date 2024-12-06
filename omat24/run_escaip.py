@@ -3,7 +3,7 @@ import torch
 from torch_geometric.data import Data, Batch
 
 # Internal
-from models.escaip import EScAIPBackbone
+from models.escaip.EScAIP import EScAIPModel
 
 
 def create_example_batch():
@@ -17,9 +17,9 @@ def create_example_batch():
     num_edges = 20
     num_graphs = 2
 
-    # Here, we randomly assign atomic numbers between 1 and 119
+    # Here, we randomly assign atomic numbers between 1 and 10
     atomic_numbers_list = [
-        torch.randint(1, 119, (num_nodes,)) for _ in range(num_graphs)
+        torch.randint(0, 10, (num_nodes,)) for _ in range(num_graphs)
     ]
 
     data_list = [
@@ -38,14 +38,14 @@ def create_example_batch():
 
 
 # Model initialization
-def initialize_model():
+def initialize_model(device: str):
     """
     Initialize the EScAIPBackbone model with default or custom configurations.
 
     Returns:
         EScAIPBackbone: The instantiated model.
     """
-    config = {
+    backbone_config = {
         "global_cfg": {
             "regress_forces": True,
             "direct_force": True,
@@ -72,7 +72,7 @@ def initialize_model():
             "node_direction_expansion_size": 4,  # Minimal size
             "edge_distance_expansion_size": 32,  # Minimal size
             "edge_distance_embedding_size": 64,  # Minimal size
-            "atten_name": "memory_efficient",
+            "atten_name": "math",
             "atten_num_heads": 4,  # Reduced number of attention heads
             "readout_hidden_layer_multiplier": 1,  # Simplified multiplier
             "output_hidden_layer_multiplier": 1,
@@ -86,8 +86,18 @@ def initialize_model():
         },
     }
 
-    # Initialize the model
-    model = EScAIPBackbone(**config)
+    heads_config = {
+        "energy": {},
+        "force": {},
+        "rank2": {"output_name": "stress"},
+        # 'gradient_energy_force': {},
+    }
+
+    # Initialize the Combined EScAIP Model
+    model = EScAIPModel(backbone_config=backbone_config, heads_config=heads_config).to(
+        device
+    )
+
     return model
 
 
@@ -97,11 +107,16 @@ if __name__ == "__main__":
     batch = create_example_batch()
 
     # Initialize the model
-    model = initialize_model()
+    model = initialize_model(device="cpu")
 
     # Run a forward pass
     output = model(batch)
+    energy = output["energy"]
+    forces = output["force"]
+    stress = output["stress"]
+
+    breakpoint()
 
     # Print the results
-    print("Model output:")
-    print(output)
+    print("Model output keys():")
+    print(output.keys())  # dict_keys(['data', 'node_features', 'edge_features'])

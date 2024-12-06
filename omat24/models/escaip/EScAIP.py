@@ -24,6 +24,83 @@ from .utils.nn_utils import no_weight_decay, init_linear_weights
 from .utils.graph_utils import unpad_results, compilable_scatter
 
 
+class EScAIPModel(nn.Module):
+    def __init__(self, backbone_config, heads_config):
+        """
+        Initializes the EScAIPModel with a backbone and specified output heads.
+
+        Args:
+            backbone_config (dict): Configuration dictionary for the EScAIPBackbone.
+            heads_config (dict): Dictionary specifying which heads to include and their configurations.
+                Example:
+                {
+                    'energy': {},
+                    'force': {},
+                    'gradient_energy_force': {},
+                    'rank2': {'output_name': 'stress'}
+                }
+        """
+        super(EScAIPModel, self).__init__()
+
+        # Initialize the backbone
+        self.backbone = EScAIPBackbone(**backbone_config)
+
+        # Initialize the heads using a ModuleDict for flexibility
+        self.heads = nn.ModuleDict()
+        for head_type, config in heads_config.items():
+            if head_type == "energy":
+                self.heads["energy"] = EScAIPEnergyHead(
+                    backbone=self.backbone, **config
+                )
+            elif head_type == "force":
+                self.heads["force"] = EScAIPDirectForceHead(
+                    backbone=self.backbone, **config
+                )
+            elif head_type == "gradient_energy_force":
+                self.heads["gradient_energy_force"] = EScAIPGradientEnergyForceHead(
+                    backbone=self.backbone, **config
+                )
+            elif head_type == "rank2":
+                self.heads["rank2"] = EScAIPRank2Head(backbone=self.backbone, **config)
+            else:
+                raise ValueError(f"Unknown head type: {head_type}")
+
+    def forward(self, batch):
+        """
+        Forward pass through the backbone and each of the output heads.
+
+        Args:
+            batch (torch_geometric.data.Batch): The input batch in PyG Batch format.
+
+        Returns:
+            dict: A dictionary containing outputs from each head.
+                Example:
+                {
+                    'energy': tensor of shape [batch_size],
+                    'force': tensor of shape [batch_size, num_atoms, 3],
+                    'gradient_energy_force': tensor,
+                    'rank2': tensor
+                }
+        """
+        # Pass through the backbone
+        backbone_output = self.backbone(batch)
+
+        # Collect outputs from each head
+        outputs = {}
+        for head_name, head in self.heads.items():
+            if head_name == "energy":
+                outputs["energy"] = head(batch, backbone_output)
+            elif head_name == "force":
+                outputs["force"] = head(batch, backbone_output)
+            elif head_name == "gradient_energy_force":
+                outputs["gradient_energy_force"] = head(batch, backbone_output)
+            elif head_name == "rank2":
+                outputs["stress"] = head(batch, backbone_output)
+            # Add additional heads here if necessary
+
+        return outputs
+
+
 @registry.register_model("EScAIP_backbone")
 class EScAIPBackbone(nn.Module, GraphModelMixin):
     """
