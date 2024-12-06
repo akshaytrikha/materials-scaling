@@ -16,8 +16,9 @@ from matrix import compute_distance_matrix, random_rotate_atoms
 MAX_ATOMS = 300
 
 DATASETS = {
-    "rattled-300-subsampled": "https://drive.google.com/uc?id=1vZE0J9ccC-SkoBYn3K0H0P3PUlpPy_NC",
-    "rattled-1000": "https://drive.google.com/file/d/1XoqQc_5POqLgDQQ0Z-oGCVW72Ohtkv2O",
+    "val-rattled-300-subsampled": "https://drive.google.com/uc?id=1vZE0J9ccC-SkoBYn3K0H0P3PUlpPy_NC",
+    "val-rattled-1000": "https://drive.google.com/file/d/1XoqQc_5POqLgDQQ0Z-oGCVW72Ohtkv2O",
+    "train-rattled-500": "https://drive.google.com/drive/u/0/folders/1TWUh13-TIajwsFIKJ1Xx8ubt5Bgj930T",
 }
 
 

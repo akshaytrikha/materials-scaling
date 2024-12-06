@@ -11,7 +11,7 @@ import matplotlib.colors
 from data import OMat24Dataset, download_dataset
 
 
-dataset_name = "rattled-300-subsampled"
+dataset_name = "val-rattled-300-subsampled"
 dataset_path = Path(f"datasets/{dataset_name}")
 if not dataset_path.exists():
     download_dataset(dataset_name)

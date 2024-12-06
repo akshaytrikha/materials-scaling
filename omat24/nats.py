@@ -24,7 +24,7 @@ def calculate_nats_from_zip(zip_file_path):
 
 
 if __name__ == "__main__":
-    dataset_name = "rattled-1000"
+    dataset_name = "val-rattled-1000"
     # zip & calculate nats
     zip_file = zip_dataset(dataset_name, f"./datasets/{dataset_name}")
     calculate_nats_from_zip(zip_file)
