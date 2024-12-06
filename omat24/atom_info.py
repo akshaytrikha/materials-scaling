@@ -19,7 +19,7 @@ if not dataset_path.exists():
 ase_dataset = AseDBDataset(config=dict(src=str(dataset_path)))
 
 # log atom info
-df = pd.DataFrame(columns=["symbols", "num_atoms", "energy", "forces", "stress"])
+df = pd.DataFrame(columns=["symbols", "num_atoms"])
 
 for i, batch in tqdm(enumerate(ase_dataset)):
     atoms: ase.atoms.Atoms = ase_dataset.get_atoms(i)
@@ -32,8 +32,5 @@ for i, batch in tqdm(enumerate(ase_dataset)):
 
     df.at[i, "symbols"] = str(symbols)
     df.at[i, "num_atoms"] = len(atomic_numbers)
-    df.at[i, "energy"] = energy
-    df.at[i, "forces"] = forces
-    df.at[i, "stress"] = stress
 
 df.to_csv(f"{dataset_name}_atom_info.csv", index=False)
