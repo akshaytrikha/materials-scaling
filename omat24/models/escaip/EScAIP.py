@@ -73,30 +73,29 @@ class EScAIPModel(nn.Module):
             batch (torch_geometric.data.Batch): The input batch in PyG Batch format.
 
         Returns:
-            dict: A dictionary containing outputs from each head.
+            dict: A flat dictionary containing outputs from each head.
                 Example:
                 {
                     'energy': tensor of shape [batch_size],
-                    'force': tensor of shape [batch_size, num_atoms, 3],
-                    'gradient_energy_force': tensor,
-                    'rank2': tensor
+                    'forces': tensor of shape [batch_size, num_atoms, 3],
+                    'stress_isotropic': tensor of shape [batch_size],
+                    'stress_anisotropic': tensor of shape [batch_size, 5]
                 }
         """
         # Pass through the backbone
         backbone_output = self.backbone(batch)
 
-        # Collect outputs from each head
+        # Collect and merge outputs from each head
         outputs = {}
         for head_name, head in self.heads.items():
-            if head_name == "energy":
-                outputs["energy"] = head(batch, backbone_output)
-            elif head_name == "force":
-                outputs["force"] = head(batch, backbone_output)
-            elif head_name == "gradient_energy_force":
-                outputs["gradient_energy_force"] = head(batch, backbone_output)
-            elif head_name == "rank2":
-                outputs["stress"] = head(batch, backbone_output)
-            # Add additional heads here if necessary
+            head_output = head(batch, backbone_output)
+            # Merge the head's output dictionary into the main outputs dictionary
+            for key, value in head_output.items():
+                if key in outputs:
+                    raise KeyError(
+                        f"Duplicate key detected: {key}. Ensure each head outputs unique keys."
+                    )
+                outputs[key] = value
 
         return outputs
 

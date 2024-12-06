@@ -112,11 +112,6 @@ if __name__ == "__main__":
     # Run a forward pass
     output = model(batch)
     energy = output["energy"]
-    forces = output["force"]
-    stress = output["stress"]
-
-    breakpoint()
-
-    # Print the results
-    print("Model output keys():")
-    print(output.keys())  # dict_keys(['data', 'node_features', 'edge_features'])
+    forces = output["forces"]
+    stress_isotropic = output["stress_isotropic"]
+    stress_anisotropic = output["stress_anisotropic"]
