@@ -40,9 +40,13 @@ class EScAIPModel(nn.Module):
         # Initialize output heads with default configurations
         self.energy_head = EScAIPEnergyHead(backbone=self.backbone)
         self.force_head = EScAIPDirectForceHead(backbone=self.backbone)
-        self.gradient_energy_force_head = EScAIPGradientEnergyForceHead(
-            backbone=self.backbone
-        )
+        if (
+            self.backbone.global_cfg.regress_forces
+            and not self.backbone.global_cfg.direct_force
+        ):
+            self.gradient_energy_force_head = EScAIPGradientEnergyForceHead(
+                backbone=self.backbone
+            )
         self.stress_head = EScAIPRank2Head(backbone=self.backbone)
 
     def forward(self, batch):
@@ -92,8 +96,8 @@ class EScAIPModel(nn.Module):
             outputs["gradient_energy_force"] = gef_output["gradient_energy_force"]
 
         # Rank2 Head (if initialized)
-        if hasattr(self, "stress_head") and self.rank2_head is not None:
-            rank2_output = self.rank2_head(batch, backbone_output)
+        if hasattr(self, "stress_head") and self.stress_head is not None:
+            rank2_output = self.stress_head(batch, backbone_output)
             # Assuming rank2_output contains 'stress_isotropic' and 'stress_anisotropic'
             outputs["stress_isotropic"] = rank2_output["stress_isotropic"]
             outputs["stress_anisotropic"] = rank2_output["stress_anisotropic"]
