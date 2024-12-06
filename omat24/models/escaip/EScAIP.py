@@ -113,14 +113,10 @@ class EScAIPModel(nn.Module):
         outputs = {}
 
         # Energy Head
-        energy_output = self.energy_head(batch, backbone_output)
-        # Assuming energy_output is a dict with key 'energy'
-        outputs["energy"] = energy_output["energy"]
+        energy = self.energy_head(batch, backbone_output)["energy"]
 
         # Force Head
-        force_output = self.force_head(batch, backbone_output)
-        # Assuming force_output is a dict with key 'forces'
-        outputs["forces"] = force_output["forces"]
+        forces = self.force_head(batch, backbone_output)["forces"]
 
         # Gradient Energy Force Head
         # Only invoke if direct_force is False
@@ -139,11 +135,9 @@ class EScAIPModel(nn.Module):
             stress_output = self.stress_head(batch, backbone_output)
             stress_isotropic = stress_output["stress_isotropic"]
             stress_anisotropic = stress_output["stress_anisotropic"]
-            outputs["stress"] = reconstruct_full_stress(
-                stress_isotropic, stress_anisotropic
-            )
+            stress = reconstruct_full_stress(stress_isotropic, stress_anisotropic)
 
-        return outputs
+        return forces, energy, stress
 
 
 @registry.register_model("EScAIP_backbone")

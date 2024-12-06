@@ -1,9 +1,12 @@
 # External
 import torch
 from torch_geometric.data import Data, Batch
+from pathlib import Path
 
 # Internal
 from models.escaip.EScAIP import EScAIPModel
+from data import get_pyg_dataloaders
+from data_utils import download_dataset
 
 
 def create_example_batch():
@@ -58,9 +61,9 @@ def initialize_model(device: str):
             "use_pbc": False,
             "use_pbc_single": False,
             "otf_graph": False,
-            "max_neighbors": 10,  # Minimal value
+            "max_neighbors": 125,  # Minimal value
             "max_radius": 6.0,  # Minimal value
-            "max_num_elements": 10,  # Minimal value
+            "max_num_elements": 125,  # TODO: Minimal value
             "max_num_nodes_per_batch": 20,  # Minimal practical value
             "enforce_max_neighbors_strictly": False,
             "distance_function": "gaussian",
@@ -94,14 +97,25 @@ def initialize_model(device: str):
 
 # Main script
 if __name__ == "__main__":
-    # Create a dummy batch of data
-    batch = create_example_batch()
+    # Load dataset
+    dataset_name = "rattled-300-subsampled"
+    dataset_path = Path(f"datasets/{dataset_name}")
+    if not dataset_path.exists():
+        download_dataset(dataset_name)
 
-    # Initialize the model
+    train_loader, val_loader = get_pyg_dataloaders(
+        dataset_path=dataset_path,
+        config_kwargs={},
+        data_fraction=0.1,
+        batch_size=2,
+        augment=False,
+    )
+
+    # Initialize model
     model = initialize_model(device="cpu")
 
-    # Run a forward pass
-    output = model(batch)
-    energy = output["energy"]
-    forces = output["forces"]
-    stress_isotropic = output["stress"]
+    for i, batch in enumerate(train_loader):
+        # Run a forward pass
+        forces, energy, stress = model(batch)
+
+        break

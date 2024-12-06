@@ -7,7 +7,8 @@ from datetime import datetime
 from tqdm import tqdm
 
 # Internal
-from data import download_dataset, OMat24Dataset, get_dataloaders
+from data import OMat24Dataset, get_dataloaders
+from data_utils import download_dataset
 from arg_parser import get_args
 from models.fcn import MetaFCNModels
 from models.transformer_models import MetaTransformerModels
@@ -33,13 +34,16 @@ if __name__ == "__main__":
     args = get_args()
 
     # Load dataset
-    dataset_name = "rattled-1000"
+    dataset_name = "rattled-300-subsampled"
     dataset_path = Path(f"datasets/{dataset_name}")
     if not dataset_path.exists():
         download_dataset(dataset_name)
     dataset = OMat24Dataset(dataset_path=dataset_path, augment=args.augment)
     train_loader, val_loader = get_dataloaders(
-        dataset, data_fraction=0.1, batch_size=args.batch_size, batch_padded=False
+        dataset,
+        data_fraction=args.data_fraction,
+        batch_size=args.batch_size,
+        batch_padded=False,
     )
 
     # User Hyperparam Feedback

@@ -12,5 +12,7 @@ torch_geometric==2.6.1
 gdown==5.2.0
 pyvista==0.44.1
 scikit_learn==1.5.2
-# pip install torch-scatter -f https://data.pyg.org/whl/torch-2.4.0+cpu.html  # CPU
-# pip install -q torch-scatter -f https://data.pyg.org/whl/torch-2.4.0+cu121.html  # CUDA 12.1
+# pip install -q torch-scatter -f https://data.pyg.org/whl/torch-2.5.1+cpu.html    # CPU
+# pip install -q torch-scatter -f https://data.pyg.org/whl/torch-2.5.1+cu121.html  # CUDA 12.1
+# pip install -q torch-cluster -f https://data.pyg.org/whl/torch-2.5.1+cpu.html    # CPU
+# pip install -q torch-cluster -f https://data.pyg.org/whl/torch-2.5.1+cu121.html  # CUDA 12.1
