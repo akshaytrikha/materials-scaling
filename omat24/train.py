@@ -32,24 +32,20 @@ if __name__ == "__main__":
     args = get_args()
 
     # Load dataset
-    dataset_name = "rattled-1000"
-    dataset_path = Path(f"datasets/{dataset_name}")
+    split_name = "val"
+    dataset_name = "rattled-300-subsampled"
+
+    dataset_path = Path(f"datasets/{split_name}/{dataset_name}")
     if not dataset_path.exists():
-        download_dataset(dataset_name)
+        download_dataset(dataset_name, split_name)
     dataset = OMat24Dataset(dataset_path=dataset_path, augment=args.augment)
 
-    dataset_name_to_max_n_atoms = {
-        "rattled-300-subsampled": 104,
-        "rattled-1000": 136
-    }   
-
-    dataset_name_to_max_n_atoms = {
-        "rattled-300-subsampled": 104,
-        "rattled-1000": 136
-    }   
-
     # User Hyperparam Feedback
-    pprint.pprint(vars(args))
+    params = vars(args) | {
+        "dataset_name": f"{split_name}/{dataset_name}",
+        "max_n_atoms": dataset.max_n_atoms,
+    }
+    pprint.pprint(params)
     print()
 
     # Initialize meta model class
@@ -58,7 +54,7 @@ if __name__ == "__main__":
     elif args.architecture == "Transformer":
         meta_models = MetaTransformerModels(
             vocab_size=args.n_elements,
-            max_seq_len=dataset_name_to_max_n_atoms[dataset_name],
+            max_seq_len=dataset.max_n_atoms,
             concatenated=False,
         )
     # Store results for all models
@@ -71,7 +67,10 @@ if __name__ == "__main__":
         )
         for batch_size in args.batch_sizes:
             train_loader, val_loader = get_dataloaders(
-                dataset, data_fraction=0.1, batch_size=batch_size, batch_padded=False
+                dataset,
+                data_fraction=args.data_fraction,
+                batch_size=batch_size,
+                batch_padded=False,
             )
             for lr in args.lrs:
                 # Initialize optimizer and scheduler
@@ -103,7 +102,7 @@ if __name__ == "__main__":
                         "model_state_dict": trained_model.state_dict(),
                         "losses": losses,
                         "batch_size": batch_size,
-                        "lr": lr
+                        "lr": lr,
                     },
                     checkpoint_path,
                 )
