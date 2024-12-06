@@ -7,7 +7,8 @@ from datetime import datetime
 from tqdm import tqdm
 
 # Internal
-from data import download_dataset, OMat24Dataset, get_dataloaders
+from data import OMat24Dataset, get_dataloaders
+from data_utils import download_dataset
 from arg_parser import get_args
 from models.fcn import MetaFCNModels
 from models.transformer_models import MetaTransformerModels
