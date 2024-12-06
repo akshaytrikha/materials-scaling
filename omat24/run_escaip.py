@@ -6,25 +6,6 @@ from torch_geometric.data import Data, Batch
 from models.escaip import EScAIPBackbone
 
 
-def verify_batch(batch):
-    print("Verifying batch integrity...")
-    print(f"Number of graphs in batch: {batch.natoms.size(0)}")
-    print(f"Total number of nodes: {batch.num_nodes}")
-    print(f"Total number of edges: {batch.edge_index.size(1)}")
-
-    # Check that sum of natoms equals num_nodes
-    assert (
-        batch.natoms.sum().item() == batch.num_nodes
-    ), "Mismatch between sum of natoms and num_nodes"
-
-    # Check edge indices
-    max_node_index = batch.num_nodes - 1
-    if batch.edge_index.numel() > 0:
-        assert batch.edge_index.max() <= max_node_index, "Edge index out of bounds!"
-
-    print("Batch verification passed.")
-
-
 def create_example_batch():
     """
     Create a dummy batch compatible with the model's expected input format.
@@ -52,12 +33,6 @@ def create_example_batch():
         )
         for i in range(num_graphs)
     ]
-
-    for i, data in enumerate(data_list):
-        print(f"Graph {i}: natoms = {data.natoms}")
-
-    batch = Batch.from_data_list(data_list)
-    verify_batch(batch)
 
     return Batch.from_data_list(data_list)
 
@@ -116,6 +91,7 @@ def initialize_model():
     return model
 
 
+# Main script
 if __name__ == "__main__":
     # Create a dummy batch of data
     batch = create_example_batch()
@@ -123,12 +99,9 @@ if __name__ == "__main__":
     # Initialize the model
     model = initialize_model()
 
-    # Set device
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model.to(device)
-    batch.to(device)
-    print(f"Running on device: {device}\n")
-
     # Run a forward pass
     output = model(batch)
+
+    # Print the results
     print("Model output:")
+    print(output)

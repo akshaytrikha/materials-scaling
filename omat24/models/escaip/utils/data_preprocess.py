@@ -2,7 +2,6 @@ from functools import partial
 
 import torch
 import torch_geometric
-import torch.nn.functional as F
 
 from fairchem.core.models.scn.smearing import (
     GaussianSmearing,

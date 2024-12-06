@@ -21,26 +21,7 @@ from .modules import (
 )
 from .utils.data_preprocess import data_preprocess
 from .utils.nn_utils import no_weight_decay, init_linear_weights
-from .utils.graph_utils import unpad_results  # Removed compilable_scatter
-
-
-# Added helper functions
-def scatter_sum(src, index, dim_size):
-    out = torch.zeros(dim_size, *src.shape[1:], device=src.device)
-    out.index_add_(0, index, src)
-    return out
-
-
-def scatter_mean(src, index, dim_size):
-    sum_out = torch.zeros(dim_size, *src.shape[1:], device=src.device)
-    count_out = torch.zeros(dim_size, device=src.device)
-
-    sum_out.index_add_(0, index, src)
-    count_out.index_add_(0, index, torch.ones_like(index, dtype=src.dtype))
-
-    count_out = count_out.clamp(min=1)
-    mean_out = sum_out / count_out.unsqueeze(-1)
-    return mean_out
+from .utils.graph_utils import unpad_results, compilable_scatter
 
 
 @registry.register_model("EScAIP_backbone")
@@ -284,11 +265,15 @@ class EScAIPEnergyHead(EScAIPHeadBase):
     def compiled_forward(self, node_features, data: GraphAttentionData):
         energy_output = self.energy_layer(node_features)
 
-        # Replace torch_scatter.scatter with scatter_sum
-        energy_output = scatter_sum(
+        # the following not compatible with torch.compile (grpah break)
+        # energy_output = torch_scatter.scatter(energy_output, node_batch, dim=0, reduce="sum")
+
+        energy_output = compilable_scatter(
             src=energy_output,
             index=data.node_batch,
             dim_size=data.graph_padding_mask.shape[0],
+            dim=0,
+            reduce="sum",
         )
         return energy_output
 
@@ -316,11 +301,15 @@ class EScAIPGradientEnergyForceHead(EScAIPEnergyHead):
     def forward(self, data, emb: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
         energy_output = self.energy_layer(emb["node_features"])
 
-        # Replace torch_scatter.scatter with scatter_mean
-        energy_output = scatter_mean(
+        # the following not compatible with torch.compile (grpah break)
+        # energy_output = torch_scatter.scatter(energy_output, node_batch, dim=0, reduce="sum")
+
+        energy_output = compilable_scatter(
             src=energy_output,
             index=emb["data"].node_batch,
             dim_size=emb["data"].graph_padding_mask.shape[0],
+            dim=0,
+            reduce="mean",
         )
 
         forces_output = (
@@ -388,15 +377,19 @@ class EScAIPRank2Head(EScAIPHeadBase):
         scalar_output = self.scalar_layer(node_features)  # (num_nodes, 1)
 
         # get graph level output
-        irrep2_output = scatter_mean(
+        irrep2_output = compilable_scatter(
             src=irrep2_output.view(-1, 5),
             index=data.node_batch,
             dim_size=data.graph_padding_mask.shape[0],
+            dim=0,
+            reduce="mean",
         )
-        scalar_output = scatter_mean(
+        scalar_output = compilable_scatter(
             src=scalar_output.view(-1, 1),
             index=data.node_batch,
             dim_size=data.graph_padding_mask.shape[0],
+            dim=0,
+            reduce="mean",
         )
         return irrep2_output, scalar_output.view(-1)
 

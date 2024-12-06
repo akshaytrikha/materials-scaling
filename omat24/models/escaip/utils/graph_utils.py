@@ -1,28 +1,7 @@
 import torch
 import torch.nn.functional as F
-
-# Removed torch_scatter import
-# from torch_scatter import scatter
+from torch_scatter import scatter
 from e3nn.o3._spherical_harmonics import _spherical_harmonics
-
-
-# Added helper functions
-def scatter_sum(src, index, dim_size, dim=0):
-    out = torch.zeros(dim_size, *src.shape[1:], device=src.device)
-    out.index_add_(dim, index, src)
-    return out
-
-
-def scatter_mean(src, index, dim_size, dim=0):
-    sum_out = torch.zeros(dim_size, *src.shape[1:], device=src.device)
-    count_out = torch.zeros(dim_size, device=src.device)
-
-    sum_out.index_add_(dim, index, src)
-    count_out.index_add_(dim, index, torch.ones_like(index, dtype=src.dtype))
-
-    count_out = count_out.clamp(min=1)
-    mean_out = sum_out / count_out.unsqueeze(-1)
-    return mean_out
 
 
 @torch.jit.script
@@ -42,12 +21,10 @@ def get_node_direction_expansion(
         z=distance_vec[:, 2],
     )
     node_boo = torch.zeros((num_nodes, edge_sh.shape[1]), device=edge_sh.device)
-    node_boo = scatter_sum(edge_sh, edge_index[1], dim_size=num_nodes, dim=0)
+    node_boo = scatter(edge_sh, edge_index[1], dim=0, out=node_boo, reduce="mean")
     sh_index = torch.arange(lmax + 1, device=node_boo.device)
     sh_index = torch.repeat_interleave(sh_index, 2 * sh_index + 1)
-    node_boo = scatter_sum(
-        node_boo**2, sh_index, dim_size=node_boo.shape[1], dim=1
-    ).sqrt()
+    node_boo = scatter(node_boo**2, sh_index, dim=1, reduce="sum").sqrt()
     return node_boo
 
 
@@ -128,6 +105,7 @@ def map_sender_receiver_feature(sender_feature, receiver_feature, neighbor_list)
     return (sender_feature, receiver_feature)
 
 
+@torch.compile
 def get_attn_mask(
     edge_direction: torch.Tensor,
     neighbor_mask: torch.Tensor,
@@ -260,3 +238,40 @@ def patch_singleton_atom(edge_direction, neighbor_list, neighbor_mask):
     neighbor_mask[idx, 0] = 1
 
     return edge_direction, neighbor_list, neighbor_mask
+
+
+def compilable_scatter(
+    src: torch.Tensor,
+    index: torch.Tensor,
+    dim_size: int,
+    dim: int = 0,
+    reduce: str = "sum",
+) -> torch.Tensor:
+    """
+    torch_scatter scatter function with compile support.
+    Modified from torch_geometric.utils.scatter_.
+    """
+
+    def broadcast(src: torch.Tensor, ref: torch.Tensor, dim: int) -> torch.Tensor:
+        dim = ref.dim() + dim if dim < 0 else dim
+        size = ((1,) * dim) + (-1,) + ((1,) * (ref.dim() - dim - 1))
+        return src.view(size).expand_as(ref)
+
+    dim = src.dim() + dim if dim < 0 else dim
+    size = src.size()[:dim] + (dim_size,) + src.size()[dim + 1 :]
+
+    if reduce == "sum" or reduce == "add":
+        index = broadcast(index, src, dim)
+        return src.new_zeros(size).scatter_add_(dim, index, src)
+
+    if reduce == "mean":
+        count = src.new_zeros(dim_size)
+        count.scatter_add_(0, index, src.new_ones(src.size(dim)))
+        count = count.clamp(min=1)
+
+        index = broadcast(index, src, dim)
+        out = src.new_zeros(size).scatter_add_(dim, index, src)
+
+        return out / broadcast(count, out, dim)
+
+    raise ValueError((f"Invalid reduce option '{reduce}'."))
