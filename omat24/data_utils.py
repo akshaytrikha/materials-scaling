@@ -19,7 +19,7 @@ DATASETS = {
         },
     },
     "train": {
-        "rattled-500": {
+        "rattled-500-subsampled": {
             "url": "https://drive.google.com/uc?id=1gP_p2uIgNGFpfm-eAR-FoRMh-Sf-wrAd",
             "max_n_atoms": 200,  # TODO: Placeholder value
         },
