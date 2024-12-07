@@ -14,24 +14,32 @@ def get_scheduler(optimizer):
     return None  # No scheduler for now
 
 
-def train(model, train_loader, val_loader, optimizer, scheduler, pbar, device):
-    model = model.to(device)
+def train(
+    model,
+    train_loader,
+    val_loader,
+    optimizer,
+    scheduler,
+    pbar,
+    device,
+    val_interval=50,
+):
+    model.to(device)
     losses = {}
+    step = 0
 
     for epoch in pbar:
         model.train()
-        total_train_loss = 0.0
+        train_loss_sum = 0.0
+        num_train_batches = 0
 
-        for batch in train_loader:
+        for batch_idx, batch in enumerate(train_loader):
             # Move data to device
             atomic_numbers = batch["atomic_numbers"].to(device)
             positions = batch["positions"].to(device)
             forces_true = batch["forces"].to(device)
             energy_true = batch["energy"].to(device)
             stress_true = batch["stress"].to(device)
-
-            # Create mask for valid atoms
-            mask = atomic_numbers != 0
 
             # Zero gradients
             optimizer.zero_grad()
@@ -40,7 +48,8 @@ def train(model, train_loader, val_loader, optimizer, scheduler, pbar, device):
             forces_pred, energy_pred, stress_pred = model(atomic_numbers, positions)
 
             # Compute loss
-            loss = compute_mae_loss(
+            mask = atomic_numbers != 0
+            train_loss = compute_mae_loss(
                 forces_pred,
                 energy_pred,
                 stress_pred,
@@ -51,32 +60,42 @@ def train(model, train_loader, val_loader, optimizer, scheduler, pbar, device):
             )
 
             # Backward pass and optimization
-            loss.backward()
+            train_loss.backward()
             optimizer.step()
 
-            total_train_loss += loss.item()
+            # Accumulate training loss
+            train_loss_sum += train_loss.item()
+            num_train_batches += 1
 
-        avg_train_loss = total_train_loss / len(train_loader)
+            # Validate every `val_interval` batches
+            if (batch_idx + 1) % val_interval == 0:
+                val_loss = run_validation(model, val_loader, device)
+                current_avg_train_loss = train_loss_sum / num_train_batches
+                # Store the averaged training loss and current validation loss at this step
+                losses[step] = {
+                    "train_loss": float(current_avg_train_loss),
+                    "val_loss": float(val_loss),
+                }
 
-        # Validation step
-        avg_val_loss = validate(model, val_loader, device)
+            step += 1
 
-        # Store the losses
-        losses[epoch] = {"train_loss": avg_train_loss, "val_loss": avg_val_loss}
+        # At the end of the epoch, do a validation run
+        val_loss = run_validation(model, val_loader, device)
+        avg_train_loss = train_loss_sum / num_train_batches
+        losses[step] = {
+            "train_loss": float(avg_train_loss),
+            "val_loss": float(val_loss),
+        }
 
-        # Update progress bar
-        pbar.set_description(f"Train: {avg_train_loss:.4f} | Val: {avg_val_loss:.4f}")
-
-        # Update scheduler if it's defined
         if scheduler is not None:
             scheduler.step()
 
     return model, losses
 
 
-def validate(model, val_loader, device):
+def run_validation(model, val_loader, device):
     model.eval()
-    total_val_loss = 0.0
+    total_val_loss = 0
     with torch.no_grad():
         for batch in val_loader:
             # Move data to device
@@ -86,14 +105,12 @@ def validate(model, val_loader, device):
             energy_true = batch["energy"].to(device)
             stress_true = batch["stress"].to(device)
 
-            # Create mask for valid atoms
-            mask = atomic_numbers != 0
-
             # Forward pass
             forces_pred, energy_pred, stress_pred = model(atomic_numbers, positions)
 
             # Compute loss
-            loss = compute_mae_loss(
+            mask = atomic_numbers != 0
+            val_loss = compute_mae_loss(
                 forces_pred,
                 energy_pred,
                 stress_pred,
@@ -103,7 +120,6 @@ def validate(model, val_loader, device):
                 mask,
             )
 
-            total_val_loss += loss.item()
+            total_val_loss += val_loss.item()
 
-    avg_val_loss = total_val_loss / len(val_loader)
-    return avg_val_loss
+    return total_val_loss / len(val_loader)
