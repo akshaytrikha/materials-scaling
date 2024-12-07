@@ -3,7 +3,7 @@ import numpy as np
 
 np.random.seed(42)
 
-dataset_sizes = [1e4, 1e5, 1e6]
+dataset_sizes = [1e3, 1e4, 1e5]
 param_options = [1e4, 5e4, 1e5, 5e5, 1e6]
 
 # Let's define a function that simulates saturation:

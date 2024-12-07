@@ -15,6 +15,4 @@ scikit_learn==1.5.2
 plotly==5.24.1
 notebook==7.2.2
 ipywidgets==8.1.5
-jupyter==1.1.1 
-jupyter-contrib-nbextensions==0.7.0
 # pip install torch-scatter -f https://data.pyg.org/whl/torch-2.4.0+cpu.html
