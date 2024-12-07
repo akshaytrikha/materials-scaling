@@ -61,67 +61,68 @@ if __name__ == "__main__":
     # Store results for all models
     all_results = {}
 
-    # Train each model configuration
-    for model_idx, model in enumerate(meta_models):
-        print(
-            f"\nModel {model_idx + 1}/{len(meta_models)} is on device {DEVICE} and has {model.num_params} parameters"
-        )
-        for batch_size in args.batch_sizes:
-            train_loader, val_loader = get_dataloaders(
-                dataset,
-                data_fraction=args.data_fraction,
-                batch_size=batch_size,
-                batch_padded=False,
+    # Train each data fraction & model config
+    for data_fraction in args.data_fractions:
+        for model_idx, model in enumerate(meta_models):
+            print(
+                f"\nModel {model_idx + 1}/{len(meta_models)} is on device {DEVICE} and has {model.num_params} parameters"
             )
-            for lr in args.lrs:
-                # Initialize optimizer and scheduler
-                optimizer = train_utils.get_optimizer(model, learning_rate=lr)
-                scheduler = train_utils.get_scheduler(optimizer)
-
-                # Create progress bar for epochs
-                pbar = tqdm(range(args.epochs), desc="Training")
-
-                # Train model
-                trained_model, losses = train_utils.train(
-                    model,
-                    train_loader,
-                    val_loader,
-                    optimizer,
-                    scheduler,
-                    pbar,
-                    device=DEVICE,
+            for batch_size in args.batch_sizes:
+                train_loader, val_loader = get_dataloaders(
+                    dataset,
+                    data_fraction=data_fraction,
+                    batch_size=batch_size,
+                    batch_padded=False,
                 )
+                for lr in args.lrs:
+                    # Initialize optimizer and scheduler
+                    optimizer = train_utils.get_optimizer(model, learning_rate=lr)
+                    scheduler = train_utils.get_scheduler(optimizer)
 
-                # Save model checkpoint
-                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                checkpoint_path = (
-                    f"checkpoints/{args.architecture}_model_{model_idx}_{timestamp}.pth"
-                )
-                Path("checkpoints").mkdir(exist_ok=True)
-                torch.save(
-                    {
-                        "model_state_dict": trained_model.state_dict(),
-                        "losses": losses,
+                    # Create progress bar for epochs
+                    pbar = tqdm(range(args.epochs), desc="Training")
+
+                    # Train model
+                    trained_model, losses = train_utils.train(
+                        model,
+                        train_loader,
+                        val_loader,
+                        optimizer,
+                        scheduler,
+                        pbar,
+                        device=DEVICE,
+                    )
+
+                    # Save model checkpoint
+                    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                    checkpoint_path = f"checkpoints/{args.architecture}_model_{model_idx}_{timestamp}.pth"
+                    Path("checkpoints").mkdir(exist_ok=True)
+                    torch.save(
+                        {
+                            "model_state_dict": trained_model.state_dict(),
+                            "losses": losses,
+                            "batch_size": batch_size,
+                            "lr": lr,
+                        },
+                        checkpoint_path,
+                    )
+
+                    # Store results
+                    all_results[
+                        f"model_{model_idx}_batch_size_{batch_size}_lr_{lr}"
+                    ] = {
+                        "config": {
+                            "architecture": args.architecture,
+                            "embedding_dim": model.embedding_dim,
+                            # "hidden_dim": model.hidden_dim,
+                            "depth": model.depth,
+                            "num_params": model.num_params,
+                        },
                         "batch_size": batch_size,
                         "lr": lr,
-                    },
-                    checkpoint_path,
-                )
-
-                # Store results
-                all_results[f"model_{model_idx}_batch_size_{batch_size}_lr_{lr}"] = {
-                    "config": {
-                        "architecture": args.architecture,
-                        "embedding_dim": model.embedding_dim,
-                        # "hidden_dim": model.hidden_dim,
-                        "depth": model.depth,
-                        "num_params": model.num_params,
-                    },
-                    "batch_size": batch_size,
-                    "lr": lr,
-                    "losses": losses,
-                    "checkpoint_path": checkpoint_path,
-                }
+                        "losses": losses,
+                        "checkpoint_path": checkpoint_path,
+                    }
 
     # Save all results to JSON
     results_path = Path("results") / f"{timestamp}.json"
