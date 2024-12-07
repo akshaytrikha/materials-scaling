@@ -128,7 +128,7 @@ if __name__ == "__main__":
                     experiment_results[ds_key].append(run_entry)
 
     # Save all results to JSON
-    results_path = Path("results") / f"scaling_experiments_{timestamp}.json"
+    results_path = Path("results") / f"experiments_{timestamp}.json"
     Path("results").mkdir(exist_ok=True)
     with open(results_path, "w") as f:
         json.dump(experiment_results, f, indent=4)
