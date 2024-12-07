@@ -5,6 +5,7 @@ import torch.nn as nn
 class MetaFCNModels:
     def __init__(self, vocab_size=119):
         self.configurations = [
+            {"embedding_dim": 32, "hidden_dim": 32, "depth": 2},  # XSmall
             {"embedding_dim": 32, "hidden_dim": 64, "depth": 2},  # Small
             {"embedding_dim": 64, "hidden_dim": 128, "depth": 4},  # Medium
             # {"embedding_dim": 128, "hidden_dim": 256, "depth": 8},  # Large

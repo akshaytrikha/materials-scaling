@@ -62,11 +62,6 @@ if __name__ == "__main__":
 
     experiment_results = {}
 
-    # Frequency of validation checks within an epoch
-    # For example, validate every 100 training batches
-    # Adjust as needed based on dataset size and batch size.
-    val_interval = 100
-
     for data_fraction in args.data_fractions:
         for model_idx, model in enumerate(meta_models):
             print(
@@ -86,10 +81,7 @@ if __name__ == "__main__":
                     optimizer = train_utils.get_optimizer(model, learning_rate=lr)
                     scheduler = train_utils.get_scheduler(optimizer)
 
-                    # Create progress bar for epochs
                     pbar = tqdm(range(args.epochs), desc="Training")
-
-                    # Modified train call to include val_interval
                     trained_model, losses = train_utils.train(
                         model=model,
                         train_loader=train_loader,
@@ -98,7 +90,7 @@ if __name__ == "__main__":
                         scheduler=scheduler,
                         pbar=pbar,
                         device=DEVICE,
-                        val_interval=val_interval,  # New argument
+                        val_interval=max(1, len(train_loader) // args.val_steps_target),
                     )
 
                     # Generate a unique model name and checkpoint path

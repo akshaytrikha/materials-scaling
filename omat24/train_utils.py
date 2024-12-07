@@ -22,7 +22,7 @@ def train(
     scheduler,
     pbar,
     device,
-    val_interval=50,
+    val_interval,
 ):
     model.to(device)
     losses = {}
