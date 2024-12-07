@@ -53,5 +53,11 @@ def get_args():
         help="Maximum number of unique elements in a sample",
     )
     parser.add_argument("--augment", action="store_true", help="Rotation augmentation")
+    parser.add_argument(
+        "--val_steps_target",
+        type=int,
+        default=8,
+        help="Target number of validation steps in one epoch",
+    )
 
     return parser.parse_args()

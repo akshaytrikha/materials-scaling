@@ -1,3 +1,4 @@
+# train.py
 # External
 import torch
 from pathlib import Path
@@ -58,10 +59,9 @@ if __name__ == "__main__":
             max_seq_len=dataset.max_n_atoms,
             concatenated=False,
         )
-    # Store results for all models
-    all_results = {}
 
-    # Train each data fraction & model config
+    experiment_results = {}
+
     for data_fraction in args.data_fractions:
         for model_idx, model in enumerate(meta_models):
             print(
@@ -74,28 +74,29 @@ if __name__ == "__main__":
                     batch_size=batch_size,
                     batch_padded=False,
                 )
+                dataset_size = len(train_loader.dataset)
+
                 for lr in args.lrs:
                     # Initialize optimizer and scheduler
                     optimizer = train_utils.get_optimizer(model, learning_rate=lr)
                     scheduler = train_utils.get_scheduler(optimizer)
 
-                    # Create progress bar for epochs
                     pbar = tqdm(range(args.epochs), desc="Training")
-
-                    # Train model
                     trained_model, losses = train_utils.train(
-                        model,
-                        train_loader,
-                        val_loader,
-                        optimizer,
-                        scheduler,
-                        pbar,
+                        model=model,
+                        train_loader=train_loader,
+                        val_loader=val_loader,
+                        optimizer=optimizer,
+                        scheduler=scheduler,
+                        pbar=pbar,
                         device=DEVICE,
+                        val_interval=max(1, len(train_loader) // args.val_steps_target),
                     )
 
-                    # Save model checkpoint
+                    # Generate a unique model name and checkpoint path
+                    model_name = f"model_ds{dataset_size}_p{int(model.num_params)}"
                     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                    checkpoint_path = f"checkpoints/{args.architecture}_model_{model_idx}_{timestamp}.pth"
+                    checkpoint_path = f"checkpoints/{args.architecture}_ds{dataset_size}_p{int(model.num_params)}_{timestamp}.pth"
                     Path("checkpoints").mkdir(exist_ok=True)
                     torch.save(
                         {
@@ -107,27 +108,29 @@ if __name__ == "__main__":
                         checkpoint_path,
                     )
 
-                    # Store results
-                    all_results[
-                        f"model_{model_idx}_batch_size_{batch_size}_lr_{lr}"
-                    ] = {
+                    # Prepare run entry
+                    run_entry = {
+                        "model_name": model_name,
                         "config": {
                             "architecture": args.architecture,
-                            "embedding_dim": model.embedding_dim,
-                            # "hidden_dim": model.hidden_dim,
-                            "depth": model.depth,
+                            "embedding_dim": getattr(model, "embedding_dim", None),
+                            "depth": getattr(model, "depth", None),
                             "num_params": model.num_params,
+                            "dataset_size": float(dataset_size),
                         },
-                        "batch_size": batch_size,
-                        "lr": lr,
-                        "losses": losses,
+                        "losses": {str(k): v for k, v in losses.items()},
                         "checkpoint_path": checkpoint_path,
                     }
 
+                    ds_key = str(dataset_size)
+                    if ds_key not in experiment_results:
+                        experiment_results[ds_key] = []
+                    experiment_results[ds_key].append(run_entry)
+
     # Save all results to JSON
-    results_path = Path("results") / f"{timestamp}.json"
+    results_path = Path("results") / f"experiments_{timestamp}.json"
     Path("results").mkdir(exist_ok=True)
     with open(results_path, "w") as f:
-        json.dump(all_results, f, indent=4)
+        json.dump(experiment_results, f, indent=4)
 
     print(f"\nTraining completed. Results saved to {results_path}")
