@@ -1,27 +1,37 @@
+# External
 import torch
 import torch.nn as nn
+import yaml
 
 
 class MetaFCNModels:
-    def __init__(self, vocab_size=119):
-        self.configurations = [
-            {"embedding_dim": 32, "hidden_dim": 32, "depth": 2},  # XSmall
-            {"embedding_dim": 32, "hidden_dim": 64, "depth": 2},  # Small
-            {"embedding_dim": 64, "hidden_dim": 128, "depth": 4},  # Medium
-            # {"embedding_dim": 128, "hidden_dim": 256, "depth": 8},  # Large
-        ]
+    def __init__(self, config_file="./models/fcn/fcn_config.yaml", vocab_size=119):
         self.vocab_size = vocab_size
+        self.configurations = self.load_configurations(config_file)
+
+    def load_configurations(self, config_file):
+        try:
+            with open(config_file, "r") as f:
+                configurations = yaml.safe_load(f)
+            return configurations
+        except FileNotFoundError:
+            raise FileNotFoundError(f"Configuration file {config_file} not found.")
+        except yaml.YAMLError:
+            raise ValueError(f"Error decoding YAML in {config_file}.")
 
     def __getitem__(self, idx):
         if idx >= len(self.configurations):
             raise IndexError("Configuration index out of range")
         config = self.configurations[idx]
-        return FCNModel(
-            vocab_size=self.vocab_size,
-            embedding_dim=config["embedding_dim"],
-            hidden_dim=config["hidden_dim"],
-            depth=config["depth"],
-        )
+        return {
+            "model": FCNModel(
+                vocab_size=self.vocab_size,
+                embedding_dim=config["embedding_dim"],
+                hidden_dim=config["hidden_dim"],
+                depth=config["depth"],
+            ),
+            "num_epochs": config["num_epochs"],
+        }
 
     def __len__(self):
         return len(self.configurations)
@@ -32,12 +42,15 @@ class MetaFCNModels:
 
 
 class FCNModel(nn.Module):
-    def __init__(self, vocab_size=119, embedding_dim=128, hidden_dim=256, depth=4):
+    def __init__(
+        self, vocab_size=119, embedding_dim=128, hidden_dim=256, depth=4, num_epochs=1
+    ):
         super(FCNModel, self).__init__()
         self.vocab_size = vocab_size
         self.embedding_dim = embedding_dim
         self.hidden_dim = hidden_dim
         self.depth = depth
+        self.num_epochs = num_epochs
 
         # Embedding for atomic numbers
         self.embedding = nn.Embedding(

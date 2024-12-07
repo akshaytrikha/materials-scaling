@@ -1,0 +1,39 @@
+- embedding_dim: 4
+  hidden_dim: 4
+  depth: 2
+  num_epochs:  # maps data fraction to number of epochs
+    0.1: 3
+    0.2: 3
+    0.4: 2
+    0.8: 2
+    1.0: 2
+
+- embedding_dim: 8
+  hidden_dim: 8
+  depth: 2
+  num_epochs:  # maps data fraction to number of epochs
+    0.1: 3
+    0.2: 2
+    0.4: 2
+    0.8: 1
+    1.0: 1
+
+- embedding_dim: 16
+  hidden_dim: 16
+  depth: 2
+  num_epochs:  # maps data fraction to number of epochs
+    0.1: 2
+    0.2: 2
+    0.4: 1
+    0.8: 1
+    1.0: 1
+
+- embedding_dim: 32
+  hidden_dim: 32
+  depth: 2
+  num_epochs:  # maps data fraction to number of epochs
+    0.1: 1
+    0.2: 1
+    0.4: 1
+    0.8: 1
+    1.0: 1

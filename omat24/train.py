@@ -11,7 +11,7 @@ from tqdm import tqdm
 from data import OMat24Dataset, get_dataloaders
 from data_utils import download_dataset
 from arg_parser import get_args
-from models.fcn import MetaFCNModels
+from models.fcn.fcn import MetaFCNModels
 from models.transformer_models import MetaTransformerModels
 import train_utils as train_utils
 
@@ -63,7 +63,9 @@ if __name__ == "__main__":
     experiment_results = {}
 
     for data_fraction in args.data_fractions:
-        for model_idx, model in enumerate(meta_models):
+        for model_idx, model_info in enumerate(meta_models):
+            model = model_info["model"]
+            num_epochs_dict = model_info["num_epochs"]
             print(
                 f"\nModel {model_idx + 1}/{len(meta_models)} is on device {DEVICE} and has {model.num_params} parameters"
             )
@@ -81,7 +83,7 @@ if __name__ == "__main__":
                     optimizer = train_utils.get_optimizer(model, learning_rate=lr)
                     scheduler = train_utils.get_scheduler(optimizer)
 
-                    pbar = tqdm(range(args.epochs), desc="Training")
+                    pbar = tqdm(range(num_epochs_dict[data_fraction]), desc="Training")
                     trained_model, losses = train_utils.train(
                         model=model,
                         train_loader=train_loader,
@@ -117,6 +119,7 @@ if __name__ == "__main__":
                             "depth": getattr(model, "depth", None),
                             "num_params": model.num_params,
                             "dataset_size": float(dataset_size),
+                            "num_epochs": model.num_epochs,
                         },
                         "losses": {str(k): v for k, v in losses.items()},
                         "checkpoint_path": checkpoint_path,
