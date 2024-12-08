@@ -23,10 +23,14 @@ def train(
     pbar,
     device,
     val_interval,
+    patience=5,
 ):
     model.to(device)
     losses = {}
     step = 0
+
+    best_val_loss = float("inf")
+    epochs_since_improvement = 0
 
     for epoch in pbar:
         model.train()
@@ -76,16 +80,25 @@ def train(
                     "train_loss": float(current_avg_train_loss),
                     "val_loss": float(val_loss),
                 }
-
             step += 1
 
-        # At the end of the epoch, do a validation run
+        # Validation at end of epoch
         val_loss = run_validation(model, val_loader, device)
         avg_train_loss = train_loss_sum / num_train_batches
         losses[step] = {
             "train_loss": float(avg_train_loss),
             "val_loss": float(val_loss),
         }
+
+        # Early stopping
+        if val_loss < best_val_loss:
+            best_val_loss = val_loss
+            epochs_since_improvement = 0
+        else:
+            epochs_since_improvement += 1
+            if epochs_since_improvement >= patience:
+                print("Early stopping triggered")
+                break
 
         if scheduler is not None:
             scheduler.step()
