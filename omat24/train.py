@@ -1,4 +1,3 @@
-# train.py
 # External
 import torch
 from pathlib import Path
@@ -28,6 +27,12 @@ elif torch.backends.mps.is_available():
     DEVICE = torch.device("mps")
 else:
     DEVICE = torch.device("cpu")
+
+
+def save_results_to_file(results_path, experiment_results):
+    """Save experiment results to the JSON file."""
+    with open(results_path, "w") as f:
+        json.dump(experiment_results, f, indent=4)
 
 
 if __name__ == "__main__":
@@ -62,6 +67,16 @@ if __name__ == "__main__":
 
     experiment_results = {}
 
+    # Create results path and initialize file
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    results_path = Path("results") / f"experiments_{timestamp}.json"
+    Path("results").mkdir(exist_ok=True)
+    if not results_path.exists():
+        with open(results_path, "w") as f:
+            json.dump({}, f)  # Initialize as empty JSON
+
+    print(f"\nTraining starting. Results continuously saved to {results_path}")
+
     for data_fraction in args.data_fractions:
         for model_idx, model in enumerate(meta_models):
             print(
@@ -95,7 +110,6 @@ if __name__ == "__main__":
 
                     # Generate a unique model name and checkpoint path
                     model_name = f"model_ds{dataset_size}_p{int(model.num_params)}"
-                    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
                     checkpoint_path = f"checkpoints/{args.architecture}_ds{dataset_size}_p{int(model.num_params)}_{timestamp}.pth"
                     Path("checkpoints").mkdir(exist_ok=True)
                     torch.save(
@@ -127,10 +141,7 @@ if __name__ == "__main__":
                         experiment_results[ds_key] = []
                     experiment_results[ds_key].append(run_entry)
 
-    # Save all results to JSON
-    results_path = Path("results") / f"experiments_{timestamp}.json"
-    Path("results").mkdir(exist_ok=True)
-    with open(results_path, "w") as f:
-        json.dump(experiment_results, f, indent=4)
+                    # Write results to JSON after each run entry
+                    save_results_to_file(results_path, experiment_results)
 
-    print(f"\nTraining completed. Results saved to {results_path}")
+    print(f"\nTraining completed. Results continuously saved to {results_path}")
