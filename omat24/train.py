@@ -35,6 +35,20 @@ def save_results_to_file(results_path, experiment_results):
         json.dump(experiment_results, f, indent=4)
 
 
+# maps data fraction to epochs multiplier
+EPOCHS_SCHEDULE = {
+    0.01: 5,
+    0.02: 4.5,
+    0.05: 3,
+    0.08: 3,
+    0.1: 2,
+    0.2: 2,
+    0.4: 1.5,
+    0.8: 1,
+    1.0: 1,
+}
+
+
 if __name__ == "__main__":
     args = get_args()
 
@@ -78,6 +92,7 @@ if __name__ == "__main__":
     print(f"\nTraining starting. Results continuously saved to {results_path}")
 
     for data_fraction in args.data_fractions:
+        print(f"\nData fraction: {data_fraction}")
         for model_idx, model in enumerate(meta_models):
             print(
                 f"\nModel {model_idx + 1}/{len(meta_models)} is on device {DEVICE} and has {model.num_params} parameters"
@@ -96,7 +111,8 @@ if __name__ == "__main__":
                     optimizer = train_utils.get_optimizer(model, learning_rate=lr)
                     scheduler = train_utils.get_scheduler(optimizer)
 
-                    pbar = tqdm(range(args.epochs), desc="Training")
+                    num_epochs = int(args.epochs * EPOCHS_SCHEDULE[data_fraction])
+                    pbar = tqdm(range(num_epochs), desc="Training")
                     trained_model, losses = train_utils.train(
                         model=model,
                         train_loader=train_loader,
