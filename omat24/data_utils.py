@@ -15,7 +15,7 @@ DATASETS = {
         },
         "rattled-1000": {
             "url": "https://drive.google.com/uc?id=1XoqQc_5POqLgDQQ0Z-oGCVW72Ohtkv2O",
-            "max_n_atoms": 136,
+            "max_n_atoms": 152,
         },
     },
     "train": {
