@@ -1,5 +1,11 @@
 import torch.nn as nn
 
+def isotrophic(stress):
+    return 0
+
+def anisotrophic(stress):
+    return 0
+
 
 def compute_mae_loss(
     pred_forces, pred_energy, pred_stress, true_forces, true_energy, true_stress, mask
@@ -11,9 +17,10 @@ def compute_mae_loss(
     true_forces = true_forces * mask.float()
     # Compute MSE losses
     energy_loss = nn.L1Loss()(pred_energy, true_energy)
-    force_loss = nn.L1Loss()(pred_forces, true_forces)
-    stress_loss = nn.L1Loss()(pred_stress, true_stress)
-    return 20 * energy_loss + 10 * force_loss + stress_loss
+    force_loss = nn.MSELoss()(pred_forces, true_forces)
+    stress_isotropic_loss = nn.L1Loss()(isotropic(pred_stress), isotrophic(true_stress))
+    stress_anisotropic_loss = nn.L1Loss()(anisotropic(pred_stress), anisotropic(true_stress))
+    return 2.5 * energy_loss + 20 * force_loss + 5 * stress_isotropic_loss + 5 * stress_anisotropic_loss
 
 
 class CosineSimilarityLoss(nn.Module):
