@@ -1,3 +1,4 @@
+# train.py
 # External
 import torch
 from pathlib import Path
@@ -7,12 +8,12 @@ from datetime import datetime
 from tqdm import tqdm
 
 # Internal
-from data import download_dataset, OMat24Dataset, get_dataloaders
+from data import OMat24Dataset, get_dataloaders
+from data_utils import download_dataset
 from arg_parser import get_args
 from models.fcn import MetaFCNModels
 from models.transformer_models import MetaTransformerModels
 import train_utils as train_utils
-
 
 # Set seed & device
 seed = 1024
@@ -33,17 +34,20 @@ if __name__ == "__main__":
     args = get_args()
 
     # Load dataset
-    dataset_name = "rattled-1000"
-    dataset_path = Path(f"datasets/{dataset_name}")
+    split_name = "val"
+    dataset_name = "rattled-300-subsampled"
+
+    dataset_path = Path(f"datasets/{split_name}/{dataset_name}")
     if not dataset_path.exists():
-        download_dataset(dataset_name)
+        download_dataset(dataset_name, split_name)
     dataset = OMat24Dataset(dataset_path=dataset_path, augment=args.augment)
-    train_loader, val_loader = get_dataloaders(
-        dataset, data_fraction=0.1, batch_size=args.batch_size, batch_padded=False
-    )
 
     # User Hyperparam Feedback
-    pprint.pprint(vars(args))
+    params = vars(args) | {
+        "dataset_name": f"{split_name}/{dataset_name}",
+        "max_n_atoms": dataset.max_n_atoms,
+    }
+    pprint.pprint(params)
     print()
 
     # Initialize meta model class
@@ -52,67 +56,81 @@ if __name__ == "__main__":
     elif args.architecture == "Transformer":
         meta_models = MetaTransformerModels(
             vocab_size=args.n_elements,
-            max_seq_len=args.max_n_atoms,
+            max_seq_len=dataset.max_n_atoms,
             concatenated=False,
         )
-    # Store results for all models
-    all_results = {}
 
-    # Train each model configuration
-    for model_idx, model in enumerate(meta_models):
-        print(
-            f"\nModel {model_idx + 1}/{len(meta_models)} is on device {DEVICE} and has {model.num_params} parameters"
-        )
+    experiment_results = {}
 
-        # Initialize optimizer and scheduler
-        optimizer = train_utils.get_optimizer(model, learning_rate=args.lr)
-        scheduler = train_utils.get_scheduler(optimizer)
+    for data_fraction in args.data_fractions:
+        for model_idx, model in enumerate(meta_models):
+            print(
+                f"\nModel {model_idx + 1}/{len(meta_models)} is on device {DEVICE} and has {model.num_params} parameters"
+            )
+            for batch_size in args.batch_sizes:
+                train_loader, val_loader = get_dataloaders(
+                    dataset,
+                    data_fraction=data_fraction,
+                    batch_size=batch_size,
+                    batch_padded=False,
+                )
+                dataset_size = len(train_loader.dataset)
 
-        # Create progress bar for epochs
-        pbar = tqdm(range(args.epochs), desc="Training")
+                for lr in args.lrs:
+                    # Initialize optimizer and scheduler
+                    optimizer = train_utils.get_optimizer(model, learning_rate=lr)
+                    scheduler = train_utils.get_scheduler(optimizer)
 
-        # Train model
-        trained_model, losses = train_utils.train(
-            model,
-            train_loader,
-            val_loader,
-            optimizer,
-            scheduler,
-            pbar,
-            device=DEVICE,
-        )
+                    pbar = tqdm(range(args.epochs), desc="Training")
+                    trained_model, losses = train_utils.train(
+                        model=model,
+                        train_loader=train_loader,
+                        val_loader=val_loader,
+                        optimizer=optimizer,
+                        scheduler=scheduler,
+                        pbar=pbar,
+                        device=DEVICE,
+                        val_interval=max(1, len(train_loader) // args.val_steps_target),
+                    )
 
-        # Save model checkpoint
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        checkpoint_path = (
-            f"checkpoints/{args.architecture}_model_{model_idx}_{timestamp}.pth"
-        )
-        Path("checkpoints").mkdir(exist_ok=True)
-        torch.save(
-            {
-                "model_state_dict": trained_model.state_dict(),
-                "losses": losses,
-            },
-            checkpoint_path,
-        )
+                    # Generate a unique model name and checkpoint path
+                    model_name = f"model_ds{dataset_size}_p{int(model.num_params)}"
+                    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                    checkpoint_path = f"checkpoints/{args.architecture}_ds{dataset_size}_p{int(model.num_params)}_{timestamp}.pth"
+                    Path("checkpoints").mkdir(exist_ok=True)
+                    torch.save(
+                        {
+                            "model_state_dict": trained_model.state_dict(),
+                            "losses": losses,
+                            "batch_size": batch_size,
+                            "lr": lr,
+                        },
+                        checkpoint_path,
+                    )
 
-        # Store results
-        all_results[f"model_{model_idx}"] = {
-            "config": {
-                "architecture": args.architecture,
-                "embedding_dim": model.embedding_dim,
-                # "hidden_dim": model.hidden_dim,
-                "depth": model.depth,
-                "num_params": model.num_params,
-            },
-            "losses": losses,
-            "checkpoint_path": checkpoint_path,
-        }
+                    # Prepare run entry
+                    run_entry = {
+                        "model_name": model_name,
+                        "config": {
+                            "architecture": args.architecture,
+                            "embedding_dim": getattr(model, "embedding_dim", None),
+                            "depth": getattr(model, "depth", None),
+                            "num_params": model.num_params,
+                            "dataset_size": float(dataset_size),
+                        },
+                        "losses": {str(k): v for k, v in losses.items()},
+                        "checkpoint_path": checkpoint_path,
+                    }
+
+                    ds_key = str(dataset_size)
+                    if ds_key not in experiment_results:
+                        experiment_results[ds_key] = []
+                    experiment_results[ds_key].append(run_entry)
 
     # Save all results to JSON
-    results_path = Path("results") / f"{timestamp}.json"
+    results_path = Path("results") / f"experiments_{timestamp}.json"
     Path("results").mkdir(exist_ok=True)
     with open(results_path, "w") as f:
-        json.dump(all_results, f, indent=4)
+        json.dump(experiment_results, f, indent=4)
 
     print(f"\nTraining completed. Results saved to {results_path}")
