@@ -1,3 +1,4 @@
+
 import torch.nn as nn
 
 def isotrophic(stress):
@@ -18,7 +19,7 @@ def compute_mae_loss(
     # Compute MSE losses
     energy_loss = nn.L1Loss()(pred_energy, true_energy)
     force_loss = nn.MSELoss()(pred_forces, true_forces)
-    stress_isotropic_loss = nn.L1Loss()(isotropic(pred_stress), isotrophic(true_stress))
+    stress_isotropic_loss = nn.L1Loss()(isotropic(pred_stress), isotropic(true_stress))
     stress_anisotropic_loss = nn.L1Loss()(anisotropic(pred_stress), anisotropic(true_stress))
     return 2.5 * energy_loss + 20 * force_loss + 5 * stress_isotropic_loss + 5 * stress_anisotropic_loss
 
