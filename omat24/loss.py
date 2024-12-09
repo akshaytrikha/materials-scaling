@@ -39,14 +39,13 @@ def compute_mae_loss(
     pred_forces = pred_forces * mask.float()
     true_forces = true_forces * mask.float()
     # Compute losses
-    energy_loss = nn.L1Loss()(pred_energy, true_energy)
-    force_loss = nn.MSELoss()(pred_forces, true_forces)
+    energy_loss = torch.mean(torch.abs(pred_energy - true_energy))
+    absolute_force_errors = torch.abs(pred_forces - true_forces)
+    force_loss = torch.sqrt(absolute_force_errors.mean() ** 2)
     true_isotropic_stress, true_anisotropic_stress = unvoigt_stress(true_stress)
     pred_isotropic_stress, pred_anisotropic_stress = unvoigt_stress(pred_stress)
-    stress_isotropic_loss = nn.L1Loss()(pred_isotropic_stress, true_isotropic_stress)
-    stress_anisotropic_loss = nn.MSELoss()(
-        pred_anisotropic_stress, true_anisotropic_stress
-    )
+    stress_isotropic_loss = torch.mean(torch.abs((pred_isotropic_stress - true_isotropic_stress)))
+    stress_anisotropic_loss = torch.mean(torch.abs((pred_anisotropic_stress - true_anisotropic_stress)))
     return (
         2.5 * energy_loss
         + 20 * force_loss
