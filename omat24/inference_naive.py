@@ -66,4 +66,4 @@ if __name__ == "__main__":
             use_mask=False,
             convert_forces_to_magnitudes=False
         )
-    print(f"Total Loss: {loss}")
+    print(f"Average Loss Per Batch: {loss / num_batches}")
