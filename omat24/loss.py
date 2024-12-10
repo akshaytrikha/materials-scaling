@@ -21,10 +21,22 @@ class PerAtomMAELoss(nn.Module):
         # check if target is a scalar
         assert target.dim() == 1 or (target.dim() == 2 and target.shape[1] == 1)
         # check per_atom shape
-        assert (target / _natoms).shape == target.shape
-        return self.loss(pred / _natoms, target / _natoms)
+        assert (target.to('cpu') / _natoms).shape == target.shape
+        return self.loss(pred.to('cpu') / _natoms, target.to('cpu') / _natoms)
 
 # This is from https://github.com/FAIR-Chem/fairchem/blob/main/src/fairchem/core/modules/loss.py
+class MAELoss(nn.Module):
+    def __init__(self) -> None:
+        super().__init__()
+        self.loss = nn.L1Loss()
+        # reduction should be none as it is handled in DDPLoss
+        self.loss.reduction = "none"
+
+    def forward(
+        self, pred: torch.Tensor, target: torch.Tensor, natoms: torch.Tensor
+    ) -> torch.Tensor:
+        return self.loss(pred, target)
+
 class L2NormLoss(nn.Module):
     """
     Currently this loss is intened to used with vectors.
@@ -40,45 +52,36 @@ class L2NormLoss(nn.Module):
         assert target.shape[1] != 1
         return torch.linalg.vector_norm(pred - target, ord=2, dim=-1)
 
-# This is from https://github.com/FAIR-Chem/fairchem/blob/main/src/fairchem/core/modules/loss.py
-class MAELoss(nn.Module):
-    def __init__(self) -> None:
-        super().__init__()
-        self.loss = nn.L1Loss()
-        # reduction should be none as it is handled in DDPLoss
-        self.loss.reduction = "none"
+import torch
 
-    def forward(
-        self, pred: torch.Tensor, target: torch.Tensor, natoms: torch.Tensor
-    ) -> torch.Tensor:
-        return self.loss(pred, target)
-
-def unvoigt_stress(voigt_stress):
-    """Separates a stress tensor in Voigt notation into isotropic and anisotropic components.
+def unvoigt_stress(voigt_stress_batch):
+    """
+    Separates stress tensors in Voigt notation into isotropic and anisotropic components for a batch.
 
     Parameters:
-    - voigt_stress (Tensor): A 6-element tensor representing the stress tensor in Voigt notation.
-                             Order: [sigma_xx, sigma_yy, sigma_zz, sigma_yz, sigma_xz, sigma_xy]
+    - voigt_stress_batch (Tensor): A [32, 6] tensor where each row represents a stress tensor in Voigt notation.
+                                   Order: [sigma_xx, sigma_yy, sigma_zz, sigma_yz, sigma_xz, sigma_xy]
 
     Returns:
-    - isotropic_stress (Tensor): 6-element tensor of the isotropic stress component.
-    - anisotropic_stress (Tensor): 6-element tensor of the anisotropic stress component.
+    - isotropic_stress (Tensor): A [32, 6] tensor of the isotropic stress components for each sample.
+    - anisotropic_stress (Tensor): A [32, 6] tensor of the anisotropic stress components for each sample.
     """
-    voigt_stress = torch.as_tensor(voigt_stress, dtype=torch.float32, device='cpu')
+    voigt_stress_batch = torch.as_tensor(voigt_stress_batch, dtype=torch.float32, device='cpu')
 
-    if voigt_stress.shape != (6,):
-        raise ValueError("Input voigt_stress must be a 6-element tensor.")
+    if voigt_stress_batch.shape[-1] != 6:
+        raise ValueError("Input voigt_stress_batch must have shape [N, 6].")
 
-    # Compute the mean (hydrostatic) stress
-    p = (voigt_stress[0] + voigt_stress[1] + voigt_stress[2]) / 3.0
+    # Compute the mean (hydrostatic) stress for each sample
+    p = voigt_stress_batch[:, :3].mean(dim=-1, keepdim=True)  # Shape [32, 1]
 
-    # Construct isotropic stress in Voigt notation
-    isotropic_stress = torch.tensor([p, p, p, 0.0, 0.0, 0.0], dtype=torch.float32)
+    # Construct isotropic stress in Voigt notation for each sample
+    isotropic_stress = torch.cat([p, p, p, torch.zeros_like(p), torch.zeros_like(p), torch.zeros_like(p)], dim=-1)
 
-    # Compute anisotropic (deviatoric) stress
-    anisotropic_stress = voigt_stress - isotropic_stress
+    # Compute anisotropic (deviatoric) stress for each sample
+    anisotropic_stress = voigt_stress_batch - isotropic_stress
 
     return isotropic_stress, anisotropic_stress
+
 
 def compute_mae_loss(
     pred_forces, pred_energy, pred_stress, true_forces, true_energy, true_stress, mask
@@ -91,19 +94,15 @@ def compute_mae_loss(
     mask = mask.unsqueeze(-1)  # Shape: [batch_size, max_atoms, 1]
     pred_forces = (pred_forces * mask.float())
     true_forces = (true_forces * mask.float())
-    nmolecules = pred_forces.shape[0]
-    natoms = pred_forces.shape[1]
+    natoms = torch.tensor(data=[len(pred_forces[i]) for i in range(len(pred_forces))])
     # Compute losses
-    total_loss = 0
-    for i in range(nmolecules):
-        energy_loss = per_atom_mae_loss(pred=pred_energy[i].item(), target=true_energy[i].item(), natoms=natoms)
-        force_loss = sum(l2_norm_loss(pred=pred_forces[i], target=true_forces[i], natoms=natoms))
-        true_isotropic_stress, true_anisotropic_stress = unvoigt_stress(true_stress[i])
-        pred_isotropic_stress, pred_anisotropic_stress = unvoigt_stress(pred_stress[i])
-        stress_isotropic_loss = sum(mae_loss(pred=pred_isotropic_stress, target=true_isotropic_stress, natoms=natoms))
-        stress_anisotropic_loss = sum(mae_loss(pred=pred_anisotropic_stress, target=true_anisotropic_stress, natoms=natoms))
-        total_loss += 2.5 * energy_loss + 20 * force_loss + 5 * stress_isotropic_loss + 5 * stress_anisotropic_loss
-    return total_loss
+    energy_loss = per_atom_mae_loss(pred=pred_energy, target=true_energy, natoms=natoms)
+    force_loss = l2_norm_loss(pred=torch.linalg.norm(pred_forces, dim=-1), target=torch.linalg.norm(true_forces, dim=-1), natoms=natoms)
+    true_isotropic_stress, true_anisotropic_stress = unvoigt_stress(true_stress)
+    pred_isotropic_stress, pred_anisotropic_stress = unvoigt_stress(pred_stress)
+    stress_isotropic_loss = mae_loss(pred=torch.sum(pred_isotropic_stress, dim=1), target=torch.sum(true_isotropic_stress, dim=1), natoms=natoms)
+    stress_anisotropic_loss = mae_loss(pred=torch.sum(pred_anisotropic_stress, dim=1), target=torch.sum(true_anisotropic_stress, dim=1), natoms=natoms)
+    return torch.mean(2.5 * energy_loss.to('cpu') + 20 * force_loss.to('cpu') + 5 * stress_isotropic_loss.to('cpu') + 5 * stress_anisotropic_loss.to('cpu'))
 
 class CosineSimilarityLoss(nn.Module):
     def __init__(self, dim=1):
