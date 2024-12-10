@@ -1,17 +1,21 @@
 # External
 import torch
-import torch.optim as optim
 
 # Internal
 from loss import compute_mae_loss
 
-
-def get_optimizer(model, learning_rate=1e-3):
-    return optim.Adam(model.parameters(), lr=learning_rate)
-
-
-def get_scheduler(optimizer):
-    return None  # No scheduler for now
+# maps data fraction to epochs multiplier
+EPOCHS_SCHEDULE = {
+    0.01: 5,
+    0.02: 4.5,
+    0.05: 3,
+    0.08: 3,
+    0.1: 2,
+    0.2: 2,
+    0.4: 1.5,
+    0.8: 1,
+    1.0: 1,
+}
 
 
 def train(

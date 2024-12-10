@@ -1,5 +1,6 @@
 # External
 import torch
+import torch.optim as optim
 from pathlib import Path
 import pprint
 import json
@@ -12,7 +13,7 @@ from data_utils import download_dataset
 from arg_parser import get_args
 from models.fcn import MetaFCNModels
 from models.transformer_models import MetaTransformerModels
-import train_utils as train_utils
+from train_utils import train, EPOCHS_SCHEDULE
 
 # Set seed & device
 seed = 1024
@@ -33,20 +34,6 @@ def save_results_to_file(results_path, experiment_results):
     """Save experiment results to the JSON file."""
     with open(results_path, "w") as f:
         json.dump(experiment_results, f, indent=4)
-
-
-# maps data fraction to epochs multiplier
-EPOCHS_SCHEDULE = {
-    0.01: 5,
-    0.02: 4.5,
-    0.05: 3,
-    0.08: 3,
-    0.1: 2,
-    0.2: 2,
-    0.4: 1.5,
-    0.8: 1,
-    1.0: 1,
-}
 
 
 if __name__ == "__main__":
@@ -108,17 +95,16 @@ if __name__ == "__main__":
 
                 for lr in args.lrs:
                     # Initialize optimizer and scheduler
-                    optimizer = train_utils.get_optimizer(model, learning_rate=lr)
-                    scheduler = train_utils.get_scheduler(optimizer)
+                    optimizer = optim.Adam(model.parameters(), lr=lr)
 
                     num_epochs = int(args.epochs * EPOCHS_SCHEDULE[data_fraction])
                     pbar = tqdm(range(num_epochs), desc="Training")
-                    trained_model, losses = train_utils.train(
+                    trained_model, losses = train(
                         model=model,
                         train_loader=train_loader,
                         val_loader=val_loader,
                         optimizer=optimizer,
-                        scheduler=scheduler,
+                        scheduler=None,
                         pbar=pbar,
                         device=DEVICE,
                         val_interval=max(1, len(train_loader) // args.val_steps_target),
