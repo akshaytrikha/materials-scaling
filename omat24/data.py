@@ -55,7 +55,10 @@ def get_dataloaders(
 
     # Create DataLoaders
     train_loader = DataLoader(
-        train_subset, batch_size=batch_size, shuffle=True, collate_fn=collate_fn
+        train_subset,
+        batch_size=batch_size,
+        shuffle=True,
+        collate_fn=collate_fn,
     )
 
     val_loader = DataLoader(
