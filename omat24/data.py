@@ -4,6 +4,9 @@ from pathlib import Path
 import torch
 from fairchem.core.datasets import AseDBDataset
 import ase
+import tarfile
+import gdown
+import os
 
 # Internal
 from matrix import compute_distance_matrix, random_rotate_atoms
@@ -13,6 +16,25 @@ from data_utils import (
     DATASETS,
 )
 
+def download_dataset(dataset_name: str):
+    """Downloads a .tar.gz file from the specified URL and extracts it to the given directory."""
+    os.makedirs("./datasets", exist_ok=True)
+    url = DATASETS[dataset_name]
+    dataset_path = Path(f"datasets/{dataset_name}")
+    compressed_path = dataset_path.with_suffix(".tar.gz")
+    print(f"Starting download from {url}...")
+    gdown.download(url, str(compressed_path), quiet=False)
+    # Extract the dataset
+    print(f"Extracting {compressed_path}...")
+    with tarfile.open(compressed_path, "r:gz") as tar:
+        tar.extractall(path=dataset_path.parent)
+    print(f"Extraction completed. Files are available at {dataset_path}.")
+    # Clean up
+    try:
+        compressed_path.unlink()
+        print(f"Deleted the compressed file {compressed_path}.")
+    except Exception as e:
+        print(f"An error occurred while deleting {compressed_path}: {e}")
 
 def get_dataloaders(
     dataset: Dataset,

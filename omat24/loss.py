@@ -83,49 +83,52 @@ def unvoigt_stress(voigt_stress_batch):
     return isotropic_stress, anisotropic_stress
 
 
-def unvoigt_stress(voigt_stress):
+def unvoigt_stress(voigt_stress_batch):
     """Separates a stress tensor in Voigt notation into isotropic and anisotropic components.
-
     Parameters:
     - voigt_stress (Tensor): A 6-element tensor representing the stress tensor in Voigt notation.
                              Order: [sigma_xx, sigma_yy, sigma_zz, sigma_yz, sigma_xz, sigma_xy]
-
     Returns:
     - isotropic_stress (Tensor): 6-element tensor of the isotropic stress component.
     - anisotropic_stress (Tensor): 6-element tensor of the anisotropic stress component.
     """
-    voigt_stress = torch.as_tensor(voigt_stress, dtype=torch.float32)
-
-    if voigt_stress.shape != (6,):
-        raise ValueError("Input voigt_stress must be a 6-element tensor.")
-
-    # Compute the mean (hydrostatic) stress
-    p = (voigt_stress[0] + voigt_stress[1] + voigt_stress[2]) / 3.0
-
-    # Construct isotropic stress in Voigt notation
-    isotropic_stress = torch.tensor([p, p, p, 0.0, 0.0, 0.0], dtype=torch.float32)
-
-    # Compute anisotropic (deviatoric) stress
-    anisotropic_stress = voigt_stress - isotropic_stress
-
+    voigt_stress_batch = torch.as_tensor(voigt_stress_batch, dtype=torch.float32, device='cpu')
+    if voigt_stress_batch.shape[-1] != 6:
+        raise ValueError("Input voigt_stress_batch must have shape [N, 6].")
+    # Compute the mean (hydrostatic) stress for each sample
+    p = voigt_stress_batch[:, :3].mean(dim=-1, keepdim=True)  # Shape [32, 1]
+    # Construct isotropic stress in Voigt notation for each sample
+    isotropic_stress = torch.cat([p, p, p, torch.zeros_like(p), torch.zeros_like(p), torch.zeros_like(p)], dim=-1)
+    # Compute anisotropic (deviatoric) stress for each sample
+    anisotropic_stress = voigt_stress_batch - isotropic_stress
     return isotropic_stress, anisotropic_stress
 
-
 def compute_mae_loss(
-    pred_forces, pred_energy, pred_stress, true_forces, true_energy, true_stress, mask
+    pred_forces, pred_energy, pred_stress, true_forces, true_energy, true_stress, mask, natoms=None, use_mask=True, convert_forces_to_magnitudes=True
 ):
     """Compute the MAE loss for forces, energy, and stress, considering the mask."""
+    """If convert_forces_to_magnitudes=True, the shapes of pred_forces and true_forces are [batch size, molecule size, 3]."""
+    """In that scenario, this function will convert the 3-dimensional forces to their magnitudes."""
+    """If convert_forces_to_magnitudes=False, the shapes of pred_forces and true_forces are [batch size, molecule size]."""
+    """The shapes of pred_energy and true_energy are [batch_size]."""
+    """The shapes of pred_stress and true_stress are [batch_size, 6]."""
+    """If natoms is not None, the shape of natoms is [batch size]."""
     per_atom_mae_loss = PerAtomMAELoss()
     l2_norm_loss = L2NormLoss()
     mae_loss = MAELoss()
     # Mask out padded atoms
-    mask = mask.unsqueeze(-1)  # Shape: [batch_size, max_atoms, 1]
-    pred_forces = (pred_forces * mask.float())
-    true_forces = (true_forces * mask.float())
-    natoms = torch.tensor(data=[len(pred_forces[i]) for i in range(len(pred_forces))])
+    if natoms is None:
+        natoms = torch.tensor(data=[len(pred_forces[i]) for i in range(len(pred_forces))])
+    if use_mask:
+        mask = mask.unsqueeze(-1)  # Shape: [batch_size, max_atoms, 1]
+        pred_forces = (pred_forces * mask.float())
+        true_forces = (true_forces * mask.float())
     # Compute losses
     energy_loss = per_atom_mae_loss(pred=pred_energy, target=true_energy, natoms=natoms)
-    force_loss = l2_norm_loss(pred=torch.linalg.norm(pred_forces, dim=-1), target=torch.linalg.norm(true_forces, dim=-1), natoms=natoms)
+    if convert_forces_to_magnitudes:
+        force_loss = l2_norm_loss(pred=torch.linalg.norm(pred_forces, dim=2), target=torch.linalg.norm(true_forces, dim=2), natoms=natoms)
+    else:
+        force_loss = l2_norm_loss(pred=pred_forces, target=true_forces, natoms=natoms)
     true_isotropic_stress, true_anisotropic_stress = unvoigt_stress(true_stress)
     pred_isotropic_stress, pred_anisotropic_stress = unvoigt_stress(pred_stress)
     stress_isotropic_loss = mae_loss(pred=torch.sum(pred_isotropic_stress, dim=1), target=torch.sum(true_isotropic_stress, dim=1), natoms=natoms)
