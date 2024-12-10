@@ -1,17 +1,21 @@
 # External
 import torch
-import torch.optim as optim
 
 # Internal
 from loss import compute_mae_loss
 
-
-def get_optimizer(model, learning_rate=1e-3):
-    return optim.Adam(model.parameters(), lr=learning_rate)
-
-
-def get_scheduler(optimizer):
-    return None  # No scheduler for now
+# maps data fraction to epochs multiplier
+EPOCHS_SCHEDULE = {
+    0.01: 5,
+    0.02: 4.5,
+    0.05: 3,
+    0.08: 3,
+    0.1: 2,
+    0.2: 2,
+    0.4: 1.5,
+    0.8: 1,
+    1.0: 1,
+}
 
 
 def train(
@@ -23,10 +27,14 @@ def train(
     pbar,
     device,
     val_interval,
+    patience=5,
 ):
     model.to(device)
     losses = {}
     step = 0
+
+    best_val_loss = float("inf")
+    epochs_since_improvement = 0
 
     for epoch in pbar:
         model.train()
@@ -76,16 +84,25 @@ def train(
                     "train_loss": float(current_avg_train_loss),
                     "val_loss": float(val_loss),
                 }
-
             step += 1
 
-        # At the end of the epoch, do a validation run
+        # Validation at end of epoch
         val_loss = run_validation(model, val_loader, device)
         avg_train_loss = train_loss_sum / num_train_batches
         losses[step] = {
             "train_loss": float(avg_train_loss),
             "val_loss": float(val_loss),
         }
+
+        # Early stopping
+        if val_loss < best_val_loss:
+            best_val_loss = val_loss
+            epochs_since_improvement = 0
+        else:
+            epochs_since_improvement += 1
+            if epochs_since_improvement >= patience:
+                print("Early stopping triggered")
+                break
 
         if scheduler is not None:
             scheduler.step()
