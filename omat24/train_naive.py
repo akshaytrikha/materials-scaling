@@ -22,7 +22,7 @@ if __name__ == "__main__":
     ase_dataset = AseDBDataset(config=dict(src=str(dataset_path)))
 
     # Initialize the model
-    model = NaiveAtomModel()
+    model = NaiveAtomModel(k=5)
 
     # Train the model
     model.train(ase_dataset)
