@@ -23,23 +23,22 @@ result = subprocess.run(
     capture_output=True,
     text=True
 )
-print(result.stderr)
 
-match = re.search(r"Results saved to (?P<results_path>.+)", result.stdout)
+match = re.search(r"Training completed. Results continuously saved to (?P<results_path>.+)", result.stdout)
 results_path = match.group("results_path")  # results path is a json file
 
 # ------------------ Test cases ------------------
 # Load results
 with open(results_path, "r") as f:
     result_json = json.load(f)
-    config = result_json["model_0_batch_size_32_lr_0.001"]["config"]
-    losses = result_json["model_0_batch_size_32_lr_0.001"]["losses"]["0"]
+    config = result_json["298"][0]["config"]
+    losses = result_json["298"][0]["losses"]["0"]
 
 # Test config
-assert config["embedding_dim"] == 32
+assert config["embedding_dim"] == 4
 assert config["depth"] == 2
-assert config["num_params"] == 15338
+assert config["num_params"] == 614
 
 # Test losses
-np.testing.assert_allclose(losses["train_loss"], 386.99096026, rtol=0.1)
-np.testing.assert_allclose(losses["val_loss"], 282.811145, rtol=0.1)
+np.testing.assert_allclose(losses["train_loss"], 381.620849609375, rtol=0.1)
+np.testing.assert_allclose(losses["val_loss"], 425.38733927408856, rtol=0.1)
