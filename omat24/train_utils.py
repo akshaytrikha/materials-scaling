@@ -2,18 +2,18 @@
 import torch
 
 # Internal
-from loss import compute_mae_loss
+from loss import compute_loss
 
 # maps data fraction to epochs multiplier
 EPOCHS_SCHEDULE = {
-    0.01: 5,
-    0.02: 4.5,
-    0.04: 3,
-    0.08: 3,
-    0.1: 2,
-    0.2: 2,
-    0.4: 1.5,
-    0.8: 1,
+    0.01: 50,
+    0.02: 45,
+    0.04: 40,
+    0.08: 35,
+    0.1: 25,
+    0.2: 15,
+    0.4: 10,
+    0.8: 5,
     1.0: 1,
 }
 
@@ -59,7 +59,7 @@ def train(
 
             # Compute loss
             mask = atomic_numbers != 0
-            train_loss = compute_mae_loss(
+            train_loss = compute_loss(
                 forces_pred,
                 energy_pred,
                 stress_pred,
@@ -128,7 +128,7 @@ def run_validation(model, val_loader, device):
 
             # Compute loss
             mask = atomic_numbers != 0
-            val_loss = compute_mae_loss(
+            val_loss = compute_loss(
                 forces_pred,
                 energy_pred,
                 stress_pred,

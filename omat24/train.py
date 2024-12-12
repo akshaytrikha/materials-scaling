@@ -113,7 +113,7 @@ if __name__ == "__main__":
                         pbar=pbar,
                         device=DEVICE,
                         val_interval=val_interval,
-                        total_val_steps=30,
+                        total_val_steps=40,
                     )
 
                     # Generate a unique model name and checkpoint path
