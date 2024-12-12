@@ -98,6 +98,11 @@ if __name__ == "__main__":
                     optimizer = optim.Adam(model.parameters(), lr=lr)
 
                     num_epochs = int(args.epochs * EPOCHS_SCHEDULE[data_fraction])
+                    total_steps = num_epochs * len(train_loader)
+                    val_interval = max(
+                        1, total_steps // 40
+                    )  # Ensure at least every step
+
                     pbar = tqdm(range(num_epochs), desc="Training")
                     trained_model, losses = train(
                         model=model,
@@ -107,7 +112,8 @@ if __name__ == "__main__":
                         scheduler=None,
                         pbar=pbar,
                         device=DEVICE,
-                        val_interval=max(1, len(train_loader) // args.val_steps_target),
+                        val_interval=val_interval,
+                        total_val_steps=30,
                     )
 
                     # Generate a unique model name and checkpoint path
