@@ -80,6 +80,7 @@ if __name__ == "__main__":
             true_energies,
             true_stresses,
             torch.ones(len(true_forces)),
+            device="cpu",
             natoms=natoms,
             use_mask=False,
             convert_forces_to_magnitudes=False,

@@ -4,9 +4,8 @@ import torch.nn as nn
 
 # This is from https://github.com/FAIR-Chem/fairchem/blob/main/src/fairchem/core/modules/loss.py
 class PerAtomMAELoss(nn.Module):
-    """
-    Simply divide a loss by the number of atoms/nodes in the graph.
-    Current this loss is intened to used with scalar values, not vectors or higher tensors.
+    """Simply divide a loss by the number of atoms/nodes in the graph.
+    Currently this loss is intened to used with scalar values, not vectors or higher tensors.
     """
 
     def __init__(self) -> None:
@@ -18,12 +17,7 @@ class PerAtomMAELoss(nn.Module):
     def forward(
         self, pred: torch.Tensor, target: torch.Tensor, natoms: torch.Tensor
     ) -> torch.Tensor:
-        _natoms = torch.reshape(natoms, target.shape)
-        # check if target is a scalar
-        assert target.dim() == 1 or (target.dim() == 2 and target.shape[1] == 1)
-        # check per_atom shape
-        assert (target / _natoms).shape == target.shape
-        return self.loss(pred / _natoms, target / _natoms)
+        return self.loss(pred / natoms, target / natoms)
 
 
 # This is from https://github.com/FAIR-Chem/fairchem/blob/main/src/fairchem/core/modules/loss.py
@@ -35,15 +29,15 @@ class MAELoss(nn.Module):
         self.loss.reduction = "none"
 
     def forward(
-        self, pred: torch.Tensor, target: torch.Tensor, natoms: torch.Tensor
+        self,
+        pred: torch.Tensor,
+        target: torch.Tensor,
     ) -> torch.Tensor:
         return self.loss(pred, target)
 
 
 class L2NormLoss(nn.Module):
-    """
-    Currently this loss is intened to used with vectors.
-    """
+    """Currently this loss is intened to used with vectors."""
 
     def __init__(self) -> None:
         super().__init__()
@@ -92,6 +86,7 @@ def compute_loss(
     true_energy,
     true_stress,
     mask,
+    device,
     natoms=None,
     use_mask=True,
     convert_forces_to_magnitudes=True,
@@ -114,15 +109,10 @@ def compute_loss(
     Returns:
         dict: A dictionary containing the computed MAE losses for forces, energy, and stress.
     """
-
-    per_atom_mae_loss = PerAtomMAELoss()
-    l2_norm_loss = L2NormLoss()
-    mae_loss = MAELoss()
-
     # Mask out padded atoms
     if natoms is None:
         natoms = torch.tensor(
-            data=[len(pred_forces[i]) for i in range(len(pred_forces))]
+            data=[len(pred_forces[i]) for i in range(len(pred_forces))], device=device
         )
     if use_mask:
         mask = mask.unsqueeze(-1)  # Shape: [batch_size, max_atoms, 1]
@@ -130,27 +120,25 @@ def compute_loss(
         true_forces = true_forces * mask.float()
 
     # Compute losses
-    energy_loss = per_atom_mae_loss(pred=pred_energy, target=true_energy, natoms=natoms)
+    energy_loss = PerAtomMAELoss()(pred=pred_energy, target=true_energy, natoms=natoms)
     if convert_forces_to_magnitudes:
-        force_loss = l2_norm_loss(
+        force_loss = L2NormLoss()(
             pred=torch.linalg.norm(pred_forces, dim=2),
             target=torch.linalg.norm(true_forces, dim=2),
             natoms=natoms,
         )
     else:
-        force_loss = l2_norm_loss(pred=pred_forces, target=true_forces, natoms=natoms)
+        force_loss = L2NormLoss()(pred=pred_forces, target=true_forces, natoms=natoms)
 
     true_isotropic_stress, true_anisotropic_stress = unvoigt_stress(true_stress)
     pred_isotropic_stress, pred_anisotropic_stress = unvoigt_stress(pred_stress)
-    stress_isotropic_loss = mae_loss(
+    stress_isotropic_loss = MAELoss()(
         pred=torch.sum(pred_isotropic_stress, dim=1),
         target=torch.sum(true_isotropic_stress, dim=1),
-        natoms=natoms,
     )
-    stress_anisotropic_loss = mae_loss(
+    stress_anisotropic_loss = MAELoss()(
         pred=torch.sum(pred_anisotropic_stress, dim=1),
         target=torch.sum(true_anisotropic_stress, dim=1),
-        natoms=natoms,
     )
 
     return torch.mean(

@@ -67,6 +67,7 @@ def train(
                 energy_true,
                 stress_true,
                 mask,
+                device,
             )
 
             # Backward pass and optimization
@@ -136,6 +137,7 @@ def run_validation(model, val_loader, device):
                 energy_true,
                 stress_true,
                 mask,
+                device,
             )
 
             total_val_loss += val_loss.item()
