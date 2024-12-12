@@ -63,7 +63,7 @@ if __name__ == "__main__":
         meta_models = MetaTransformerModels(
             vocab_size=args.n_elements,
             max_seq_len=dataset.max_n_atoms,
-            concatenated=False,
+            concatenated=True,
         )
 
     experiment_results = {}
