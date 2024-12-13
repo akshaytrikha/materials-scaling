@@ -12,12 +12,12 @@ from fairchem.core.datasets import AseDBDataset
 
 if __name__ == "__main__":
     # Setup dataset
+    split_name = "val"
     dataset_name = "rattled-300-subsampled"
-    dataset_path = Path(f"datasets/{dataset_name}")
 
+    dataset_path = Path(f"datasets/{split_name}/{dataset_name}")
     if not dataset_path.exists():
-        # Fetch and uncompress dataset
-        download_dataset(dataset_name)
+        download_dataset(dataset_name, split_name)
 
     ase_dataset = AseDBDataset(config=dict(src=str(dataset_path)))
 
