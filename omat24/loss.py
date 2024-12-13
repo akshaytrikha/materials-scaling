@@ -153,7 +153,7 @@ def compute_loss(
         # Use full vector difference but no direction loss
         force_magnitude_loss = L2NormLoss()(
             pred=pred_forces, target=true_forces, natoms=natoms
-        )
+        ).mean(dim=1)
 
         total_loss = torch.mean(
             2.5 * energy_loss
