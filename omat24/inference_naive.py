@@ -84,7 +84,7 @@ def run_k_naive(ase_dataset):
             device="cpu",
             natoms=natoms,
             use_mask=False,
-            convert_forces_to_magnitudes=False,
+            naive=True,
         )
 
     print(f"Average Loss Per Batch: {total_loss / num_batches}")
@@ -94,7 +94,7 @@ def run_zero_naive(ase_dataset, force_magnitude):
     """Calculates the loss if a model predicts zero for all properties."""
     total_loss = 0
 
-    for i in range(len(ase_dataset)):
+    for i in tqdm(range(len(ase_dataset))):
         atoms = ase_dataset.get_atoms(i)
         natoms = torch.tensor(len(atoms))
         true_energy = torch.tensor(atoms.get_potential_energy(), dtype=torch.float32)
@@ -105,7 +105,12 @@ def run_zero_naive(ase_dataset, force_magnitude):
             )
         else:
             true_forces = torch.tensor(forces, dtype=torch.float32)
-        true_stress = torch.tensor(atoms.get_stress(), dtype=torch.float32).unsqueeze(0)
+        true_stress = torch.tensor(atoms.get_stress(), dtype=torch.float32)
+
+        # Batch size 1
+        true_energy = true_energy.unsqueeze(0)
+        true_forces = true_forces.unsqueeze(0)
+        true_stress = true_stress.unsqueeze(0)
 
         # Predictions: zeros
         pred_energies = torch.zeros_like(true_energy)
@@ -124,7 +129,7 @@ def run_zero_naive(ase_dataset, force_magnitude):
             device="cpu",
             natoms=natoms,
             use_mask=False,
-            convert_forces_to_magnitudes=False,
+            naive=False,
         )
 
         total_loss += loss.item()
@@ -144,5 +149,5 @@ if __name__ == "__main__":
 
     ase_dataset = AseDBDataset(config=dict(src=str(dataset_path)))
 
-    # run_k_naive(ase_dataset)
-    run_zero_naive(ase_dataset, force_magnitude=False)
+    run_k_naive(ase_dataset)
+    # run_zero_naive(ase_dataset, force_magnitude=False)
