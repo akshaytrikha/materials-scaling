@@ -4,6 +4,7 @@ import torch
 from tqdm.auto import tqdm
 import numpy as np
 from fairchem.core.datasets import AseDBDataset
+import math
 
 # Internal
 from models.naive import NaiveAtomModel
@@ -11,19 +12,22 @@ from data import download_dataset
 from loss import compute_loss
 
 
-def run_k_naive(model, ase_dataset):
-    batch_size = len(ase_dataset)
+def run_naive_k(model, ase_dataset, batch_size=256, device="cpu"):
+    """Evaluates a naive k model on the ASE dataset in batches"""
     total_loss = 0
-    num_batches = len(ase_dataset) // batch_size
+    dataset_size = len(ase_dataset)
+    num_batches = math.ceil(dataset_size / batch_size)
 
-    for batch_idx in tqdm(range(num_batches)):
-        batch_atoms = [
-            ase_dataset.get_atoms(i)
-            for i in range(batch_idx * batch_size, (batch_idx + 1) * batch_size)
-        ]
-        natoms = torch.tensor([len(atoms) for atoms in batch_atoms])
+    for batch_idx in tqdm(range(num_batches), desc="Processing Batches"):
+        # Determine the start and end indices of the current batch
+        start_idx = batch_idx * batch_size
+        end_idx = min(start_idx + batch_size, dataset_size)
 
-        # True properties
+        # Extract the batch atoms
+        batch_atoms = [ase_dataset.get_atoms(i) for i in range(start_idx, end_idx)]
+        natoms = torch.tensor([len(atoms) for atoms in batch_atoms], device=device)
+
+        # Extract true properties
         batch_true_properties = [
             (
                 atoms.get_potential_energy(),
@@ -33,40 +37,45 @@ def run_k_naive(model, ase_dataset):
             for atoms in batch_atoms
         ]
 
-        # Predictions
+        # Model predictions
         pred_energies, pred_forces, pred_stresses = model.predict_batch(batch_atoms)
 
+        # Unpack true properties
         true_energies, true_forces, true_stresses = zip(*batch_true_properties)
-        true_energies = torch.tensor(true_energies)
-        true_stresses = torch.tensor(np.array(true_stresses))
+        true_energies = torch.tensor(true_energies, device=device)
+        true_stresses = torch.tensor(np.array(true_stresses), device=device)
 
-        # Pad true forces to match predicted forces shape
+        # Pad true forces to match the predicted forces shape
         max_atoms = pred_forces.shape[1]
         padded_true_forces = []
         for forces in true_forces:
             pad_width = (0, max_atoms - len(forces))
-            padded_true_forces.append(np.pad(forces, pad_width, mode="constant"))
-        true_forces = torch.tensor(np.array(padded_true_forces))
+            padded_forces = np.pad(forces, pad_width, mode="constant")
+            padded_true_forces.append(padded_forces)
+        true_forces = torch.tensor(np.array(padded_true_forces), device=device)
 
-        # Compute loss
-        total_loss += compute_loss(
+        # Compute loss for the current batch
+        batch_loss = compute_loss(
             pred_forces,
             pred_energies,
             pred_stresses,
             true_forces,
             true_energies,
             true_stresses,
-            torch.ones(len(true_forces)),
-            device="cpu",
+            mask=torch.ones(len(true_forces), device=device),
+            device=device,
             natoms=natoms,
             use_mask=False,
             convert_forces_to_magnitudes=False,
         )
 
-    print(f"Average Loss Per Batch: {total_loss / num_batches}")
+        total_loss += batch_loss
+
+    average_loss = total_loss / num_batches
+    print(f"Average Loss Per Batch: {average_loss.item()}")
 
 
-def run_zero_naive(ase_dataset, force_magnitude):
+def run_naive_zero(ase_dataset, force_magnitude):
     """Calculates the loss if a model predicts zero for all properties."""
     total_loss = 0
 
@@ -125,5 +134,5 @@ if __name__ == "__main__":
     model_path = Path(f"checkpoints/naive/{dataset_name}_naive_k={k}_model.pkl")
     model = NaiveAtomModel.load(model_path)
 
-    run_k_naive(model, ase_dataset)
-    # run_zero_naive(ase_dataset, force_magnitude=False)
+    run_naive_k(model, ase_dataset)
+    # run_naive_zero(ase_dataset, force_magnitude=False)
