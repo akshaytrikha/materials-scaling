@@ -11,28 +11,7 @@ from data import download_dataset
 from loss import compute_loss
 
 
-def predict_with_model(batch_atoms, model_path):
-    """
-    Given a batch of Atoms objects and a path to a trained NaiveAtomModel,
-    load the model and predict energies, forces, and stresses.
-
-    Parameters
-    ----------
-    batch_atoms : list of ASE Atoms
-        The structures for prediction.
-    model_path : str or Path
-        Filepath to the saved model.
-
-    Returns
-    -------
-    (torch.Tensor, torch.Tensor, torch.Tensor)
-        predicted energies, forces, and stresses.
-    """
-    model = NaiveAtomModel.load(Path(model_path))
-    return model.predict_batch(batch_atoms)
-
-
-def run_k_naive(ase_dataset):
+def run_k_naive(model, ase_dataset):
     batch_size = len(ase_dataset)
     total_loss = 0
     num_batches = len(ase_dataset) // batch_size
@@ -55,10 +34,7 @@ def run_k_naive(ase_dataset):
         ]
 
         # Predictions
-        pred_energies, pred_forces, pred_stresses = predict_with_model(
-            batch_atoms,
-            model_path=Path(f"checkpoints/{dataset_name}_naive_atom_model.pkl"),
-        )
+        pred_energies, pred_forces, pred_stresses = model.predict_batch(batch_atoms)
 
         true_energies, true_forces, true_stresses = zip(*batch_true_properties)
         true_energies = torch.tensor(true_energies)
@@ -80,7 +56,7 @@ def run_k_naive(ase_dataset):
             true_forces,
             true_energies,
             true_stresses,
-            torch.ones(len(true_forces)),  # Weights
+            torch.ones(len(true_forces)),
             device="cpu",
             natoms=natoms,
             use_mask=False,
@@ -144,5 +120,10 @@ if __name__ == "__main__":
 
     ase_dataset = AseDBDataset(config=dict(src=str(dataset_path)))
 
-    # run_k_naive(ase_dataset)
-    run_zero_naive(ase_dataset, force_magnitude=False)
+    # Setup model
+    k = 0
+    model_path = Path(f"checkpoints/naive/{dataset_name}_naive_k={k}_model.pkl")
+    model = NaiveAtomModel.load(model_path)
+
+    run_k_naive(model, ase_dataset)
+    # run_zero_naive(ase_dataset, force_magnitude=False)

@@ -1,8 +1,6 @@
 # External
 from pathlib import Path
 from tqdm.auto import tqdm
-import numpy as np
-import pickle
 
 # Internal
 from models.naive import NaiveAtomModel
@@ -22,7 +20,8 @@ if __name__ == "__main__":
     ase_dataset = AseDBDataset(config=dict(src=str(dataset_path)))
 
     # Initialize the model
-    model = NaiveAtomModel(k=0)
+    k = 0
+    model = NaiveAtomModel(k)
 
     # Train the model
     model.train(ase_dataset)
@@ -31,7 +30,8 @@ if __name__ == "__main__":
     model.finalize()
 
     # Save the model
-    model_filepath = Path(f"checkpoints/{dataset_name}_naive_atom_model.pkl")
+    Path("checkpoints/naive").mkdir(exist_ok=True)
+    model_filepath = Path(f"checkpoints/naive/{dataset_name}_naive_k={k}_model.pkl")
     model_filepath.parent.mkdir(parents=True, exist_ok=True)
     model.save(model_filepath)
     print(f"Model saved to {model_filepath}")
