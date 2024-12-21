@@ -66,7 +66,7 @@ def run_naive_k(model, ase_dataset, batch_size=256, device="cpu"):
             device=device,
             natoms=natoms,
             use_mask=False,
-            convert_forces_to_magnitudes=False,
+            force_magnitude=True,
         )
 
         total_loss += batch_loss

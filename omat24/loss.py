@@ -89,7 +89,7 @@ def compute_loss(
     device,
     natoms=None,
     use_mask=True,
-    convert_forces_to_magnitudes=True,
+    force_magnitude=False,
 ):
     """Compute composite loss for forces, energy, and stress, considering the mask.
 
@@ -121,14 +121,11 @@ def compute_loss(
 
     # Compute losses
     energy_loss = PerAtomMAELoss()(pred=pred_energy, target=true_energy, natoms=natoms)
-    if convert_forces_to_magnitudes:
-        force_loss = L2NormLoss()(
-            pred=torch.linalg.norm(pred_forces, dim=2),
-            target=torch.linalg.norm(true_forces, dim=2),
-            natoms=natoms,
-        )
-    else:
+
+    if force_magnitude:
         force_loss = L2NormLoss()(pred=pred_forces, target=true_forces, natoms=natoms)
+    else:
+        force_loss = nn.MSELoss()(pred_forces, true_forces)
 
     true_isotropic_stress, true_anisotropic_stress = unvoigt_stress(true_stress)
     pred_isotropic_stress, pred_anisotropic_stress = unvoigt_stress(pred_stress)
@@ -149,13 +146,14 @@ def compute_loss(
     )
 
 
-class CosineSimilarityLoss(nn.Module):
-    def __init__(self, dim=1):
-        super(CosineSimilarityLoss, self).__init__()
-        self.cos = nn.CosineSimilarity(dim=dim)
+# Not in use
+# class CosineSimilarityLoss(nn.Module):
+#     def __init__(self, dim=1):
+#         super(CosineSimilarityLoss, self).__init__()
+#         self.cos = nn.CosineSimilarity(dim=dim)
 
-    def forward(self, prediction, target):
-        cosine_sim = self.cos(prediction, target)
-        mean_cosine_sim = cosine_sim.mean()
-        loss = 1 - mean_cosine_sim
-        return loss
+#     def forward(self, prediction, target):
+#         cosine_sim = self.cos(prediction, target)
+#         mean_cosine_sim = cosine_sim.mean()
+#         loss = 1 - mean_cosine_sim
+#         return loss
