@@ -47,25 +47,26 @@ def train(
             # Move data to device
             atomic_numbers = batch["atomic_numbers"].to(device)
             positions = batch["positions"].to(device)
-            forces_true = batch["forces"].to(device)
-            energy_true = batch["energy"].to(device)
-            stress_true = batch["stress"].to(device)
+            true_forces = batch["forces"].to(device)
+            true_energy = batch["energy"].to(device)
+            true_stress = batch["stress"].to(device)
 
             # Zero gradients
             optimizer.zero_grad()
 
             # Forward pass
-            forces_pred, energy_pred, stress_pred = model(atomic_numbers, positions)
+            pred_forces, pred_energy, pred_stress = model(atomic_numbers, positions)
 
             # Compute loss
             mask = atomic_numbers != 0
+            natoms = mask.sum(dim=1)  # Shape: [batch_size]
             train_loss = compute_loss(
-                forces_pred,
-                energy_pred,
-                stress_pred,
-                forces_true,
-                energy_true,
-                stress_true,
+                pred_forces,
+                pred_energy,
+                pred_stress,
+                true_forces,
+                true_energy,
+                true_stress,
                 mask,
                 device,
             )
@@ -120,22 +121,23 @@ def run_validation(model, val_loader, device):
             # Move data to device
             atomic_numbers = batch["atomic_numbers"].to(device)
             positions = batch["positions"].to(device)
-            forces_true = batch["forces"].to(device)
-            energy_true = batch["energy"].to(device)
-            stress_true = batch["stress"].to(device)
+            true_forces = batch["forces"].to(device)
+            true_energy = batch["energy"].to(device)
+            true_stress = batch["stress"].to(device)
 
             # Forward pass
-            forces_pred, energy_pred, stress_pred = model(atomic_numbers, positions)
+            pred_forces, pred_energy, pred_stress = model(atomic_numbers, positions)
 
             # Compute loss
             mask = atomic_numbers != 0
+            natoms = mask.sum(dim=1)  # Shape: [batch_size]
             val_loss = compute_loss(
-                forces_pred,
-                energy_pred,
-                stress_pred,
-                forces_true,
-                energy_true,
-                stress_true,
+                pred_forces,
+                pred_energy,
+                pred_stress,
+                true_forces,
+                true_energy,
+                true_stress,
                 mask,
                 device,
             )
