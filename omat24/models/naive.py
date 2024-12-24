@@ -1,30 +1,44 @@
-from collections import defaultdict
 import numpy as np
 import pickle
+from collections import defaultdict
 from tqdm.auto import tqdm
 from scipy.spatial.distance import cdist
 import torch
 
-class NaiveAtomModel:
+
+# Define top-level functions to replace lambda defaults
+def zero_array_6():
+    return np.zeros(6, dtype=np.float64)
+
+
+def zero_array_3():
+    return np.zeros(3, dtype=np.float64)
+
+
+class NaiveMagnitudeModel:
+    """Naive model that only uses force magnitudes."""
+
     def __init__(self, k):
         self.k = k
         self.chain_count = defaultdict(int)
-        # Mapping from (chain_type) to sum of forces and counts
+        # Sums over scalars
         self.force_sum = defaultdict(float)
-
-        # Mapping from (chain_type) to sum of energy contributions and counts
         self.energy_sum = defaultdict(float)
+        self.stress_sum = defaultdict(zero_array_6)  # Use top-level function
 
-        # For stress, we'll store sum and count separately
-        self.stress_sum = defaultdict(float)
-
-    @staticmethod
-    def zero_vector():
-        return np.zeros(3)
+    def find_nearest_neighbors_tuples(self, distance_matrix):
+        tuples_of_nearest_indices = []
+        for distances in distance_matrix:
+            nearest = np.argpartition(distances, self.k + 1)[: self.k + 1]
+            nearest = nearest[np.argsort(distances[nearest])]
+            tuple_of_nearest_indices = [
+                nearest[:n].tolist() for n in range(1, self.k + 2)
+            ]
+            tuples_of_nearest_indices.append(tuple(tuple_of_nearest_indices))
+        return tuples_of_nearest_indices
 
     def train(self, dataset):
-        """Train the model by iterating over the dataset and accumulating sums and counts."""
-        for i in tqdm(range(len(dataset)), desc="Training Model"):
+        for i in tqdm(range(len(dataset)), desc="Training NaiveMagnitudeModel"):
             atoms = dataset.get_atoms(i)
             symbols = atoms.get_chemical_symbols()
             energy = atoms.get_potential_energy()
@@ -33,117 +47,228 @@ class NaiveAtomModel:
             positions = atoms.get_positions()
             num_atoms = len(atoms)
 
-            # Compute distance matrix
             distance_matrix = cdist(positions, positions, metric="euclidean")
+            tuples_all = self.find_nearest_neighbors_tuples(distance_matrix)
 
-            # Find nearest neighbors
-            tuples_of_nearest_indices = self.find_nearest_neighbors_tuples(distance_matrix)
+            # Per-atom energy & stress
+            e_per_atom = energy / num_atoms
+            s_per_atom = stress / num_atoms
 
-            # Estimate per-atom energy contribution
-            energy_per_atom = energy / num_atoms
-            stress_per_atom = tuple(stress / num_atoms)
-            for idx, _ in enumerate(atoms):
-                tuples_of_nearest_symbols = []
-                for tuple_of_nearest_indices in tuples_of_nearest_indices[idx]:
-                    tuple_of_nearest_symbols = []
-                    for nearest_index in tuple_of_nearest_indices:
-                        neighbor_type = symbols[nearest_index]
-                        tuple_of_nearest_symbols.append(neighbor_type)
-                    tuple_of_nearest_symbols = tuple(tuple_of_nearest_symbols)
-                    tuples_of_nearest_symbols.append(tuple_of_nearest_symbols)
-                for tuple_of_nearest_symbols in tuples_of_nearest_symbols:
-                    # Accumulate forces
-                    if tuple_of_nearest_symbols not in self.force_sum.keys():
-                        self.chain_count[tuple_of_nearest_symbols] = 0
-                        self.force_sum[tuple_of_nearest_symbols] = 0
-                        self.energy_sum[tuple_of_nearest_symbols] = 0
-                        self.stress_sum[tuple_of_nearest_symbols] = (0, 0, 0, 0, 0, 0)
-                    self.chain_count[tuple_of_nearest_symbols] += 1
-                    self.force_sum[tuple_of_nearest_symbols] += np.linalg.norm(forces[idx])
-                    self.energy_sum[tuple_of_nearest_symbols] += energy_per_atom
-                    self.stress_sum[tuple_of_nearest_symbols] = tuple(a + b for a, b in zip(self.stress_sum[tuple_of_nearest_symbols], stress_per_atom))
+            for idx in range(num_atoms):
+                # Gather neighbor symbol tuples
+                for tuple_of_neighbor_inds in tuples_all[idx]:
+                    tuple_of_neighbor_syms = tuple(
+                        symbols[j] for j in tuple_of_neighbor_inds
+                    )
 
-    def find_nearest_neighbors_tuples(self, distance_matrix):
-        """For each atom, find the index of its nearest neighbor."""
-        tuples_of_nearest_indices = []
-        for _, distances in enumerate(distance_matrix):
-            # Use argpartition to get the top k+1 nearest indices
-            nearest = np.argpartition(distances, self.k + 1)[:self.k + 1]
-            nearest = nearest[np.argsort(distances[nearest])]  # Sort only the top k+1
-            tuple_of_nearest_indices = [nearest[:num_nearest_neighbors].tolist() for num_nearest_neighbors in range(0, self.k + 1)]
-            tuples_of_nearest_indices.append(tuple(tuple_of_nearest_indices))
-        return tuples_of_nearest_indices
+                    self.chain_count[tuple_of_neighbor_syms] += 1
+                    self.force_sum[tuple_of_neighbor_syms] += np.linalg.norm(
+                        forces[idx]
+                    )
+                    self.energy_sum[tuple_of_neighbor_syms] += e_per_atom
+                    self.stress_sum[tuple_of_neighbor_syms] += s_per_atom
+
+        self.finalize()
 
     def finalize(self):
-        """Compute the mean forces and energy contributions after training."""
         self.mean_forces = {}
         self.mean_energies = {}
         self.mean_stresses = {}
-        for tuple_of_nearest_symbols in self.force_sum.keys():
-            if self.chain_count[tuple_of_nearest_symbols] > 0:
-                self.mean_forces[tuple_of_nearest_symbols] = self.force_sum[tuple_of_nearest_symbols] / self.chain_count[tuple_of_nearest_symbols]
-                self.mean_energies[tuple_of_nearest_symbols] = self.energy_sum[tuple_of_nearest_symbols] / self.chain_count[tuple_of_nearest_symbols]
-                self.mean_stresses[tuple_of_nearest_symbols] = tuple(x / self.chain_count[tuple_of_nearest_symbols] for x in self.stress_sum[tuple_of_nearest_symbols])
+        for sym_tuple in self.chain_count:
+            c = self.chain_count[sym_tuple]
+            self.mean_forces[sym_tuple] = self.force_sum[sym_tuple] / c
+            self.mean_energies[sym_tuple] = self.energy_sum[sym_tuple] / c
+            self.mean_stresses[sym_tuple] = self.stress_sum[sym_tuple] / c
 
     def predict_batch(self, batch_atoms):
-        """Predict the forces, energy, and stress for a given atoms object."""
-        symbols_list = [atoms.get_chemical_symbols() for atoms in batch_atoms]
-        positions_list = [atoms.get_positions() for atoms in batch_atoms]
-        num_atoms_list = [len(atoms) for atoms in batch_atoms]
-        distance_matrices = [cdist(positions, positions, metric="euclidean") for positions in positions_list]
-        # Initialize predictions
-        predicted_energy_results = []
-        predicted_forces_results = []
-        predicted_stress_results = []
-        for atoms, symbols, num_atoms, distance_matrix in zip(batch_atoms, symbols_list, num_atoms_list, distance_matrices):
-            # Find nearest neighbors
-            tuples_of_nearest_indices = self.find_nearest_neighbors_tuples(distance_matrix)
-            predicted_forces = np.zeros((num_atoms))
-            predicted_energy = 0
-            predicted_stress = (0, 0, 0, 0, 0, 0)
-            for idx in range(len(atoms)):
-                tuples_of_nearest_symbols = []
-                for tuple_of_nearest_indices in tuples_of_nearest_indices[idx]:
-                    tuple_of_nearest_symbols = []
-                    for nearest_index in tuple_of_nearest_indices:
-                        neighbor_type = symbols[nearest_index]
-                        tuple_of_nearest_symbols.append(neighbor_type)
-                    tuple_of_nearest_symbols = tuple(tuple_of_nearest_symbols)
-                    tuples_of_nearest_symbols.append(tuple_of_nearest_symbols)
-                match_found = False
-                tuple_index = len(tuples_of_nearest_symbols) - 1
-                while not match_found:
-                    tuple_of_nearest_symbols = tuples_of_nearest_symbols[tuple_index]
-                    # Predict results
-                    if tuple_of_nearest_symbols in self.force_sum.keys():
-                            predicted_forces[idx] = self.mean_forces[tuple_of_nearest_symbols]
-                            predicted_energy += self.mean_energies[tuple_of_nearest_symbols]
-                            predicted_stress = tuple(a + b for a, b in zip(predicted_stress, self.mean_stresses[tuple_of_nearest_symbols]))
-                            match_found = True
-                    tuple_index -= 1
-                match_found = False
-            predicted_energy_results.append(predicted_energy)
-            predicted_forces_results.append(predicted_forces)
-            predicted_stress_results.append(predicted_stress)
-        predicted_energy_results = torch.tensor(predicted_energy_results)
-        max_atoms = max(force.shape[0] for force in predicted_forces_results)
-        # Pad forces to have the same number of atoms
+        predicted_energy_list = []
+        predicted_forces_list = []
+        predicted_stress_list = []
+        max_atoms = 0
+
+        for atoms in batch_atoms:
+            symbols = atoms.get_chemical_symbols()
+            positions = atoms.get_positions()
+            num_atoms = len(atoms)
+            max_atoms = max(max_atoms, num_atoms)
+
+        for atoms in batch_atoms:
+            symbols = atoms.get_chemical_symbols()
+            positions = atoms.get_positions()
+            distance_matrix = cdist(positions, positions, metric="euclidean")
+            tuples_all = self.find_nearest_neighbors_tuples(distance_matrix)
+            num_atoms = len(atoms)
+
+            predicted_energy = 0.0
+            predicted_forces = np.zeros(num_atoms, dtype=np.float32)
+            predicted_stress = np.zeros(6, dtype=np.float32)
+
+            for idx in range(num_atoms):
+                # Try from largest tuple to smallest
+                for tuple_of_neighbor_inds in reversed(tuples_all[idx]):
+                    tuple_of_neighbor_syms = tuple(
+                        symbols[j] for j in tuple_of_neighbor_inds
+                    )
+                    if tuple_of_neighbor_syms in self.mean_forces:
+                        predicted_forces[idx] = self.mean_forces[tuple_of_neighbor_syms]
+                        predicted_energy += self.mean_energies[tuple_of_neighbor_syms]
+                        predicted_stress += self.mean_stresses[tuple_of_neighbor_syms]
+                        break
+
+            predicted_energy_list.append(predicted_energy)
+            predicted_forces_list.append(predicted_forces)
+            predicted_stress_list.append(predicted_stress)
+
+        # Pad forces
         padded_forces = []
-        for force in predicted_forces_results:
-            pad_width = (0, max_atoms - force.shape[0])  # Pad along atom dimension
-            padded_forces.append(np.pad(force, pad_width, mode='constant'))
-        # Convert to a PyTorch tensor
-        predicted_forces_results = torch.tensor(np.array(padded_forces))
-        predicted_stress_results = torch.tensor(predicted_stress_results)
-        return predicted_energy_results, predicted_forces_results, predicted_stress_results
+        for forces in predicted_forces_list:
+            pad_width = (0, max_atoms - len(forces))
+            padded = np.pad(forces, pad_width, mode="constant")
+            padded_forces.append(padded)
+        return (
+            torch.tensor(predicted_energy_list, dtype=torch.float32),
+            torch.tensor(padded_forces, dtype=torch.float32),
+            torch.tensor(predicted_stress_list, dtype=torch.float32),
+        )
 
     def save(self, filepath):
-        """Save the trained model to a file."""
         with open(filepath, "wb") as f:
             pickle.dump(self, f)
 
     @staticmethod
     def load(filepath):
-        """Load a trained model from a file."""
+        with open(filepath, "rb") as f:
+            return pickle.load(f)
+
+
+class NaiveDirectionModel:
+    """Naive model uses both force magnitude and direction."""
+
+    def __init__(self, k):
+        self.k = k
+        self.chain_count = defaultdict(int)
+        # Now store sums of 3D vectors
+        self.force_sum = defaultdict(zero_array_3)  # Use top-level function
+        self.energy_sum = defaultdict(float)
+        self.stress_sum = defaultdict(zero_array_6)  # Use top-level function
+
+    def find_nearest_neighbors_tuples(self, distance_matrix):
+        tuples_of_nearest_indices = []
+        for distances in distance_matrix:
+            nearest = np.argpartition(distances, self.k + 1)[: self.k + 1]
+            nearest = nearest[np.argsort(distances[nearest])]
+            tuple_of_nearest_indices = [
+                nearest[:n].tolist() for n in range(1, self.k + 2)
+            ]
+            tuples_of_nearest_indices.append(tuple(tuple_of_nearest_indices))
+        return tuples_of_nearest_indices
+
+    def train(self, dataset):
+        for i in tqdm(range(len(dataset)), desc="Training NaiveDirectionModel"):
+            atoms = dataset.get_atoms(i)
+            symbols = atoms.get_chemical_symbols()
+            energy = atoms.get_potential_energy()
+            forces = atoms.get_forces()  # shape (N, 3)
+            stress = atoms.get_stress()  # shape (6,)
+            positions = atoms.get_positions()
+            num_atoms = len(atoms)
+
+            distance_matrix = cdist(positions, positions, metric="euclidean")
+            tuples_all = self.find_nearest_neighbors_tuples(distance_matrix)
+
+            e_per_atom = energy / num_atoms
+            s_per_atom = stress / num_atoms
+
+            for idx in range(num_atoms):
+                for tuple_of_neighbor_inds in tuples_all[idx]:
+                    tuple_of_neighbor_syms = tuple(
+                        symbols[j] for j in tuple_of_neighbor_inds
+                    )
+
+                    self.chain_count[tuple_of_neighbor_syms] += 1
+                    self.force_sum[tuple_of_neighbor_syms] += forces[
+                        idx
+                    ]  # Store entire vector
+                    self.energy_sum[tuple_of_neighbor_syms] += e_per_atom
+                    self.stress_sum[tuple_of_neighbor_syms] += s_per_atom
+
+        self.finalize()
+
+    def finalize(self):
+        self.mean_forces = {}
+        self.mean_energies = {}
+        self.mean_stresses = {}
+        for sym_tuple, count in self.chain_count.items():
+            self.mean_forces[sym_tuple] = self.force_sum[sym_tuple] / count
+            self.mean_energies[sym_tuple] = self.energy_sum[sym_tuple] / count
+            self.mean_stresses[sym_tuple] = self.stress_sum[sym_tuple] / count
+
+    def predict_batch(self, batch_atoms):
+        predicted_energy_list = []
+        predicted_forces_list = []
+        predicted_stress_list = []
+        max_atoms = 0
+
+        # Precompute maximum number of atoms
+        for atoms in batch_atoms:
+            max_atoms = max(max_atoms, len(atoms))
+
+        # Predict
+        for atoms in batch_atoms:
+            symbols = atoms.get_chemical_symbols()
+            positions = atoms.get_positions()
+            distance_matrix = cdist(positions, positions, metric="euclidean")
+            tuples_all = self.find_nearest_neighbors_tuples(distance_matrix)
+            num_atoms = len(atoms)
+
+            # Now we output 3D forces
+            predicted_forces = np.zeros((num_atoms, 3), dtype=np.float32)
+            predicted_energy = 0.0
+            predicted_stress = np.zeros(6, dtype=np.float32)
+
+            for idx in range(num_atoms):
+                for tuple_of_neighbor_inds in reversed(tuples_all[idx]):
+                    tuple_of_neighbor_syms = tuple(
+                        symbols[j] for j in tuple_of_neighbor_inds
+                    )
+                    if tuple_of_neighbor_syms in self.mean_forces:
+                        predicted_forces[idx, :] = self.mean_forces[
+                            tuple_of_neighbor_syms
+                        ]
+                        predicted_energy += self.mean_energies[tuple_of_neighbor_syms]
+                        predicted_stress += self.mean_stresses[tuple_of_neighbor_syms]
+                        break
+
+            predicted_energy_list.append(predicted_energy)
+            predicted_forces_list.append(predicted_forces)
+            predicted_stress_list.append(predicted_stress)
+
+        # Pad forces to [batch_size, max_atoms, 3]
+        padded_forces = []
+        for forces in predicted_forces_list:
+            N = forces.shape[0]
+            pad = max_atoms - N
+            if pad > 0:
+                # pad along the first dimension (atoms)
+                forces = np.vstack([forces, np.zeros((pad, 3), dtype=np.float32)])
+            padded_forces.append(forces)
+
+        # Convert to tensors
+        predicted_energy_tensor = torch.tensor(
+            predicted_energy_list, dtype=torch.float32
+        )
+        predicted_forces_tensor = torch.tensor(padded_forces, dtype=torch.float32)
+        predicted_stress_tensor = torch.tensor(
+            predicted_stress_list, dtype=torch.float32
+        )
+
+        return predicted_energy_tensor, predicted_forces_tensor, predicted_stress_tensor
+
+    def save(self, filepath):
+        with open(filepath, "wb") as f:
+            pickle.dump(self, f)
+
+    @staticmethod
+    def load(filepath):
         with open(filepath, "rb") as f:
             return pickle.load(f)

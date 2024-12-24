@@ -105,6 +105,9 @@ def compute_loss(
         convert_forces_to_magnitudes (bool): Whether to convert the 3-dimensional forces to their magnitudes.
         natoms (Tensor, optional): Number of atoms per molecule. If provided, shape is [batch_size].
         mask (Tensor, optional): A mask to filter the input data.
+        device (torch.device): Device to use for computation.
+        use_mask (bool, optional): Whether to use the mask to filter the input data.
+        force_magnitude (bool, optional): Whether to compute the force loss using L2NormLoss or nn.MSELoss.
 
     Returns:
         dict: A dictionary containing the computed MAE losses for forces, energy, and stress.

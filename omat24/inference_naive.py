@@ -7,12 +7,12 @@ from fairchem.core.datasets import AseDBDataset
 import math
 
 # Internal
-from models.naive import NaiveAtomModel
+from models.naive import NaiveMagnitudeModel, NaiveDirectionModel
 from data import download_dataset
 from loss import compute_loss
 
 
-def run_naive_k(model, ase_dataset, batch_size=256, device="cpu"):
+def run_naive_k(model, ase_dataset, force_magnitude, batch_size=256, device="cpu"):
     """Evaluates a naive k model on the ASE dataset in batches"""
     total_loss = 0
     dataset_size = len(ase_dataset)
@@ -28,30 +28,36 @@ def run_naive_k(model, ase_dataset, batch_size=256, device="cpu"):
         natoms = torch.tensor([len(atoms) for atoms in batch_atoms], device=device)
 
         # Extract true properties
-        batch_true_properties = [
-            (
-                atoms.get_potential_energy(),
-                np.linalg.norm(atoms.get_forces(), axis=-1),
-                atoms.get_stress(),
-            )
-            for atoms in batch_atoms
-        ]
+        batch_true_properties = []
+        for atoms in batch_atoms:
+            e = atoms.get_potential_energy()
+            if force_magnitude:
+                f = np.linalg.norm(atoms.get_forces(), axis=-1)  # shape [n_atoms]
+            else:
+                f = atoms.get_forces()  # shape [n_atoms, 3]
+            s = atoms.get_stress()
+            batch_true_properties.append((e, f, s))
 
-        # Model predictions
-        pred_energies, pred_forces, pred_stresses = model.predict_batch(batch_atoms)
-
-        # Unpack true properties
+        # Unpack
         true_energies, true_forces, true_stresses = zip(*batch_true_properties)
         true_energies = torch.tensor(true_energies, device=device)
         true_stresses = torch.tensor(np.array(true_stresses), device=device)
 
-        # Pad true forces to match the predicted forces shape
-        max_atoms = pred_forces.shape[1]
+        # Model predictions
+        pred_energies, pred_forces, pred_stresses = model.predict_batch(batch_atoms)
+
+        # Pad true_forces
+        max_atoms = pred_forces.shape[1]  # number of atoms dimension
         padded_true_forces = []
-        for forces in true_forces:
-            pad_width = (0, max_atoms - len(forces))
-            padded_forces = np.pad(forces, pad_width, mode="constant")
-            padded_true_forces.append(padded_forces)
+        for f in true_forces:
+            if force_magnitude:
+                # shape [n_atoms]
+                pad_width = (0, max_atoms - len(f))
+            else:
+                # shape [n_atoms, 3]
+                pad_width = ((0, max_atoms - f.shape[0]), (0, 0))
+            padded = np.pad(f, pad_width, mode="constant")
+            padded_true_forces.append(padded)
         true_forces = torch.tensor(np.array(padded_true_forces), device=device)
 
         # Compute loss for the current batch
@@ -66,13 +72,17 @@ def run_naive_k(model, ase_dataset, batch_size=256, device="cpu"):
             device=device,
             natoms=natoms,
             use_mask=False,
-            force_magnitude=True,
+            force_magnitude=force_magnitude,
         )
 
         total_loss += batch_loss
 
     average_loss = total_loss / num_batches
-    print(f"Average Loss Per Batch: {average_loss.item()}")
+
+    if force_magnitude:
+        print(f"Magnitude Average Loss Per Batch: {average_loss.item()}")
+    else:
+        print(f"Direction Average Loss Per Batch: {average_loss.item()}")
 
 
 def run_naive_zero(ase_dataset, force_magnitude):
@@ -121,7 +131,7 @@ def run_naive_zero(ase_dataset, force_magnitude):
 if __name__ == "__main__":
     # Setup dataset
     split_name = "val"
-    dataset_name = "rattled-300-subsampled"
+    dataset_name = "rattled-1000"
 
     dataset_path = Path(f"datasets/{split_name}/{dataset_name}")
     if not dataset_path.exists():
@@ -130,9 +140,20 @@ if __name__ == "__main__":
     ase_dataset = AseDBDataset(config=dict(src=str(dataset_path)))
 
     # Setup model
-    k = 0
-    model_path = Path(f"checkpoints/naive/{dataset_name}_naive_k={k}_model.pkl")
-    model = NaiveAtomModel.load(model_path)
+    k = 1
+    force_magnitude = False
 
-    run_naive_k(model, ase_dataset)
+    if force_magnitude:
+        model_name = f"{dataset_name}_naive_magnitude_k={k}_model"
+        model = NaiveMagnitudeModel.load(
+            Path(f"checkpoints/naive/{dataset_name}_naive_magnitude_k={k}_model.pkl")
+        )
+    else:
+        model_name = f"{dataset_name}_naive_direction_k={k}_model"
+        model = NaiveDirectionModel.load(
+            Path(f"checkpoints/naive/{dataset_name}_naive_direction_k={k}_model.pkl")
+        )
+
+    print(f"{k}: {force_magnitude}")
+    run_naive_k(model, ase_dataset, force_magnitude)
     # run_naive_zero(ase_dataset, force_magnitude=False)
