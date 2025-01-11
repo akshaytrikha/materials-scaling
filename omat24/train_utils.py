@@ -59,6 +59,7 @@ def partial_json_log(
 
 def run_validation(model, val_loader, device):
     """Compute and return the average validation loss."""
+    model.to(device)
     model.eval()
     total_val_loss = 0.0
     num_val_batches = 0

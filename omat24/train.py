@@ -13,7 +13,7 @@ from data_utils import download_dataset
 from arg_parser import get_args
 from models.fcn import MetaFCNModels
 from models.transformer_models import MetaTransformerModels
-from train_utils import train
+from train_utils import train, partial_json_log, run_validation
 
 # Set seed & device
 SEED = 1024
@@ -88,19 +88,19 @@ if __name__ == "__main__":
                 dataset_size = len(train_loader.dataset)
 
                 for lr in args.lrs:
-                    # Initialize optimizer and scheduler
                     optimizer = optim.Adam(model.parameters(), lr=lr)
 
-                    # num_epochs = int(args.epochs * EPOCHS_SCHEDULE[data_fraction])
-                    num_epochs = args.epochs
-                    total_steps = num_epochs * len(train_loader)
-                    val_interval = max(1, total_steps // 200)
+                    # Set validation to occur relative to each epoch.
+                    validations_per_epoch = 2
+                    batches_per_epoch = len(train_loader)
+                    val_interval = max(1, batches_per_epoch // validations_per_epoch)
 
-                    # Generate a unique model name
+                    # Compute constant number of epochs (note: no scaling)
+                    num_epochs = args.epochs
+
+                    # Prepare run entry etc.
                     model_name = f"model_ds{dataset_size}_p{int(model.num_params)}"
                     checkpoint_path = f"checkpoints/{args.architecture}_ds{dataset_size}_p{int(model.num_params)}_{timestamp}.pth"
-
-                    # Prepare run entry
                     run_entry = {
                         "model_name": model_name,
                         "config": {
@@ -121,9 +121,22 @@ if __name__ == "__main__":
                     if ds_key not in experiment_results:
                         experiment_results[ds_key] = []
                     experiment_results[ds_key].append(run_entry)
-
                     with open(results_path, "w") as f:
                         json.dump(experiment_results, f, indent=4)
+
+                    # --- Validate before training starts ---
+                    initial_val_loss = run_validation(model, val_loader, DEVICE)
+                    print(f"Initial Validation Loss: {initial_val_loss:.4f}")
+                    # Optionally, log this initial validation loss with step 0:
+                    partial_json_log(
+                        experiment_results=experiment_results,
+                        data_size_key=ds_key,
+                        run_entry=run_entry,
+                        step=0,
+                        avg_train_loss=float("nan"),  # no training loss yet
+                        val_loss=initial_val_loss,
+                        results_path=results_path,
+                    )
 
                     pbar = tqdm(range(num_epochs), desc="Training")
                     trained_model, losses = train(
@@ -143,7 +156,6 @@ if __name__ == "__main__":
                         patience=6,
                     )
 
-                    # Save model
                     Path("checkpoints").mkdir(exist_ok=True)
                     torch.save(
                         {
