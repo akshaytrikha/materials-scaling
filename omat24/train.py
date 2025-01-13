@@ -147,13 +147,12 @@ if __name__ == "__main__":
                         scheduler=None,
                         pbar=pbar,
                         device=DEVICE,
-                        val_interval=val_interval,
+                        val_times_per_epoch=2,
+                        patience=6,
                         results_path=results_path,
                         experiment_results=experiment_results,
                         data_size_key=ds_key,
                         run_entry=run_entry,
-                        total_val_steps=40,
-                        patience=6,
                     )
 
                     Path("checkpoints").mkdir(exist_ok=True)

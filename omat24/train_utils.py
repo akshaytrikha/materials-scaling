@@ -105,45 +105,27 @@ def train(
     scheduler,
     pbar,
     device,
-    val_interval,
-    results_path,
-    experiment_results,
-    data_size_key,
-    run_entry,
-    total_val_steps=40,
+    epochs=50,
+    val_times_per_epoch=2,
     patience=6,
+    results_path=None,
+    experiment_results=None,
+    data_size_key=None,
+    run_entry=None,
 ):
     """
-    Train the model with incremental JSON logging after each validation step.
-
-    Args:
-        model (nn.Module): PyTorch model.
-        train_loader (DataLoader): Training data loader.
-        val_loader (DataLoader): Validation data loader.
-        optimizer (Optimizer): Model optimizer.
-        scheduler (_LRScheduler or None): Learning rate scheduler.
-        pbar (tqdm): Progress bar for epochs.
-        device (torch.device): CPU/CUDA device.
-        val_interval (int): Validate every `val_interval` steps.
-        total_val_steps (int): Max number of validations before stopping.
-        patience (int): Validation patience for early stopping.
-        results_path (str): File path to log JSON data incrementally.
-        experiment_results (dict): Loaded from a JSON file or empty.
-        data_size_key (str): Key for the current dataset size in `experiment_results`.
-        run_entry (dict): Run metadata dict, typically includes "model_name", "config", "losses", etc.
-
-    Returns:
-        (model, losses_dict): Updated model and dictionary of losses indexed by step.
+    Train for a fixed number of epochs (default=50), with exactly 2 validations per epoch.
+    We incorporate early stopping with a given `patience` (default=6).
+    We also log training/validation losses:
+      - mid-epoch (2 times per epoch),
+      - end-of-epoch,
+    and store them in a local 'losses' dict keyed by 'step'.
     """
+
     model.to(device)
-    losses = {}
-    step = 0
-    val_steps_done = 0
+    step = 0  # Tracks total training steps across epochs
 
-    best_val_loss = float("inf")
-    epochs_since_improvement = 0
-
-    # We only log partial steps if we have everything we need
+    # References for partial JSON logging
     can_write_partial = (
         results_path is not None
         and experiment_results is not None
@@ -151,12 +133,27 @@ def train(
         and run_entry is not None
     )
 
+    # Collect local logs (like before)
+    # losses[step] = {"train_loss": float, "val_loss": float}
+    losses = {}
+
+    # We'll do 2 validations/epoch → pick a validation interval
+    num_batches = len(train_loader)
+    val_interval = max(num_batches // val_times_per_epoch, 1)
+
+    # Early stopping bookkeeping
+    best_val_loss = float("inf")
+    epochs_since_improvement = 0
+
     for epoch in pbar:
         model.train()
         train_loss_sum = 0.0
-        num_train_batches = 0
+        n_train_batches = 0
 
         for batch_idx, batch in enumerate(train_loader):
+            # ---------------------------
+            # Forward + Backprop
+            # ---------------------------
             atomic_numbers = batch["atomic_numbers"].to(device)
             positions = batch["positions"].to(device)
             true_forces = batch["forces"].to(device)
@@ -185,50 +182,74 @@ def train(
             optimizer.step()
 
             train_loss_sum += train_loss.item()
-            num_train_batches += 1
+            n_train_batches += 1
             step += 1
 
-            # --- Validation Step ---
-            if step % val_interval == 0 and val_steps_done < total_val_steps:
+            # ---------------------------
+            # Mid-epoch Validation
+            # ---------------------------
+            if (batch_idx + 1) % val_interval == 0 and (batch_idx + 1) < num_batches:
                 val_loss = run_validation(model, val_loader, device)
-                avg_train_loss = train_loss_sum / num_train_batches
+                avg_train_loss = train_loss_sum / n_train_batches
 
-                # Store in the local 'losses' dictionary
                 losses[step] = {
                     "train_loss": float(avg_train_loss),
                     "val_loss": float(val_loss),
                 }
-
-                # Write partial logs
                 if can_write_partial:
                     partial_json_log(
-                        experiment_results=experiment_results,
-                        data_size_key=data_size_key,
-                        run_entry=run_entry,
-                        step=step,
-                        avg_train_loss=avg_train_loss,
-                        val_loss=val_loss,
-                        results_path=results_path,
+                        experiment_results,
+                        data_size_key,
+                        run_entry,
+                        step,
+                        avg_train_loss,
+                        val_loss,
+                        results_path,
                     )
 
-                # Early stopping logic
-                if val_loss < best_val_loss - 0.1:
+                # Early stopping check
+                if val_loss < best_val_loss:
                     best_val_loss = val_loss
                     epochs_since_improvement = 0
                 else:
                     epochs_since_improvement += 1
                     if epochs_since_improvement >= patience:
-                        print("Early stopping triggered")
+                        print("Early stopping triggered (mid-epoch).")
                         return model, losses
 
-                val_steps_done += 1
-
-            # If we've done enough validation steps, stop early
-            if val_steps_done >= total_val_steps:
-                print("Reached maximum number of validations.")
-                return model, losses
-
+        # Optionally step the scheduler each epoch
         if scheduler is not None:
             scheduler.step()
+
+        # ---------------------------
+        # End-of-epoch Validation
+        # ---------------------------
+        val_loss_epoch = run_validation(model, val_loader, device)
+        avg_epoch_train_loss = train_loss_sum / n_train_batches
+
+        losses[step] = {
+            "train_loss": float(avg_epoch_train_loss),
+            "val_loss": float(val_loss_epoch),
+        }
+        if can_write_partial:
+            partial_json_log(
+                experiment_results,
+                data_size_key,
+                run_entry,
+                step,
+                avg_epoch_train_loss,
+                val_loss_epoch,
+                results_path,
+            )
+
+        # Early stopping check at epoch’s end
+        if val_loss_epoch < best_val_loss:
+            best_val_loss = val_loss_epoch
+            epochs_since_improvement = 0
+        else:
+            epochs_since_improvement += 1
+            if epochs_since_improvement >= patience:
+                print("Early stopping triggered (end-of-epoch).")
+                return model, losses
 
     return model, losses

@@ -128,7 +128,13 @@ def compute_loss(
     if force_magnitude:
         force_loss = L2NormLoss()(pred=pred_forces, target=true_forces, natoms=natoms)
     else:
-        force_loss = nn.MSELoss()(pred_forces, true_forces)
+        # Use reduction="none" to compute the loss per atom
+        force_loss = nn.MSELoss(reduction="none")(pred_forces, true_forces)
+
+        # Then take the mean over the atoms and structures
+        # directions are the last dimension
+        # atoms are the second dimension, directions are the last dimension
+        force_loss = force_loss.mean(dim=(2, 1))
 
     true_isotropic_stress, true_anisotropic_stress = unvoigt_stress(true_stress)
     pred_isotropic_stress, pred_anisotropic_stress = unvoigt_stress(pred_stress)
