@@ -93,7 +93,7 @@ def get_dataloaders(
     train_loader = DataLoader(
         train_subset,
         batch_size=batch_size,
-        shuffle=False,
+        shuffle=True,
         collate_fn=collate_fn,
     )
 
