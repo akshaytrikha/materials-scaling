@@ -7,6 +7,7 @@ import ase
 import tarfile
 import gdown
 import os
+import random
 
 # Internal
 from matrix import compute_distance_matrix, random_rotate_atoms
@@ -15,6 +16,7 @@ from data_utils import (
     custom_collate_fn_dataset_padded,
     DATASETS,
 )
+
 
 def download_dataset(dataset_name: str):
     """Downloads a .tar.gz file from the specified URL and extracts it to the given directory."""
@@ -36,11 +38,14 @@ def download_dataset(dataset_name: str):
     except Exception as e:
         print(f"An error occurred while deleting {compressed_path}: {e}")
 
+
 def get_dataloaders(
     dataset: Dataset,
-    data_fraction: float,
+    train_data_fraction: float,
     batch_size: int,
+    seed: int,
     batch_padded: bool = True,
+    return_indices: bool = False,
 ):
     """Creates training and validation DataLoaders from a given dataset.
 
@@ -53,6 +58,7 @@ def get_dataloaders(
         dataset (Dataset): The dataset to create DataLoaders from.
         data_fraction (float): Fraction of the dataset to use (e.g., 0.9 for 90%).
         batch_size (int): Number of samples per batch.
+        seed (int): Seed for random number generators to ensure reproducibility
         batch_padded (bool, optional): Whether to pad variable-length tensors. Defaults to True.
 
     Returns:
@@ -60,12 +66,23 @@ def get_dataloaders(
             - train_loader (DataLoader): DataLoader for the training subset.
             - val_loader (DataLoader): DataLoader for the validation subset.
     """
-    # Determine the number of samples based on the data fraction
-    dataset_size = int(len(dataset) * data_fraction)
-    train_size = int(dataset_size * 0.8)
+    dataset_size = len(dataset)
+    # Always set aside 10% of total dataset for validation
+    val_size = int(dataset_size * 0.1)
+    # Then set aside remaining train_data_fraction for training
+    train_size = int(dataset_size * train_data_fraction)
 
-    train_subset = Subset(dataset, indices=range(train_size))
-    val_subset = Subset(dataset, indices=range(train_size, dataset_size))
+    # Shuffle dataset
+    random.seed(seed)
+    indices = list(range(dataset_size))
+    random.shuffle(indices)
+
+    # Split indices into training and validation
+    train_indices = indices[:train_size]
+    val_indices = indices[train_size : train_size + val_size]
+
+    train_subset = Subset(dataset, indices=train_indices)
+    val_subset = Subset(dataset, indices=val_indices)
 
     # Select the appropriate collate function
     if batch_padded:
@@ -79,7 +96,7 @@ def get_dataloaders(
     train_loader = DataLoader(
         train_subset,
         batch_size=batch_size,
-        shuffle=True,
+        shuffle=False,
         collate_fn=collate_fn,
     )
 
@@ -90,7 +107,11 @@ def get_dataloaders(
         collate_fn=collate_fn,
     )
 
-    return train_loader, val_loader
+    if return_indices:
+        # For debugging
+        return train_loader, val_loader, train_indices, val_indices
+    else:
+        return train_loader, val_loader
 
 
 class OMat24Dataset(Dataset):

@@ -82,8 +82,9 @@ if __name__ == "__main__":
             for batch_size in args.batch_sizes:
                 train_loader, val_loader = get_dataloaders(
                     dataset,
-                    data_fraction=data_fraction,
+                    train_data_fraction=data_fraction,
                     batch_size=batch_size,
+                    seed=SEED,
                     batch_padded=False,
                 )
                 dataset_size = len(train_loader.dataset)
@@ -92,7 +93,7 @@ if __name__ == "__main__":
                     optimizer = optim.Adam(model.parameters(), lr=lr)
 
                     # Set validation to occur relative to each epoch.
-                    validations_per_epoch = 2
+                    validations_per_epoch = 1
                     batches_per_epoch = len(train_loader)
                     val_interval = max(1, batches_per_epoch // validations_per_epoch)
 
@@ -127,10 +128,8 @@ if __name__ == "__main__":
                             json.dump(experiment_results, f, indent=4)
 
                     # --- Validate before training starts ---
-                    initial_val_loss = run_validation(model, val_loader, DEVICE)
-                    print(f"Initial Validation Loss: {initial_val_loss:.4f}")
-                    # Log initial validation loss if logging is enabled:
                     if log:
+                        initial_val_loss = run_validation(model, val_loader, DEVICE)
                         partial_json_log(
                             experiment_results=experiment_results,
                             data_size_key=ds_key,
