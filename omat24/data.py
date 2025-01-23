@@ -67,19 +67,16 @@ def get_dataloaders(
             - val_loader (DataLoader): DataLoader for the validation subset.
     """
     dataset_size = len(dataset)
-    # Always set aside 10% of total dataset for validation
     val_size = int(dataset_size * 0.1)
-    # Then set aside remaining train_data_fraction for training
-    train_size = int(dataset_size * train_data_fraction)
+    remaining_size = dataset_size - val_size
+    train_size = int(remaining_size * train_data_fraction)
 
-    # Shuffle dataset
     random.seed(seed)
     indices = list(range(dataset_size))
     random.shuffle(indices)
 
-    # Split indices into training and validation
-    train_indices = indices[:train_size]
-    val_indices = indices[train_size : train_size + val_size]
+    val_indices = indices[:val_size]
+    train_indices = indices[val_size:val_size + train_size]
 
     train_subset = Subset(dataset, indices=train_indices)
     val_subset = Subset(dataset, indices=val_indices)
