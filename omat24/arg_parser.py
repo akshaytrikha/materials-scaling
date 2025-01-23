@@ -35,7 +35,7 @@ def get_args():
         help="Fractions of data",
     )
     parser.add_argument(
-        "--wandb_log", action="store_true", help="Enable Weights and Biases logging"
+        "--no_log", action="store_true", default=False, help="Enable logging"
     )
     parser.add_argument(
         "--concatenated", action="store_true", help="Enable concatenation"

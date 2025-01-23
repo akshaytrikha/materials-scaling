@@ -29,9 +29,9 @@ elif torch.backends.mps.is_available():
 else:
     DEVICE = torch.device("cpu")
 
-
 if __name__ == "__main__":
     args = get_args()
+    log = not args.no_log
 
     # Load dataset
     split_name = "val"
@@ -50,7 +50,7 @@ if __name__ == "__main__":
     pprint.pprint(params)
     print()
 
-    # Initialize meta model class
+    # Initialize meta model class based on architecture choice
     if args.architecture == "FCN":
         meta_models = MetaFCNModels(vocab_size=args.n_elements)
     elif args.architecture == "Transformer":
@@ -62,15 +62,16 @@ if __name__ == "__main__":
 
     experiment_results = {}
 
-    # Create results path and initialize file
+    # Create results path and initialize file if logging is enabled
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     results_path = Path("results") / f"experiments_{timestamp}.json"
-    Path("results").mkdir(exist_ok=True)
-    if not results_path.exists():
+    if log:
+        Path("results").mkdir(exist_ok=True)
         with open(results_path, "w") as f:
             json.dump({}, f)  # Initialize as empty JSON
-
-    print(f"\nTraining starting. Results continuously saved to {results_path}")
+        print(f"\nLogging enabled. Results will be saved to {results_path}")
+    else:
+        print("\nLogging disabled. No experiment log will be saved.")
 
     for data_fraction in args.data_fractions:
         print(f"\nData fraction: {data_fraction}")
@@ -95,7 +96,7 @@ if __name__ == "__main__":
                     batches_per_epoch = len(train_loader)
                     val_interval = max(1, batches_per_epoch // validations_per_epoch)
 
-                    # Compute constant number of epochs (note: no scaling)
+                    # Fixed number of epochs (as provided)
                     num_epochs = args.epochs
 
                     # Prepare run entry etc.
@@ -121,22 +122,24 @@ if __name__ == "__main__":
                     if ds_key not in experiment_results:
                         experiment_results[ds_key] = []
                     experiment_results[ds_key].append(run_entry)
-                    with open(results_path, "w") as f:
-                        json.dump(experiment_results, f, indent=4)
+                    if log:
+                        with open(results_path, "w") as f:
+                            json.dump(experiment_results, f, indent=4)
 
                     # --- Validate before training starts ---
                     initial_val_loss = run_validation(model, val_loader, DEVICE)
                     print(f"Initial Validation Loss: {initial_val_loss:.4f}")
-                    # Optionally, log this initial validation loss with step 0:
-                    partial_json_log(
-                        experiment_results=experiment_results,
-                        data_size_key=ds_key,
-                        run_entry=run_entry,
-                        step=0,
-                        avg_train_loss=float("nan"),  # no training loss yet
-                        val_loss=initial_val_loss,
-                        results_path=results_path,
-                    )
+                    # Log initial validation loss if logging is enabled:
+                    if log:
+                        partial_json_log(
+                            experiment_results=experiment_results,
+                            data_size_key=ds_key,
+                            run_entry=run_entry,
+                            step=0,
+                            avg_train_loss=float("nan"),  # no training loss yet
+                            val_loss=initial_val_loss,
+                            results_path=results_path,
+                        )
 
                     pbar = tqdm(range(num_epochs), desc="Training")
                     trained_model, losses = train(
@@ -149,10 +152,10 @@ if __name__ == "__main__":
                         device=DEVICE,
                         val_times_per_epoch=2,
                         patience=6,
-                        results_path=results_path,
-                        experiment_results=experiment_results,
-                        data_size_key=ds_key,
-                        run_entry=run_entry,
+                        results_path=results_path if log else None,
+                        experiment_results=experiment_results if log else None,
+                        data_size_key=ds_key if log else None,
+                        run_entry=run_entry if log else None,
                     )
 
                     Path("checkpoints").mkdir(exist_ok=True)
@@ -166,4 +169,6 @@ if __name__ == "__main__":
                         checkpoint_path,
                     )
 
-    print(f"\nTraining completed. Results continuously saved to {results_path}")
+    print(
+        f"\nTraining completed. {'Results continuously saved to ' + str(results_path) if log else 'No experiment log was written.'}"
+    )
