@@ -123,26 +123,28 @@ def compute_loss(
         true_forces = true_forces * mask.float()
 
     # Compute losses
-    energy_loss = PerAtomMAELoss()(pred=pred_energy, target=true_energy, natoms=natoms)
+    energy_loss_fn = PerAtomMAELoss()
+    energy_loss = energy_loss_fn(pred=pred_energy, target=true_energy, natoms=natoms)
 
     if force_magnitude:
-        force_loss = L2NormLoss()(pred=pred_forces, target=true_forces, natoms=natoms)
+        force_loss_fn = L2NormLoss()
+        force_loss = force_loss_fn(pred=pred_forces, target=true_forces, natoms=natoms)
     else:
         # Use reduction="none" to compute the loss per atom
-        force_loss = nn.MSELoss(reduction="none")(pred_forces, true_forces)
+        force_loss_fn = nn.MSELoss(reduction="none")
+        force_loss = force_loss_fn(pred_forces, true_forces)
 
-        # Then take the mean over the atoms and structures
-        # directions are the last dimension
-        # atoms are the second dimension, directions are the last dimension
+        # Then take the mean over the directions and then atoms [B, N, 3] -> [B]
         force_loss = force_loss.mean(dim=(2, 1))
 
     true_isotropic_stress, true_anisotropic_stress = unvoigt_stress(true_stress)
     pred_isotropic_stress, pred_anisotropic_stress = unvoigt_stress(pred_stress)
-    stress_isotropic_loss = MAELoss()(
+    stress_loss_fn = MAELoss()
+    stress_isotropic_loss = stress_loss_fn(
         pred=torch.sum(pred_isotropic_stress, dim=1),
         target=torch.sum(true_isotropic_stress, dim=1),
     )
-    stress_anisotropic_loss = MAELoss()(
+    stress_anisotropic_loss = stress_loss_fn(
         pred=torch.sum(pred_anisotropic_stress, dim=1),
         target=torch.sum(true_anisotropic_stress, dim=1),
     )
