@@ -180,14 +180,14 @@ def train(
         # Optionally step the scheduler each epoch
         if scheduler is not None:
             scheduler.step()
-    
+
         avg_epoch_train_loss = train_loss_sum / n_train_batches
 
         # ---------------------------
-        # End-of-epoch Validation - every 5 epochs
+        # End-of-epoch Validation - every 10 epochs
         # ---------------------------
 
-        if epoch % 5 == 0:
+        if epoch % 10 == 0:
             avg_epoch_val_loss = run_validation(model, val_loader, device)
             losses[step] = {
                 "train_loss": float(avg_epoch_train_loss),

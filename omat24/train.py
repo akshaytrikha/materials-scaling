@@ -60,7 +60,7 @@ if __name__ == "__main__":
             concatenated=True,
         )
 
-    batch_size = args.batch_size
+    batch_size = args.batch_size[0]
     lr = args.lr
     num_epochs = args.epochs
 
@@ -83,7 +83,7 @@ if __name__ == "__main__":
             print(
                 f"\nModel {model_idx + 1}/{len(meta_models)} is on device {DEVICE} and has {model.num_params} parameters"
             )
-           
+
             train_loader, val_loader = get_dataloaders(
                 dataset,
                 train_data_fraction=data_fraction,
@@ -143,7 +143,6 @@ if __name__ == "__main__":
                 scheduler=None,
                 pbar=pbar,
                 device=DEVICE,
-                val_times_per_epoch=2,
                 patience=6,
                 results_path=results_path if log else None,
                 experiment_results=experiment_results if log else None,
