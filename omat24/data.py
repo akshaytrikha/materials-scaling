@@ -10,7 +10,7 @@ import os
 import random
 
 # Internal
-from matrix import compute_distance_matrix, random_rotate_atoms
+from matrix import compute_distance_matrix, factorize_matrix, random_rotate_atoms
 from data_utils import (
     custom_collate_fn_batch_padded,
     custom_collate_fn_dataset_padded,
@@ -161,11 +161,14 @@ class OMat24Dataset(Dataset):
             positions
         )  # Shape: [N_atoms, N_atoms]
 
+        factorized_matrix = factorize_matrix(distance_matrix) # Left matrix: U * sqrt(Sigma) - Shape: [N_atoms, k=5]
+
         # Package the input and labels into a dictionary for model processing
         sample = {
             "atomic_numbers": atomic_numbers,  # Element types
             "positions": positions,  # 3D atomic coordinates
             "distance_matrix": distance_matrix,  # [N_atoms, N_atoms]
+            "factorized_matrix": factorized_matrix, # [N_atoms, k=5]
             "energy": energy,  # Target energy
             "forces": forces,  # Target forces on each atom
             "stress": stress,  # Target stress tensor

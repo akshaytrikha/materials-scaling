@@ -11,21 +11,21 @@ def get_args():
         help="Model architecture to use",
     )
     parser.add_argument(
-        "--batch_sizes",
+        "--batch_size",
         type=int,
         nargs="+",
-        default=[64],
-        help="Batch sizes for training",
+        default=64,
+        help="Batch size for training",
     )
     parser.add_argument(
         "--epochs", type=int, default=1, help="Number of epochs for training"
     )
     parser.add_argument(
-        "--lrs",
+        "--lr",
         type=float,
         nargs="+",
-        default=[0.0001],
-        help="Learning rates",
+        default=0.0001,
+        help="Learning rate",
     )
     parser.add_argument(
         "--data_fractions",

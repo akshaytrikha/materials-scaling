@@ -62,7 +62,7 @@ def run_validation(model, val_loader, device):
     model.to(device)
     model.eval()
     total_val_loss = 0.0
-    num_val_batches = 0
+    num_val_batches = len(val_loader)
 
     with torch.no_grad():
         for batch in val_loader:
@@ -90,7 +90,6 @@ def run_validation(model, val_loader, device):
                 force_magnitude=False,
             )
             total_val_loss += val_loss.item()
-            num_val_batches += 1
 
     if num_val_batches == 0:
         return float("inf")
@@ -105,8 +104,6 @@ def train(
     scheduler,
     pbar,
     device,
-    epochs=50,
-    val_times_per_epoch=2,
     patience=6,
     results_path=None,
     experiment_results=None,
@@ -137,10 +134,6 @@ def train(
     # losses[step] = {"train_loss": float, "val_loss": float}
     losses = {}
 
-    # We'll do 2 validations/epoch → pick a validation interval
-    num_batches = len(train_loader)
-    val_interval = max(num_batches // val_times_per_epoch, 1)
-
     # Early stopping bookkeeping
     best_val_loss = float("inf")
     epochs_since_improvement = 0
@@ -148,7 +141,7 @@ def train(
     for epoch in pbar:
         model.train()
         train_loss_sum = 0.0
-        n_train_batches = 0
+        n_train_batches = len(train_loader)
 
         for batch_idx, batch in enumerate(train_loader):
             # ---------------------------
@@ -182,74 +175,43 @@ def train(
             optimizer.step()
 
             train_loss_sum += train_loss.item()
-            n_train_batches += 1
             step += 1
-
-            # ---------------------------
-            # Mid-epoch Validation
-            # ---------------------------
-            if (batch_idx + 1) % val_interval == 0 and (batch_idx + 1) < num_batches:
-                val_loss = run_validation(model, val_loader, device)
-                avg_train_loss = train_loss_sum / n_train_batches
-
-                losses[step] = {
-                    "train_loss": float(avg_train_loss),
-                    "val_loss": float(val_loss),
-                }
-                if can_write_partial:
-                    partial_json_log(
-                        experiment_results,
-                        data_size_key,
-                        run_entry,
-                        step,
-                        avg_train_loss,
-                        val_loss,
-                        results_path,
-                    )
-
-                # Early stopping check
-                if val_loss < best_val_loss:
-                    best_val_loss = val_loss
-                    epochs_since_improvement = 0
-                else:
-                    epochs_since_improvement += 1
-                    if epochs_since_improvement >= patience:
-                        print("Early stopping triggered (mid-epoch).")
-                        return model, losses
 
         # Optionally step the scheduler each epoch
         if scheduler is not None:
             scheduler.step()
-
-        # ---------------------------
-        # End-of-epoch Validation
-        # ---------------------------
-        val_loss_epoch = run_validation(model, val_loader, device)
+    
         avg_epoch_train_loss = train_loss_sum / n_train_batches
 
-        losses[step] = {
-            "train_loss": float(avg_epoch_train_loss),
-            "val_loss": float(val_loss_epoch),
-        }
-        if can_write_partial:
-            partial_json_log(
-                experiment_results,
-                data_size_key,
-                run_entry,
-                step,
-                avg_epoch_train_loss,
-                val_loss_epoch,
-                results_path,
-            )
+        # ---------------------------
+        # End-of-epoch Validation - every 5 epochs
+        # ---------------------------
 
-        # Early stopping check at epoch’s end
-        if val_loss_epoch < best_val_loss:
-            best_val_loss = val_loss_epoch
-            epochs_since_improvement = 0
-        else:
-            epochs_since_improvement += 1
-            if epochs_since_improvement >= patience:
-                print("Early stopping triggered (end-of-epoch).")
-                return model, losses
+        if epoch % 5 == 0:
+            avg_epoch_val_loss = run_validation(model, val_loader, device)
+            losses[step] = {
+                "train_loss": float(avg_epoch_train_loss),
+                "val_loss": float(avg_epoch_val_loss),
+            }
+            if can_write_partial:
+                partial_json_log(
+                    experiment_results,
+                    data_size_key,
+                    run_entry,
+                    step,
+                    avg_epoch_train_loss,
+                    avg_epoch_val_loss,
+                    results_path,
+                )
+
+            # Early stopping check at epoch’s end
+            if avg_epoch_val_loss < best_val_loss:
+                best_val_loss = avg_epoch_val_loss
+                epochs_since_improvement = 0
+            else:
+                epochs_since_improvement += 1
+                if epochs_since_improvement >= patience:
+                    print("Early stopping triggered (end-of-epoch).")
+                    return model, losses
 
     return model, losses

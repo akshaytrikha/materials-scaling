@@ -60,6 +60,10 @@ if __name__ == "__main__":
             concatenated=True,
         )
 
+    batch_size = args.batch_size
+    lr = args.lr
+    num_epochs = args.epochs
+
     experiment_results = {}
 
     # Create results path and initialize file if logging is enabled
@@ -79,94 +83,84 @@ if __name__ == "__main__":
             print(
                 f"\nModel {model_idx + 1}/{len(meta_models)} is on device {DEVICE} and has {model.num_params} parameters"
             )
-            for batch_size in args.batch_sizes:
-                train_loader, val_loader = get_dataloaders(
-                    dataset,
-                    train_data_fraction=data_fraction,
-                    batch_size=batch_size,
-                    seed=SEED,
-                    batch_padded=False,
+           
+            train_loader, val_loader = get_dataloaders(
+                dataset,
+                train_data_fraction=data_fraction,
+                batch_size=batch_size,
+                seed=SEED,
+                batch_padded=False,
+            )
+            dataset_size = len(train_loader.dataset)
+            optimizer = optim.Adam(model.parameters(), lr=lr)
+
+            # Prepare run entry etc.
+            model_name = f"model_ds{dataset_size}_p{int(model.num_params)}"
+            checkpoint_path = f"checkpoints/{args.architecture}_ds{dataset_size}_p{int(model.num_params)}_{timestamp}.pth"
+            run_entry = {
+                "model_name": model_name,
+                "config": {
+                    "architecture": args.architecture,
+                    "embedding_dim": getattr(model, "embedding_dim", None),
+                    "depth": getattr(model, "depth", None),
+                    "num_params": model.num_params,
+                    "dataset_size": dataset_size,
+                    "num_epochs": num_epochs,
+                    "batch_size": batch_size,
+                    "learning_rate": lr,
+                    "seed": SEED,
+                },
+                "losses": {},
+                "checkpoint_path": checkpoint_path,
+            }
+            ds_key = str(dataset_size)
+            if ds_key not in experiment_results:
+                experiment_results[ds_key] = []
+            experiment_results[ds_key].append(run_entry)
+            if log:
+                with open(results_path, "w") as f:
+                    json.dump(experiment_results, f, indent=4)
+
+            # --- Validate before training starts ---
+            if log:
+                initial_val_loss = run_validation(model, val_loader, DEVICE)
+                partial_json_log(
+                    experiment_results=experiment_results,
+                    data_size_key=ds_key,
+                    run_entry=run_entry,
+                    step=0,
+                    avg_train_loss=float("nan"),  # no training loss yet
+                    val_loss=initial_val_loss,
+                    results_path=results_path,
                 )
-                dataset_size = len(train_loader.dataset)
 
-                for lr in args.lrs:
-                    optimizer = optim.Adam(model.parameters(), lr=lr)
+            pbar = tqdm(range(num_epochs), desc="Training")
+            trained_model, losses = train(
+                model=model,
+                train_loader=train_loader,
+                val_loader=val_loader,
+                optimizer=optimizer,
+                scheduler=None,
+                pbar=pbar,
+                device=DEVICE,
+                val_times_per_epoch=2,
+                patience=6,
+                results_path=results_path if log else None,
+                experiment_results=experiment_results if log else None,
+                data_size_key=ds_key if log else None,
+                run_entry=run_entry if log else None,
+            )
 
-                    # Set validation to occur relative to each epoch.
-                    validations_per_epoch = 1
-                    batches_per_epoch = len(train_loader)
-                    val_interval = max(1, batches_per_epoch // validations_per_epoch)
-
-                    # Fixed number of epochs (as provided)
-                    num_epochs = args.epochs
-
-                    # Prepare run entry etc.
-                    model_name = f"model_ds{dataset_size}_p{int(model.num_params)}"
-                    checkpoint_path = f"checkpoints/{args.architecture}_ds{dataset_size}_p{int(model.num_params)}_{timestamp}.pth"
-                    run_entry = {
-                        "model_name": model_name,
-                        "config": {
-                            "architecture": args.architecture,
-                            "embedding_dim": getattr(model, "embedding_dim", None),
-                            "depth": getattr(model, "depth", None),
-                            "num_params": model.num_params,
-                            "dataset_size": dataset_size,
-                            "num_epochs": num_epochs,
-                            "batch_size": batch_size,
-                            "learning_rate": lr,
-                            "seed": SEED,
-                        },
-                        "losses": {},
-                        "checkpoint_path": checkpoint_path,
-                    }
-                    ds_key = str(dataset_size)
-                    if ds_key not in experiment_results:
-                        experiment_results[ds_key] = []
-                    experiment_results[ds_key].append(run_entry)
-                    if log:
-                        with open(results_path, "w") as f:
-                            json.dump(experiment_results, f, indent=4)
-
-                    # --- Validate before training starts ---
-                    if log:
-                        initial_val_loss = run_validation(model, val_loader, DEVICE)
-                        partial_json_log(
-                            experiment_results=experiment_results,
-                            data_size_key=ds_key,
-                            run_entry=run_entry,
-                            step=0,
-                            avg_train_loss=float("nan"),  # no training loss yet
-                            val_loss=initial_val_loss,
-                            results_path=results_path,
-                        )
-
-                    pbar = tqdm(range(num_epochs), desc="Training")
-                    trained_model, losses = train(
-                        model=model,
-                        train_loader=train_loader,
-                        val_loader=val_loader,
-                        optimizer=optimizer,
-                        scheduler=None,
-                        pbar=pbar,
-                        device=DEVICE,
-                        val_times_per_epoch=2,
-                        patience=6,
-                        results_path=results_path if log else None,
-                        experiment_results=experiment_results if log else None,
-                        data_size_key=ds_key if log else None,
-                        run_entry=run_entry if log else None,
-                    )
-
-                    Path("checkpoints").mkdir(exist_ok=True)
-                    torch.save(
-                        {
-                            "model_state_dict": trained_model.state_dict(),
-                            "losses": losses,
-                            "batch_size": batch_size,
-                            "lr": lr,
-                        },
-                        checkpoint_path,
-                    )
+            Path("checkpoints").mkdir(exist_ok=True)
+            torch.save(
+                {
+                    "model_state_dict": trained_model.state_dict(),
+                    "losses": losses,
+                    "batch_size": batch_size,
+                    "lr": lr,
+                },
+                checkpoint_path,
+            )
 
     print(
         f"\nTraining completed. {'Results continuously saved to ' + str(results_path) if log else 'No experiment log was written.'}"
