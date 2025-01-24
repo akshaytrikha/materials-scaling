@@ -198,20 +198,28 @@ class XTransformerModel(TransformerWrapper):
                 - energy (Tensor): [M]
                 - stresses (Tensor): [M, 6]
         """
+        breakpoint()
+        print(f"x.shape is {x.shape}")
+        print(f"positions.shape is {positions.shape}")
         # Obtain combined embeddings
-        combined_emb = self.emb(x, positions)  # [M, A, d_model]
+        combined_emb = self.emb(x, positions)  # [M, A, d_model + self.additional_dim]
+        print(f"combined_emb.shape is {combined_emb.shape}")
 
         # Pass combined embeddings to the transformer
         output = self.attn_layers(x=combined_emb, mask=mask)  # [M, A, d_model]
+        print(f"output.shape is {output.shape}")
 
         # Energy: Global pooling and linear layer
         pooled_output = output.mean(dim=1)  # Shape: [M, d_model]
+        print(f"pooled_output.shape is {pooled_output.shape}")
         energy = self.energy_predictor(pooled_output).squeeze()  # Shape: [M]
-
+        print(f"energy.shape is {energy.shape}")
         # Forces: Per-atom output via linear layer
         forces = self.forces_predictor(output)  # Shape: [M, A, 3]
+        print(f"forces.shape is {forces.shape}")
 
         # Stresses: Global pooling and linear layer
         stresses = self.stresses_predictor(pooled_output)  # Shape: [M, 6]
+        print(f"stresses.shape is {stresses.shape}")
 
         return forces, energy, stresses
