@@ -110,43 +110,37 @@ def train(
     data_size_key=None,
     run_entry=None,
 ):
-    """
-    Train for a fixed number of epochs (default=50), with exactly 2 validations per epoch.
-    We incorporate early stopping with a given `patience` (default=6).
-    We also log training/validation losses:
-      - mid-epoch (2 times per epoch),
-      - end-of-epoch,
-    and store them in a local 'losses' dict keyed by 'step'.
-    """
-
+    """Train model with validation at epoch 0 and every 10 epochs."""
     model.to(device)
-    step = 0  # Tracks total training steps across epochs
-
-    # References for partial JSON logging
-    can_write_partial = (
-        results_path is not None
-        and experiment_results is not None
-        and data_size_key is not None
-        and run_entry is not None
-    )
-
-    # Collect local logs (like before)
-    # losses[step] = {"train_loss": float, "val_loss": float}
+    can_write_partial = all([results_path, experiment_results, data_size_key, run_entry])
     losses = {}
-
-    # Early stopping bookkeeping
-    best_val_loss = float("inf")
+    
+    # Initial validation at epoch 0
+    val_loss = run_validation(model, val_loader, device)
+    losses[0] = {"val_loss": float(val_loss)}
+    if can_write_partial:
+        partial_json_log(
+            experiment_results,
+            data_size_key,
+            run_entry,
+            0,
+            float('nan'),
+            val_loss,
+            results_path,
+        )
+    
+    # Early stopping setup
+    best_val_loss = val_loss
     epochs_since_improvement = 0
-
-    for epoch in pbar:
+    last_val_loss = val_loss
+    
+    # Training loop starting from epoch 1
+    for epoch in range(1, len(pbar) + 1):
         model.train()
         train_loss_sum = 0.0
         n_train_batches = len(train_loader)
 
         for batch_idx, batch in enumerate(train_loader):
-            # ---------------------------
-            # Forward + Backprop
-            # ---------------------------
             atomic_numbers = batch["atomic_numbers"].to(device)
             positions = batch["positions"].to(device)
             true_forces = batch["forces"].to(device)
@@ -159,59 +153,51 @@ def train(
             mask = atomic_numbers != 0
             natoms = mask.sum(dim=1)
             train_loss = compute_loss(
-                pred_forces,
-                pred_energy,
-                pred_stress,
-                true_forces,
-                true_energy,
-                true_stress,
-                mask,
-                device,
-                natoms=natoms,
-                use_mask=True,
-                force_magnitude=False,
+                pred_forces, pred_energy, pred_stress,
+                true_forces, true_energy, true_stress,
+                mask, device, natoms=natoms,
+                use_mask=True, force_magnitude=False,
             )
             train_loss.backward()
             optimizer.step()
-
+            
             train_loss_sum += train_loss.item()
-            step += 1
+            current_avg_loss = train_loss_sum / (batch_idx + 1)
+            pbar.set_description(f"train_loss={current_avg_loss:.2f} val_loss={last_val_loss:.2f}")
 
-        # Optionally step the scheduler each epoch
         if scheduler is not None:
             scheduler.step()
 
         avg_epoch_train_loss = train_loss_sum / n_train_batches
+        losses[epoch] = {"train_loss": float(avg_epoch_train_loss)}
 
-        # ---------------------------
-        # End-of-epoch Validation - every 10 epochs
-        # ---------------------------
-
+        # Run validation every 10 epochs
         if epoch % 10 == 0:
-            avg_epoch_val_loss = run_validation(model, val_loader, device)
-            losses[step] = {
-                "train_loss": float(avg_epoch_train_loss),
-                "val_loss": float(avg_epoch_val_loss),
-            }
-            if can_write_partial:
-                partial_json_log(
-                    experiment_results,
-                    data_size_key,
-                    run_entry,
-                    step,
-                    avg_epoch_train_loss,
-                    avg_epoch_val_loss,
-                    results_path,
-                )
-
-            # Early stopping check at epoch’s end
-            if avg_epoch_val_loss < best_val_loss:
-                best_val_loss = avg_epoch_val_loss
+            val_loss = run_validation(model, val_loader, device)
+            last_val_loss = val_loss
+            losses[epoch]["val_loss"] = float(val_loss)
+            
+            # Early stopping check
+            if val_loss < best_val_loss:
+                best_val_loss = val_loss
                 epochs_since_improvement = 0
             else:
                 epochs_since_improvement += 1
                 if epochs_since_improvement >= patience:
-                    print("Early stopping triggered (end-of-epoch).")
+                    print(f"Early stopping triggered at epoch {epoch}")
                     return model, losses
+
+        if can_write_partial:
+            partial_json_log(
+                experiment_results,
+                data_size_key,
+                run_entry,
+                epoch,
+                avg_epoch_train_loss,
+                val_loss if epoch % 10 == 0 else float('nan'),
+                results_path,
+            )
+        
+        pbar.update(1)
 
     return model, losses
