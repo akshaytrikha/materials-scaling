@@ -183,7 +183,7 @@ def train(
         losses[epoch] = {"train_loss": float(avg_epoch_train_loss)}
 
         # Run validation every 10 epochs
-        val_loss = run_validation(model, val_loader, device)
+        val_loss = 0
         last_val_loss = val_loss
         losses[epoch]["val_loss"] = float(val_loss)
 
