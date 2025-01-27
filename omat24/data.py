@@ -79,7 +79,6 @@ def get_dataloaders(
 
     train_subset = Subset(dataset, indices=train_indices)
     val_subset = Subset(dataset, indices=val_indices)
-
     # Select the appropriate collate function
     if batch_padded:
         collate_fn = custom_collate_fn_batch_padded

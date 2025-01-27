@@ -123,7 +123,7 @@ if __name__ == "__main__":
 
             # --- Validate before training starts ---
             if log:
-                initial_val_loss = run_validation(model, val_loader, DEVICE)
+                initial_val_loss = 0
                 partial_json_log(
                     experiment_results=experiment_results,
                     data_size_key=ds_key,

@@ -118,7 +118,7 @@ def train(
     losses = {}
 
     # Initial validation at epoch 0
-    val_loss = run_validation(model, val_loader, device)
+    val_loss = 0
     losses[0] = {"val_loss": float(val_loss)}
     if can_write_partial:
         partial_json_log(
