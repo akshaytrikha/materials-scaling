@@ -134,7 +134,7 @@ if __name__ == "__main__":
                     results_path=results_path,
                 )
 
-            pbar = tqdm(range(num_epochs), desc="Training")
+            pbar = tqdm(range(num_epochs + 1))
             trained_model, losses = train(
                 model=model,
                 train_loader=train_loader,
@@ -160,6 +160,7 @@ if __name__ == "__main__":
                 },
                 checkpoint_path,
             )
+            pbar.close()
 
     print(
         f"\nTraining completed. {'Results continuously saved to ' + str(results_path) if log else 'No experiment log was written.'}"
