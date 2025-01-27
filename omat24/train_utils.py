@@ -188,7 +188,7 @@ def train(
         losses[epoch]["val_loss"] = float(val_loss)
 
         # Early stopping check
-        if val_loss < best_val_loss:
+        if val_loss <= best_val_loss:
             best_val_loss = val_loss
             epochs_since_improvement = 0
         else:
