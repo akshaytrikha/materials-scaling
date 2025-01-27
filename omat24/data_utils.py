@@ -1,20 +1,34 @@
+# External
+from pathlib import Path
 import torch
 import tarfile
 import gdown
 import os
-from pathlib import Path
 from typing import Dict
 from torch_geometric.nn import radius_graph
 
-MAX_ATOMS = 300
 
 DATASETS = {
-    "rattled-300-subsampled": "https://drive.google.com/uc?id=1vZE0J9ccC-SkoBYn3K0H0P3PUlpPy_NC",
-    "rattled-1000": "https://drive.google.com/file/d/1XoqQc_5POqLgDQQ0Z-oGCVW72Ohtkv2O",
+    "val": {
+        "rattled-300-subsampled": {
+            "url": "https://drive.google.com/uc?id=1vZE0J9ccC-SkoBYn3K0H0P3PUlpPy_NC",
+            "max_n_atoms": 104,
+        },
+        "rattled-1000": {
+            "url": "https://drive.google.com/uc?id=1XoqQc_5POqLgDQQ0Z-oGCVW72Ohtkv2O",
+            "max_n_atoms": 152,
+        },
+    },
+    "train": {
+        "rattled-500-subsampled": {
+            "url": "https://drive.google.com/uc?id=1gP_p2uIgNGFpfm-eAR-FoRMh-Sf-wrAd",
+            "max_n_atoms": 160,
+        },
+    },
 }
 
 
-def download_dataset(dataset_name: str):
+def download_dataset(dataset_name: str, split_name: str):
     """Downloads a compressed dataset from a predefined URL and extracts it to the specified directory.
 
     Args:
@@ -24,14 +38,15 @@ def download_dataset(dataset_name: str):
         KeyError: If the dataset_name is not found in the DATASETS dictionary.
         Exception: If there is an error during the extraction or deletion of the compressed file.
     """
-    os.makedirs("./datasets", exist_ok=True)
+    os.makedirs(f"./datasets/{split_name}", exist_ok=True)
 
     try:
-        url = DATASETS[dataset_name]
+        url = DATASETS[split_name][dataset_name]["url"]
     except KeyError:
         raise KeyError(f"Dataset '{dataset_name}' not found in DATASETS dictionary.")
 
-    dataset_path = Path(f"datasets/{dataset_name}")
+    dataset_path = Path(f"datasets/{split_name}/{dataset_name}")
+
     compressed_path = dataset_path.with_suffix(".tar.gz")
     print(f"Starting download from {url}...")
     gdown.download(url, str(compressed_path), quiet=False)
@@ -132,7 +147,9 @@ def pad_matrix(
     return matrix
 
 
-def custom_collate_fn_dataset_padded(batch: list) -> Dict[str, torch.Tensor]:
+def custom_collate_fn_dataset_padded(
+    batch: list, max_n_atoms: int
+) -> Dict[str, torch.Tensor]:
     """Collate function that pads all samples to a fixed number of atoms (MAX_ATOMS).
 
     Args:
@@ -151,7 +168,7 @@ def custom_collate_fn_dataset_padded(batch: list) -> Dict[str, torch.Tensor]:
     # Pad atomic_numbers, positions, forces to MAX_ATOMS
     padded_atomic_numbers = torch.stack(
         [
-            pad_tensor(tensor, MAX_ATOMS, dim=0, padding_value=0)
+            pad_tensor(tensor, max_n_atoms, dim=0, padding_value=0)
             for tensor in atomic_numbers
         ],
         dim=0,
@@ -159,21 +176,24 @@ def custom_collate_fn_dataset_padded(batch: list) -> Dict[str, torch.Tensor]:
 
     padded_positions = torch.stack(
         [
-            pad_tensor(tensor, MAX_ATOMS, dim=0, padding_value=0.0)
+            pad_tensor(tensor, max_n_atoms, dim=0, padding_value=0.0)
             for tensor in positions
         ],
         dim=0,
     )  # Shape: [batch_size, MAX_ATOMS, 3]
 
     padded_forces = torch.stack(
-        [pad_tensor(tensor, MAX_ATOMS, dim=0, padding_value=0.0) for tensor in forces],
+        [
+            pad_tensor(tensor, max_n_atoms, dim=0, padding_value=0.0)
+            for tensor in forces
+        ],
         dim=0,
     )  # Shape: [batch_size, MAX_ATOMS, 3]
 
     # Pad distance matrices to [MAX_ATOMS, MAX_ATOMS]
     padded_distance_matrices = torch.stack(
         [
-            pad_matrix(tensor, MAX_ATOMS, padding_value=0.0)
+            pad_matrix(tensor, max_n_atoms, padding_value=0.0)
             for tensor in distance_matrices
         ],
         dim=0,

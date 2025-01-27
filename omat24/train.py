@@ -1,5 +1,6 @@
 # External
 import torch
+import torch.optim as optim
 from pathlib import Path
 import pprint
 import json
@@ -12,16 +13,15 @@ from data_utils import download_dataset
 from arg_parser import get_args
 from models.fcn import MetaFCNModels
 from models.transformer_models import MetaTransformerModels
-import train_utils as train_utils
-
+from train_utils import train, partial_json_log, run_validation
 
 # Set seed & device
-seed = 1024
-torch.manual_seed(seed)
+SEED = 1024
+torch.manual_seed(SEED)
 if torch.cuda.is_available():
     DEVICE = torch.device("cuda")
-    torch.cuda.manual_seed(seed)
-    torch.cuda.manual_seed_all(seed)
+    torch.cuda.manual_seed(SEED)
+    torch.cuda.manual_seed_all(SEED)
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
 elif torch.backends.mps.is_available():
@@ -29,94 +29,139 @@ elif torch.backends.mps.is_available():
 else:
     DEVICE = torch.device("cpu")
 
-
 if __name__ == "__main__":
     args = get_args()
+    log = not args.no_log
 
     # Load dataset
+    split_name = "val"
     dataset_name = "rattled-300-subsampled"
-    dataset_path = Path(f"datasets/{dataset_name}")
+
+    dataset_path = Path(f"datasets/{split_name}/{dataset_name}")
     if not dataset_path.exists():
-        download_dataset(dataset_name)
+        download_dataset(dataset_name, split_name)
     dataset = OMat24Dataset(dataset_path=dataset_path, augment=args.augment)
-    train_loader, val_loader = get_dataloaders(
-        dataset,
-        data_fraction=args.data_fraction,
-        batch_size=args.batch_size,
-        batch_padded=False,
-    )
 
     # User Hyperparam Feedback
-    pprint.pprint(vars(args))
+    params = vars(args) | {
+        "dataset_name": f"{split_name}/{dataset_name}",
+        "max_n_atoms": dataset.max_n_atoms,
+    }
+    pprint.pprint(params)
     print()
 
-    # Initialize meta model class
+    # Initialize meta model class based on architecture choice
     if args.architecture == "FCN":
         meta_models = MetaFCNModels(vocab_size=args.n_elements)
     elif args.architecture == "Transformer":
         meta_models = MetaTransformerModels(
             vocab_size=args.n_elements,
-            max_seq_len=args.max_n_atoms,
-            concatenated=False,
-        )
-    # Store results for all models
-    all_results = {}
-
-    # Train each model configuration
-    for model_idx, model in enumerate(meta_models):
-        print(
-            f"\nModel {model_idx + 1}/{len(meta_models)} is on device {DEVICE} and has {model.num_params} parameters"
+            max_seq_len=dataset.max_n_atoms,
+            concatenated=True,
         )
 
-        # Initialize optimizer and scheduler
-        optimizer = train_utils.get_optimizer(model, learning_rate=args.lr)
-        scheduler = train_utils.get_scheduler(optimizer)
+    batch_size = args.batch_size[0]
+    lr = args.lr
+    num_epochs = args.epochs
 
-        # Create progress bar for epochs
-        pbar = tqdm(range(args.epochs), desc="Training")
+    experiment_results = {}
 
-        # Train model
-        trained_model, losses = train_utils.train(
-            model,
-            train_loader,
-            val_loader,
-            optimizer,
-            scheduler,
-            pbar,
-            device=DEVICE,
-        )
+    # Create results path and initialize file if logging is enabled
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    results_path = Path("results") / f"experiments_{timestamp}.json"
+    if log:
+        Path("results").mkdir(exist_ok=True)
+        with open(results_path, "w") as f:
+            json.dump({}, f)  # Initialize as empty JSON
+        print(f"\nLogging enabled. Results will be saved to {results_path}")
+    else:
+        print("\nLogging disabled. No experiment log will be saved.")
 
-        # Save model checkpoint
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        checkpoint_path = (
-            f"checkpoints/{args.architecture}_model_{model_idx}_{timestamp}.pth"
-        )
-        Path("checkpoints").mkdir(exist_ok=True)
-        torch.save(
-            {
-                "model_state_dict": trained_model.state_dict(),
-                "losses": losses,
-            },
-            checkpoint_path,
-        )
+    for data_fraction in args.data_fractions:
+        print(f"\nData fraction: {data_fraction}")
+        for model_idx, model in enumerate(meta_models):
+            print(
+                f"\nModel {model_idx + 1}/{len(meta_models)} is on device {DEVICE} and has {model.num_params} parameters"
+            )
 
-        # Store results
-        all_results[f"model_{model_idx}"] = {
-            "config": {
-                "architecture": args.architecture,
-                "embedding_dim": model.embedding_dim,
-                # "hidden_dim": model.hidden_dim,
-                "depth": model.depth,
-                "num_params": model.num_params,
-            },
-            "losses": losses,
-            "checkpoint_path": checkpoint_path,
-        }
+            train_loader, val_loader = get_dataloaders(
+                dataset,
+                train_data_fraction=data_fraction,
+                batch_size=batch_size,
+                seed=SEED,
+                batch_padded=False,
+            )
+            dataset_size = len(train_loader.dataset)
+            optimizer = optim.Adam(model.parameters(), lr=lr)
 
-    # Save all results to JSON
-    results_path = Path("results") / f"{timestamp}.json"
-    Path("results").mkdir(exist_ok=True)
-    with open(results_path, "w") as f:
-        json.dump(all_results, f, indent=4)
+            # Prepare run entry etc.
+            model_name = f"model_ds{dataset_size}_p{int(model.num_params)}"
+            checkpoint_path = f"checkpoints/{args.architecture}_ds{dataset_size}_p{int(model.num_params)}_{timestamp}.pth"
+            run_entry = {
+                "model_name": model_name,
+                "config": {
+                    "architecture": args.architecture,
+                    "embedding_dim": getattr(model, "embedding_dim", None),
+                    "depth": getattr(model, "depth", None),
+                    "num_params": model.num_params,
+                    "dataset_size": dataset_size,
+                    "num_epochs": num_epochs,
+                    "batch_size": batch_size,
+                    "learning_rate": lr,
+                    "seed": SEED,
+                },
+                "losses": {},
+                "checkpoint_path": checkpoint_path,
+            }
+            ds_key = str(dataset_size)
+            if ds_key not in experiment_results:
+                experiment_results[ds_key] = []
+            experiment_results[ds_key].append(run_entry)
+            if log:
+                with open(results_path, "w") as f:
+                    json.dump(experiment_results, f, indent=4)
 
-    print(f"\nTraining completed. Results saved to {results_path}")
+            # --- Validate before training starts ---
+            if log:
+                initial_val_loss = run_validation(model, val_loader, DEVICE)
+                partial_json_log(
+                    experiment_results=experiment_results,
+                    data_size_key=ds_key,
+                    run_entry=run_entry,
+                    step=0,
+                    avg_train_loss=float("nan"),  # no training loss yet
+                    val_loss=initial_val_loss,
+                    results_path=results_path,
+                )
+
+            pbar = tqdm(range(num_epochs + 1))
+            trained_model, losses = train(
+                model=model,
+                train_loader=train_loader,
+                val_loader=val_loader,
+                optimizer=optimizer,
+                scheduler=None,
+                pbar=pbar,
+                device=DEVICE,
+                patience=6,
+                results_path=results_path if log else None,
+                experiment_results=experiment_results if log else None,
+                data_size_key=ds_key if log else None,
+                run_entry=run_entry if log else None,
+            )
+
+            Path("checkpoints").mkdir(exist_ok=True)
+            torch.save(
+                {
+                    "model_state_dict": trained_model.state_dict(),
+                    "losses": losses,
+                    "batch_size": batch_size,
+                    "lr": lr,
+                },
+                checkpoint_path,
+            )
+            pbar.close()
+
+    print(
+        f"\nTraining completed. {'Results continuously saved to ' + str(results_path) if log else 'No experiment log was written.'}"
+    )

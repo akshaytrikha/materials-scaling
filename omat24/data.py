@@ -7,21 +7,49 @@ import ase
 from typing import Tuple
 from torch_geometric.data import Data
 from torch_geometric.data import DataLoader as PyGDataLoader
+import tarfile
+import gdown
+import os
+import random
 
 # Internal
-from matrix import compute_distance_matrix, random_rotate_atoms
+from matrix import compute_distance_matrix, factorize_matrix, random_rotate_atoms
 from data_utils import (
     custom_collate_fn_batch_padded,
     custom_collate_fn_dataset_padded,
     generate_graph,
+    DATASETS,
 )
+
+
+def download_dataset(dataset_name: str):
+    """Downloads a .tar.gz file from the specified URL and extracts it to the given directory."""
+    os.makedirs("./datasets", exist_ok=True)
+    url = DATASETS[dataset_name]
+    dataset_path = Path(f"datasets/{dataset_name}")
+    compressed_path = dataset_path.with_suffix(".tar.gz")
+    print(f"Starting download from {url}...")
+    gdown.download(url, str(compressed_path), quiet=False)
+    # Extract the dataset
+    print(f"Extracting {compressed_path}...")
+    with tarfile.open(compressed_path, "r:gz") as tar:
+        tar.extractall(path=dataset_path.parent)
+    print(f"Extraction completed. Files are available at {dataset_path}.")
+    # Clean up
+    try:
+        compressed_path.unlink()
+        print(f"Deleted the compressed file {compressed_path}.")
+    except Exception as e:
+        print(f"An error occurred while deleting {compressed_path}: {e}")
 
 
 def get_dataloaders(
     dataset: Dataset,
-    data_fraction: float,
+    train_data_fraction: float,
     batch_size: int,
+    seed: int,
     batch_padded: bool = True,
+    return_indices: bool = False,
 ):
     """Creates training and validation DataLoaders from a given dataset.
 
@@ -34,6 +62,7 @@ def get_dataloaders(
         dataset (Dataset): The dataset to create DataLoaders from.
         data_fraction (float): Fraction of the dataset to use (e.g., 0.9 for 90%).
         batch_size (int): Number of samples per batch.
+        seed (int): Seed for random number generators to ensure reproducibility
         batch_padded (bool, optional): Whether to pad variable-length tensors. Defaults to True.
 
     Returns:
@@ -41,21 +70,35 @@ def get_dataloaders(
             - train_loader (DataLoader): DataLoader for the training subset.
             - val_loader (DataLoader): DataLoader for the validation subset.
     """
-    # Determine the number of samples based on the data fraction
-    dataset_size = int(len(dataset) * data_fraction)
-    train_size = int(dataset_size * 0.8)
+    dataset_size = len(dataset)
+    val_size = int(dataset_size * 0.1)
+    remaining_size = dataset_size - val_size
+    train_size = int(remaining_size * train_data_fraction)
 
-    train_subset = Subset(dataset, indices=range(train_size))
-    val_subset = Subset(dataset, indices=range(train_size, dataset_size))
+    random.seed(seed)
+    indices = list(range(dataset_size))
+    random.shuffle(indices)
+
+    val_indices = indices[:val_size]
+    train_indices = indices[val_size : val_size + train_size]
+
+    train_subset = Subset(dataset, indices=train_indices)
+    val_subset = Subset(dataset, indices=val_indices)
 
     # Select the appropriate collate function
     if batch_padded:
         collate_fn = custom_collate_fn_batch_padded
     else:
-        collate_fn = custom_collate_fn_dataset_padded
+        collate_fn = lambda batch: custom_collate_fn_dataset_padded(
+            batch, dataset.max_n_atoms
+        )
+
     # Create DataLoaders
     train_loader = DataLoader(
-        train_subset, batch_size=batch_size, shuffle=True, collate_fn=collate_fn
+        train_subset,
+        batch_size=batch_size,
+        shuffle=True,
+        collate_fn=collate_fn,
     )
 
     val_loader = DataLoader(
@@ -65,7 +108,11 @@ def get_dataloaders(
         collate_fn=collate_fn,
     )
 
-    return train_loader, val_loader
+    if return_indices:
+        # For debugging
+        return train_loader, val_loader, train_indices, val_indices
+    else:
+        return train_loader, val_loader
 
 
 def get_pyg_dataloaders(
@@ -129,6 +176,9 @@ class OMat24Dataset(Dataset):
         self.dataset = AseDBDataset(config=dict(src=str(dataset_path), **config_kwargs))
         self.augment = augment
         self.graph = graph
+        split_name = dataset_path.parent.name  # Parent directory's name
+        dataset_name = dataset_path.name
+        self.max_n_atoms = DATASETS[split_name][dataset_name]["max_n_atoms"]
 
     def __len__(self):
         return len(self.dataset)
@@ -179,17 +229,20 @@ class OMat24Dataset(Dataset):
                 stress=stress,
             )
             data.natoms = torch.tensor([len(atoms)])
-
             return data
         else:
+            factorized_matrix = factorize_matrix(
+                distance_matrix
+            )  # Left matrix: U * sqrt(Sigma) - Shape: [N_atoms, k=5]
+
             # Package the input and labels into a dictionary
             sample = {
                 "atomic_numbers": atomic_numbers,  # Element types
                 "positions": positions,  # 3D atomic coordinates
                 "distance_matrix": distance_matrix,  # [N_atoms, N_atoms]
+                "factorized_matrix": factorized_matrix,  # [N_atoms, k=5]
                 "energy": energy,  # Target energy
                 "forces": forces,  # Target forces on each atom
                 "stress": stress,  # Target stress tensor
             }
-
             return sample

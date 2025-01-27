@@ -18,4 +18,5 @@ wikitext_combined.txt
 *.aselmdb
 omat24/results
 *atom_info.csv
-energy_regression.csv
+*-checkpoint.ipynb
+context.txt

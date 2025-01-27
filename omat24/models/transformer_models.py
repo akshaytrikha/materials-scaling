@@ -59,33 +59,40 @@ class MetaTransformerModels:
         """
         self.configurations = [
             {
-                "d_model": 8,
-                "depth": 2,
-                "n_heads": 4,
-                "d_ff_mult": 8,
+                "d_model": 1,
+                "depth": 1,
+                "n_heads": 1,
+                "d_ff_mult": 1,
                 "concatenated": concatenated,
-            },  # XS
+            },
             {
-                "d_model": 32,
-                "depth": 2,
-                "n_heads": 4,
-                "d_ff_mult": 4,
+                "d_model": 2,
+                "depth": 1,
+                "n_heads": 1,
+                "d_ff_mult": 2,
                 "concatenated": concatenated,
-            },  # Small
+            },
             {
-                "d_model": 64,
-                "depth": 4,
-                "n_heads": 8,
+                "d_model": 2,
+                "depth": 1,
+                "n_heads": 2,
+                "d_ff_mult": 2,
+                "concatenated": concatenated,
+            },
+            {
+                "d_model": 2,
+                "depth": 2,
+                "n_heads": 2,
+                "d_ff_mult": 2,
+                "concatenated": concatenated,
+            },
+            {
+                "d_model": 4,
+                "depth": 2,
+                "n_heads": 2,
                 "d_ff_mult": 4,
                 "concatenated": concatenated,
             },  # Medium
-            {
-                "d_model": 128,
-                "depth": 8,
-                "n_heads": 16,
-                "d_ff_mult": 4,
-                "concatenated": concatenated,
-            },  # Large
         ]
 
         self.vocab_size = vocab_size
