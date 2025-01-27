@@ -61,7 +61,7 @@ if __name__ == "__main__":
         )
 
     batch_size = args.batch_size[0]
-    lr = args.lr
+    lr = args.lr[0]
     num_epochs = args.epochs
 
     experiment_results = {}
