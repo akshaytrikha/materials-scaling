@@ -5,7 +5,7 @@ from pathlib import Path
 
 # Internal
 from models.escaip.EScAIP import EScAIPModel
-from data import get_pyg_dataloaders
+from data import OMat24Dataset, get_pyg_dataloaders
 from data_utils import download_dataset
 
 
@@ -98,17 +98,24 @@ def initialize_model(device: str):
 # Main script
 if __name__ == "__main__":
     # Load dataset
+    split_name = "val"
     dataset_name = "rattled-300-subsampled"
-    dataset_path = Path(f"datasets/{dataset_name}")
-    if not dataset_path.exists():
-        download_dataset(dataset_name)
 
-    train_loader, val_loader = get_pyg_dataloaders(
+    dataset_path = Path(f"datasets/{split_name}/{dataset_name}")
+    if not dataset_path.exists():
+        download_dataset(dataset_name, split_name)
+
+    # Initialize PyG dataset and DataLoaders
+    dataset = OMat24Dataset(
         dataset_path=dataset_path,
         config_kwargs={},
-        data_fraction=0.1,
-        batch_size=2,
         augment=False,
+        graph=True,
+    )
+    train_loader, val_loader = get_pyg_dataloaders(
+        dataset=dataset,
+        data_fraction=0.01,
+        batch_size=2,
     )
 
     # Initialize model

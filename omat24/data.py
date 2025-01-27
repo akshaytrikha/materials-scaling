@@ -116,33 +116,21 @@ def get_dataloaders(
 
 
 def get_pyg_dataloaders(
-    dataset_path: Path,
-    config_kwargs={},
+    dataset: Dataset,
     data_fraction: float = 0.9,
     batch_size: int = 32,
-    augment: bool = False,
 ) -> Tuple[PyGDataLoader, PyGDataLoader]:
     """
     Creates training and validation PyG DataLoaders from a given dataset.
 
     Args:
-        dataset_path (Path): Path to the dataset directory.
-        config_kwargs (dict, optional): Additional configuration for the dataset. Defaults to {}.
+        dataset (Dataset): The dataset to create DataLoaders from.
         data_fraction (float, optional): Fraction of the dataset to use (e.g., 0.9 for 90%). Defaults to 0.9.
         batch_size (int, optional): Number of samples per batch. Defaults to 32.
-        augment (bool, optional): Whether to apply data augmentation. Defaults to False.
 
     Returns:
         Tuple[PyGDataLoader, PyGDataLoader]: Training and validation DataLoaders.
     """
-    # Initialize the PyG dataset
-    dataset = OMat24Dataset(
-        dataset_path=dataset_path,
-        config_kwargs=config_kwargs,
-        augment=augment,
-        graph=True,
-    )
-
     # Determine the number of samples based on the data fraction
     dataset_size = int(len(dataset) * data_fraction)
     train_size = int(dataset_size * 0.8)
