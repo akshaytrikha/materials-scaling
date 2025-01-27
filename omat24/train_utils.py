@@ -112,9 +112,11 @@ def train(
 ):
     """Train model with validation at epoch 0 and every 10 epochs."""
     model.to(device)
-    can_write_partial = all([results_path, experiment_results, data_size_key, run_entry])
+    can_write_partial = all(
+        [results_path, experiment_results, data_size_key, run_entry]
+    )
     losses = {}
-    
+
     # Initial validation at epoch 0
     val_loss = run_validation(model, val_loader, device)
     losses[0] = {"val_loss": float(val_loss)}
@@ -124,16 +126,16 @@ def train(
             data_size_key,
             run_entry,
             0,
-            float('nan'),
+            float("nan"),
             val_loss,
             results_path,
         )
-    
+
     # Early stopping setup
     best_val_loss = val_loss
     epochs_since_improvement = 0
     last_val_loss = val_loss
-    
+
     # Training loop starting from epoch 1
     for epoch in range(1, len(pbar) + 1):
         model.train()
@@ -153,17 +155,26 @@ def train(
             mask = atomic_numbers != 0
             natoms = mask.sum(dim=1)
             train_loss = compute_loss(
-                pred_forces, pred_energy, pred_stress,
-                true_forces, true_energy, true_stress,
-                mask, device, natoms=natoms,
-                use_mask=True, force_magnitude=False,
+                pred_forces,
+                pred_energy,
+                pred_stress,
+                true_forces,
+                true_energy,
+                true_stress,
+                mask,
+                device,
+                natoms=natoms,
+                use_mask=True,
+                force_magnitude=False,
             )
             train_loss.backward()
             optimizer.step()
-            
+
             train_loss_sum += train_loss.item()
             current_avg_loss = train_loss_sum / (batch_idx + 1)
-            pbar.set_description(f"train_loss={current_avg_loss:.2f} val_loss={last_val_loss:.2f}")
+            pbar.set_description(
+                f"train_loss={current_avg_loss:.2f} val_loss={last_val_loss:.2f}"
+            )
 
         if scheduler is not None:
             scheduler.step()
@@ -172,20 +183,19 @@ def train(
         losses[epoch] = {"train_loss": float(avg_epoch_train_loss)}
 
         # Run validation every 10 epochs
-        if epoch % 10 == 0:
-            val_loss = run_validation(model, val_loader, device)
-            last_val_loss = val_loss
-            losses[epoch]["val_loss"] = float(val_loss)
-            
-            # Early stopping check
-            if val_loss < best_val_loss:
-                best_val_loss = val_loss
-                epochs_since_improvement = 0
-            else:
-                epochs_since_improvement += 1
-                if epochs_since_improvement >= patience:
-                    print(f"Early stopping triggered at epoch {epoch}")
-                    return model, losses
+        val_loss = run_validation(model, val_loader, device)
+        last_val_loss = val_loss
+        losses[epoch]["val_loss"] = float(val_loss)
+
+        # Early stopping check
+        if val_loss < best_val_loss:
+            best_val_loss = val_loss
+            epochs_since_improvement = 0
+        else:
+            epochs_since_improvement += 1
+            if epochs_since_improvement >= patience:
+                print(f"Early stopping triggered at epoch {epoch}")
+                return model, losses
 
         if can_write_partial:
             partial_json_log(
@@ -194,10 +204,10 @@ def train(
                 run_entry,
                 epoch,
                 avg_epoch_train_loss,
-                val_loss if epoch % 10 == 0 else float('nan'),
+                val_loss if epoch % 10 == 0 else float("nan"),
                 results_path,
             )
-        
+
         pbar.update(1)
 
     return model, losses

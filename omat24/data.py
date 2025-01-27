@@ -41,7 +41,7 @@ def download_dataset(dataset_name: str):
 
 def get_dataloaders(
     dataset: Dataset,
-    train_data_fraction: float,
+    train_data_amount: float,
     batch_size: int,
     seed: int,
     batch_padded: bool = True,
@@ -50,13 +50,13 @@ def get_dataloaders(
     """Creates training and validation DataLoaders from a given dataset.
 
     This function splits the dataset into training and validation subsets based on the
-    specified `data_fraction`. It then creates DataLoaders for each subset, using either
+    specified `train_data_amount`. It then creates DataLoaders for each subset, using either
     a custom collate function that keeps variable-length tensors as lists or one that
     pads them to uniform sizes.
 
     Args:
         dataset (Dataset): The dataset to create DataLoaders from.
-        data_fraction (float): Fraction of the dataset to use (e.g., 0.9 for 90%).
+        train_data_amount (float): Amount of data points in the dataset to use.
         batch_size (int): Number of samples per batch.
         seed (int): Seed for random number generators to ensure reproducibility
         batch_padded (bool, optional): Whether to pad variable-length tensors. Defaults to True.
@@ -68,15 +68,14 @@ def get_dataloaders(
     """
     dataset_size = len(dataset)
     val_size = int(dataset_size * 0.1)
-    remaining_size = dataset_size - val_size
-    train_size = int(remaining_size * train_data_fraction)
+    train_size = int(train_data_amount)
 
     random.seed(seed)
     indices = list(range(dataset_size))
     random.shuffle(indices)
 
     val_indices = indices[:val_size]
-    train_indices = indices[val_size:val_size + train_size]
+    train_indices = indices[val_size : val_size + train_size]
 
     train_subset = Subset(dataset, indices=train_indices)
     val_subset = Subset(dataset, indices=val_indices)
@@ -161,14 +160,16 @@ class OMat24Dataset(Dataset):
             positions
         )  # Shape: [N_atoms, N_atoms]
 
-        factorized_matrix = factorize_matrix(distance_matrix) # Left matrix: U * sqrt(Sigma) - Shape: [N_atoms, k=5]
+        factorized_matrix = factorize_matrix(
+            distance_matrix
+        )  # Left matrix: U * sqrt(Sigma) - Shape: [N_atoms, k=5]
 
         # Package the input and labels into a dictionary for model processing
         sample = {
             "atomic_numbers": atomic_numbers,  # Element types
             "positions": positions,  # 3D atomic coordinates
             "distance_matrix": distance_matrix,  # [N_atoms, N_atoms]
-            "factorized_matrix": factorized_matrix, # [N_atoms, k=5]
+            "factorized_matrix": factorized_matrix,  # [N_atoms, k=5]
             "energy": energy,  # Target energy
             "forces": forces,  # Target forces on each atom
             "stress": stress,  # Target stress tensor

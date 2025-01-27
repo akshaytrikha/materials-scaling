@@ -77,8 +77,8 @@ if __name__ == "__main__":
     else:
         print("\nLogging disabled. No experiment log will be saved.")
 
-    for data_fraction in args.data_fractions:
-        print(f"\nData fraction: {data_fraction}")
+    for data_amount in args.data_amounts:
+        print(f"\nData amount: {data_amount}")
         for model_idx, model in enumerate(meta_models):
             print(
                 f"\nModel {model_idx + 1}/{len(meta_models)} is on device {DEVICE} and has {model.num_params} parameters"
@@ -86,7 +86,7 @@ if __name__ == "__main__":
 
             train_loader, val_loader = get_dataloaders(
                 dataset,
-                train_data_fraction=data_fraction,
+                train_data_amount=data_amount,
                 batch_size=batch_size,
                 seed=SEED,
                 batch_padded=False,

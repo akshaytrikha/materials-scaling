@@ -28,11 +28,11 @@ def get_args():
         help="Learning rate",
     )
     parser.add_argument(
-        "--data_fractions",
+        "--data_amounts",
         type=float,
         nargs="+",
         default=[1.0],
-        help="Fractions of data",
+        help="Amounts of data points",
     )
     parser.add_argument(
         "--no_log", action="store_true", default=False, help="Enable logging"
