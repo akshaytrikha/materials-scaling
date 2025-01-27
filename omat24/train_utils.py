@@ -118,7 +118,7 @@ def train(
     losses = {}
 
     # Initial validation at epoch 0
-    val_loss = 0
+    val_loss = run_validation(model, val_loader, device)
     losses[0] = {"val_loss": float(val_loss)}
     if can_write_partial:
         partial_json_log(
@@ -207,7 +207,15 @@ def train(
                 val_loss if epoch % 10 == 0 else float("nan"),
                 results_path,
             )
-
         pbar.update(1)
+    partial_json_log(
+        experiment_results,
+        data_size_key,
+        run_entry,
+        epoch,
+        avg_epoch_train_loss,
+        run_validation(model, val_loader, device),
+        results_path,
+    )
 
     return model, losses
