@@ -132,8 +132,6 @@ def train(
         )
 
     # Early stopping setup
-    best_val_loss = val_loss
-    epochs_since_improvement = 0
     last_val_loss = val_loss
 
     # Training loop starting from epoch 1
@@ -182,20 +180,10 @@ def train(
         avg_epoch_train_loss = train_loss_sum / n_train_batches
         losses[epoch] = {"train_loss": float(avg_epoch_train_loss)}
 
-        # Run validation every 10 epochs
-        val_loss = 0
-        last_val_loss = val_loss
-        losses[epoch]["val_loss"] = float(val_loss)
-
-        # Early stopping check
-        if val_loss <= best_val_loss:
-            best_val_loss = val_loss
-            epochs_since_improvement = 0
-        else:
-            epochs_since_improvement += 1
-            if epochs_since_improvement >= patience:
-                print(f"Early stopping triggered at epoch {epoch}")
-                return model, losses
+        if epoch % 5000 == 0:
+            val_loss = run_validation(model, val_loader, device)
+            last_val_loss = val_loss
+            losses[epoch]["val_loss"] = float(val_loss)
 
         if can_write_partial:
             partial_json_log(
@@ -204,7 +192,7 @@ def train(
                 run_entry,
                 epoch,
                 avg_epoch_train_loss,
-                val_loss if epoch % 10 == 0 else float("nan"),
+                val_loss if epoch % 5000 == 0 else float("nan"),
                 results_path,
             )
         pbar.update(1)
