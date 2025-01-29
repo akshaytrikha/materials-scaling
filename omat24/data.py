@@ -93,7 +93,7 @@ def get_dataloaders(
         batch_size=batch_size,
         shuffle=True,
         collate_fn=collate_fn,
-        num_workers=0
+        num_workers=8
     )
 
     val_loader = DataLoader(
@@ -101,7 +101,7 @@ def get_dataloaders(
         batch_size=batch_size,
         shuffle=False,  # Typically, shuffle=False for validation
         collate_fn=collate_fn,
-        num_workers=0
+        num_workers=8
     )
 
     if return_indices:
