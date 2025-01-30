@@ -125,6 +125,9 @@ class OMat24Dataset(Dataset):
         self.augment = augment
         split_name = dataset_path.parent.name  # Parent directory's name
         dataset_name = dataset_path.name
+        print(dataset_path)
+        print(split_name)
+        print(dataset_name)
         self.max_n_atoms = DATASETS[split_name][dataset_name]["max_n_atoms"]
 
     def __len__(self):
