@@ -180,7 +180,7 @@ def train(
         avg_epoch_train_loss = train_loss_sum / n_train_batches
         losses[epoch] = {"train_loss": float(avg_epoch_train_loss)}
 
-        if epoch % 5000 == 0:
+        if epoch % 1000 == 0:
             val_loss = run_validation(model, val_loader, device)
             last_val_loss = val_loss
             losses[epoch]["val_loss"] = float(val_loss)
