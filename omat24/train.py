@@ -50,19 +50,20 @@ if __name__ == "__main__":
     pprint.pprint(params)
     print()
 
+    batch_size = args.batch_size[0]
+    lr = args.lr[0]
+    use_factorize = args.factorize
+    num_epochs = args.epochs
+
     # Initialize meta model class based on architecture choice
     if args.architecture == "FCN":
-        meta_models = MetaFCNModels(vocab_size=args.n_elements)
+        meta_models = MetaFCNModels(vocab_size=args.n_elements, use_factorized=use_factorize)
     elif args.architecture == "Transformer":
         meta_models = MetaTransformerModels(
             vocab_size=args.n_elements,
             max_seq_len=dataset.max_n_atoms,
             concatenated=True,
         )
-
-    batch_size = args.batch_size[0]
-    lr = args.lr
-    num_epochs = args.epochs
 
     experiment_results = {}
 
@@ -120,19 +121,6 @@ if __name__ == "__main__":
             if log:
                 with open(results_path, "w") as f:
                     json.dump(experiment_results, f, indent=4)
-
-            # --- Validate before training starts ---
-            if log:
-                initial_val_loss = run_validation(model, val_loader, DEVICE)
-                partial_json_log(
-                    experiment_results=experiment_results,
-                    data_size_key=ds_key,
-                    run_entry=run_entry,
-                    step=0,
-                    avg_train_loss=float("nan"),  # no training loss yet
-                    val_loss=initial_val_loss,
-                    results_path=results_path,
-                )
 
             pbar = tqdm(range(num_epochs + 1))
             trained_model, losses = train(

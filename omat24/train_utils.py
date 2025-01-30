@@ -66,13 +66,15 @@ def run_validation(model, val_loader, device):
 
     with torch.no_grad():
         for batch in val_loader:
+            # print(batch)
             atomic_numbers = batch["atomic_numbers"].to(device)
             positions = batch["positions"].to(device)
+            factorized_distances = batch["factorized_matrix"].to(device)
             true_forces = batch["forces"].to(device)
             true_energy = batch["energy"].to(device)
             true_stress = batch["stress"].to(device)
 
-            pred_forces, pred_energy, pred_stress = model(atomic_numbers, positions)
+            pred_forces, pred_energy, pred_stress = model(atomic_numbers, positions, factorized_distances)
 
             mask = atomic_numbers != 0
             natoms = mask.sum(dim=1)
@@ -143,12 +145,13 @@ def train(
         for batch_idx, batch in enumerate(train_loader):
             atomic_numbers = batch["atomic_numbers"].to(device)
             positions = batch["positions"].to(device)
+            factorized_distances = batch["factorized_matrix"].to(device)
             true_forces = batch["forces"].to(device)
             true_energy = batch["energy"].to(device)
             true_stress = batch["stress"].to(device)
 
             optimizer.zero_grad()
-            pred_forces, pred_energy, pred_stress = model(atomic_numbers, positions)
+            pred_forces, pred_energy, pred_stress = model(atomic_numbers, positions, factorized_distances)
 
             mask = atomic_numbers != 0
             natoms = mask.sum(dim=1)
