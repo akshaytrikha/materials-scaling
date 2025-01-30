@@ -38,7 +38,7 @@ def get_args():
         "--no_log", action="store_true", default=False, help="Enable logging"
     )
     parser.add_argument(
-        "--concatenated", action="store_true", help="Enable concatenation"
+        "--concatenated", action="store_true", default=True, help="Enable concatenation"
     )
     parser.add_argument(
         "--checkpoint_group_name",
@@ -54,6 +54,10 @@ def get_args():
     )
     parser.add_argument("--augment", action="store_true", help="Rotation augmentation")
 
-    parser.add_argument("--factorize", action="store_true", help="Factorize and use inverse distance matrix")
+    parser.add_argument(
+        "--factorize",
+        action="store_true",
+        help="Factorize and use inverse distance matrix",
+    )
 
     return parser.parse_args()
