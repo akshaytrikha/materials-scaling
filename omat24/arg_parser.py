@@ -54,4 +54,6 @@ def get_args():
     )
     parser.add_argument("--augment", action="store_true", help="Rotation augmentation")
 
+    parser.add_argument("--factorize", action="store_true", help="Factorize and use inverse distance matrix")
+
     return parser.parse_args()
