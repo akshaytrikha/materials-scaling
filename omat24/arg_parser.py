@@ -24,7 +24,7 @@ def get_args():
         "--lr",
         type=float,
         nargs="+",
-        default=0.0001,
+        default=[0.0001],
         help="Learning rate",
     )
     parser.add_argument(

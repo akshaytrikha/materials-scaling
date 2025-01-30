@@ -149,19 +149,16 @@ def compute_loss(
         target=torch.sum(true_anisotropic_stress, dim=1),
     )
 
-    return torch.mean(
+    total_loss = torch.mean(
         energy_loss + force_loss + stress_isotropic_loss + stress_anisotropic_loss
     )
 
+    loss_dict = {
+        "total_loss": total_loss,
+        "energy_loss": energy_loss,
+        "force_loss": force_loss,
+        "stress_iso_loss": stress_isotropic_loss,
+        "stress_aniso_loss": stress_anisotropic_loss,
+    }
 
-# Not in use
-# class CosineSimilarityLoss(nn.Module):
-#     def __init__(self, dim=1):
-#         super(CosineSimilarityLoss, self).__init__()
-#         self.cos = nn.CosineSimilarity(dim=dim)
-
-#     def forward(self, prediction, target):
-#         cosine_sim = self.cos(prediction, target)
-#         mean_cosine_sim = cosine_sim.mean()
-#         loss = 1 - mean_cosine_sim
-#         return loss
+    return total_loss, loss_dict
