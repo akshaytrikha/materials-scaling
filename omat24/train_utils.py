@@ -64,7 +64,7 @@ def partial_json_log(
             experiment_results[data_size_key].append(run_entry)
 
     with open(results_path, "w") as f:
-        json.dump(experiment_results, f, indent=2)
+        json.dump(experiment_results, f)
 
 
 def run_validation(model, val_loader, device):

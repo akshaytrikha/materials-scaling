@@ -84,7 +84,14 @@ def plot_atomic_forces(
 
 
 def plot_force_comparison(
-    sample, epoch, output_path, model_params, dataset_size, architecture, lr
+    sample,
+    epoch,
+    output_path,
+    model_params,
+    dataset_size,
+    architecture,
+    lr,
+    split,
 ):
     """Create and save a comparison plot of ground truth vs predicted forces.
 
@@ -189,6 +196,14 @@ def plot_force_comparison(
         color="black",
         font="arial",
     )
+    pl.add_text(
+        f"split: {split}",
+        position=(0.71, 0.77),  # Below dataset size
+        viewport=True,
+        font_size=16,
+        color="black",
+        font="arial",
+    )
 
     # Save the image
     pl.screenshot(output_path)
@@ -214,6 +229,7 @@ def create_force_comparison_gif(
 
     # Calculate fps based on number of images and desired duration
     fps = len(image_files) / duration
+    fps = min(1, fps)
 
     # Read all images
     images = []
@@ -241,11 +257,11 @@ def main():
         help="Index of sample to visualize (default: 0)",
     )
     parser.add_argument(
-        "--sample-type",
+        "--split",
         type=str,
         choices=["val", "train"],
         default="val",
-        help="Type of sample to visualize (default: val)",
+        help="Split of sample to visualize (default: val)",
     )
     args = parser.parse_args()
 
@@ -267,16 +283,16 @@ def main():
     lr = run["config"]["learning_rate"]
 
     print(
-        f"Generating force comparison plots (using {args.sample_type} sample {args.sample_idx})..."
+        f"Generating force comparison plots (using {args.split} split sample {args.sample_idx})..."
     )
     # Loop through all epochs
     for epoch, epoch_data in run["losses"].items():
         # Skip epochs without samples or specified sample type
-        if "samples" not in epoch_data or args.sample_type not in epoch_data["samples"]:
+        if "samples" not in epoch_data or args.split not in epoch_data["samples"]:
             continue
 
         # Get the specified sample for this epoch
-        samples = epoch_data["samples"][args.sample_type]
+        samples = epoch_data["samples"][args.split]
         if args.sample_idx >= len(samples):
             continue
 
@@ -294,6 +310,7 @@ def main():
             dataset_size=dataset_size,
             architecture=architecture,
             lr=lr,
+            split=args.split,
         )
 
     print("Finished creating all plots.")
