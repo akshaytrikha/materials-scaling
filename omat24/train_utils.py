@@ -221,7 +221,7 @@ def train(
     losses = {}
 
     # Initial validation at epoch 0
-    val_loss = run_validation(
+    val_loss, val_samples = run_validation(
         model,
         val_loader,
         device,
@@ -300,7 +300,7 @@ def train(
         # Validation every N epochs
         val_loss_to_log = float("nan")
         if epoch % 1000 == 0:
-            val_loss = run_validation(
+            val_loss, val_samples = run_validation(
                 model,
                 val_loader,
                 device,
