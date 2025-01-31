@@ -85,6 +85,7 @@ def plot_atomic_forces(
 
 def plot_force_comparison(
     sample,
+    predictions,
     epoch,
     output_path,
     model_params,
@@ -96,23 +97,25 @@ def plot_force_comparison(
     """Create and save a comparison plot of ground truth vs predicted forces.
 
     Args:
-        sample: Dictionary containing the sample data
+        sample: Dictionary containing the sample metadata (positions, numbers, etc.)
+        predictions: Dictionary containing the predicted values
         epoch: Current epoch number
         output_path: Path to save the output image
         model_params: Number of model parameters
         dataset_size: Size of the dataset
         architecture: Model architecture name
         lr: Learning rate
+        split: Dataset split (train/val)
     """
-    # Extract data from sample
+    # Extract data from sample and predictions
     positions = np.array(sample["positions"][0])
     numbers = np.array(sample["atomic_numbers"][0])
-    forces_true = np.array(sample["true"]["forces"][0])
-    forces_pred = np.array(sample["pred"]["forces"][0])
-    energy_true = float(sample["true"]["energy"][0])
-    energy_pred = float(sample["pred"]["energy"][0])
-    stress_true = np.array(sample["true"]["stress"][0])
-    stress_pred = np.array(sample["pred"]["stress"][0])
+    forces_true = np.array(sample["forces"][0])
+    forces_pred = np.array(predictions["forces"][0])
+    energy_true = float(sample["energy"][0])
+    energy_pred = float(predictions["energy"][0])
+    stress_true = np.array(sample["stress"][0])
+    stress_pred = np.array(predictions["stress"][0])
 
     # Create plotter
     pl = pv.Plotter(shape=(1, 2), off_screen=True, window_size=[1920, 1080])
@@ -245,7 +248,6 @@ def create_force_comparison_gif(
 
 def main():
     """Main function to run the visualization and create GIF."""
-    # Parse command line arguments
     parser = argparse.ArgumentParser(
         description="Visualize model prediction evolution."
     )
@@ -253,8 +255,7 @@ def main():
     parser.add_argument(
         "--sample-idx",
         type=int,
-        default=0,
-        help="Index of sample to visualize (default: 0)",
+        help="Index of specific sample to visualize (if not specified, all samples will be processed)",
     )
     parser.add_argument(
         "--split",
@@ -265,8 +266,12 @@ def main():
     )
     args = parser.parse_args()
 
-    # Create output directory
-    Path("figures").mkdir(exist_ok=True)
+    # Get filename without extension to use as subdirectory name
+    filename = Path(args.json_file).stem
+
+    # Create output directories
+    figures_dir = Path("figures") / filename
+    figures_dir.mkdir(parents=True, exist_ok=True)
 
     # Load data
     with open(args.json_file, "r") as f:
@@ -282,42 +287,64 @@ def main():
     architecture = run["config"]["architecture"]
     lr = run["config"]["learning_rate"]
 
-    print(
-        f"Generating force comparison plots (using {args.split} split sample {args.sample_idx})..."
+    # Get samples for the specified split
+    samples = run["samples"][args.split]
+
+    # Determine which samples to process
+    sample_indices = (
+        [args.sample_idx] if args.sample_idx is not None else range(len(samples))
     )
-    # Loop through all epochs
-    for epoch, epoch_data in run["losses"].items():
-        # Skip epochs without samples or specified sample type
-        if "samples" not in epoch_data or args.split not in epoch_data["samples"]:
-            continue
 
-        # Get the specified sample for this epoch
-        samples = epoch_data["samples"][args.split]
-        if args.sample_idx >= len(samples):
-            continue
+    for sample_idx in sample_indices:
+        print(f"\nProcessing {args.split} split sample {sample_idx}...")
 
-        sample = samples[args.sample_idx]
+        # Create a temporary directory for PNG files
+        temp_dir = figures_dir / "temp"
+        temp_dir.mkdir(exist_ok=True)
 
-        # Create the plot
-        output_path = f"figures/forces_comparison_epoch_{epoch}.png"
-        print(f"Creating plot for epoch {epoch}...")
+        # Get the sample data
+        sample = samples[sample_idx]
 
-        plot_force_comparison(
-            sample=sample,
-            epoch=epoch,
-            output_path=output_path,
-            model_params=model_params,
-            dataset_size=dataset_size,
-            architecture=architecture,
-            lr=lr,
-            split=args.split,
+        # Loop through all epochs
+        for epoch, epoch_data in run["losses"].items():
+            # Skip epochs without predictions
+            if "pred" not in epoch_data or args.split not in epoch_data["pred"]:
+                continue
+
+            # Get the predictions for this sample
+            predictions = epoch_data["pred"][args.split][sample_idx]
+
+            # Create the plot
+            output_path = temp_dir / f"forces_comparison_epoch_{epoch}.png"
+            print(f"Creating plot for epoch {epoch}...")
+
+            plot_force_comparison(
+                sample=sample,
+                predictions=predictions,
+                epoch=epoch,
+                output_path=output_path,
+                model_params=model_params,
+                dataset_size=dataset_size,
+                architecture=architecture,
+                lr=lr,
+                split=args.split,
+            )
+
+        print(f"\nGenerating GIF for sample {sample_idx}...")
+        gif_name = f"sample_{sample_idx}.gif"
+        create_force_comparison_gif(
+            image_dir=str(temp_dir), output_name=gif_name, duration=7
         )
 
-    print("Finished creating all plots.")
+        # Move the GIF to the figures subdirectory
+        (temp_dir / gif_name).rename(figures_dir / gif_name)
 
-    print("\nGenerating GIF from plots...")
-    create_force_comparison_gif(duration=8)
-    print("Done!")
+        # Clean up temporary directory
+        for png_file in temp_dir.glob("*.png"):
+            png_file.unlink()
+        temp_dir.rmdir()
+
+    print("All done!")
 
 
 if __name__ == "__main__":
