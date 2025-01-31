@@ -23,7 +23,7 @@ def get_dataloaders(
     train_data_fraction: float,
     batch_size: int,
     seed: int,
-    batch_padded: bool = True,
+    batch_padded: bool = False,
     return_indices: bool = False,
 ):
     """Creates training and validation DataLoaders from a given dataset.
