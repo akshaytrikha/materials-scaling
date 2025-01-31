@@ -66,13 +66,13 @@ class MetaTransformerModels:
                 "d_ff_mult": 1,
                 "concatenated": concatenated,
             },
-            # {
-            #     "d_model": 2,
-            #     "depth": 1,
-            #     "n_heads": 1,
-            #     "d_ff_mult": 2,
-            #     "concatenated": concatenated,
-            # },
+            {
+                "d_model": 2,
+                "depth": 1,
+                "n_heads": 1,
+                "d_ff_mult": 2,
+                "concatenated": concatenated,
+            },
             {
                 "d_model": 2,
                 "depth": 1,
@@ -80,13 +80,13 @@ class MetaTransformerModels:
                 "d_ff_mult": 2,
                 "concatenated": concatenated,
             },
-            # {
-            #     "d_model": 2,
-            #     "depth": 2,
-            #     "n_heads": 2,
-            #     "d_ff_mult": 2,
-            #     "concatenated": concatenated,
-            # },
+            {
+                "d_model": 2,
+                "depth": 2,
+                "n_heads": 2,
+                "d_ff_mult": 2,
+                "concatenated": concatenated,
+            },
             {
                 "d_model": 4,
                 "depth": 2,
