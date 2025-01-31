@@ -38,9 +38,6 @@ def get_args():
         "--no_log", action="store_true", default=False, help="Enable logging"
     )
     parser.add_argument(
-        "--concatenated", action="store_true", default=True, help="Enable concatenation"
-    )
-    parser.add_argument(
         "--checkpoint_group_name",
         type=str,
         default=None,
