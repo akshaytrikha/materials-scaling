@@ -89,7 +89,7 @@ def run_naive_zero(ase_dataset, force_magnitude):
     """Calculates the loss if a model predicts zero for all properties."""
     total_loss = 0
 
-    for i in range(len(ase_dataset)):
+    for i in tqdm(range(len(ase_dataset))):
         atoms = ase_dataset.get_atoms(i)
         natoms = torch.tensor(len(atoms))
         true_energy = torch.tensor(atoms.get_potential_energy(), dtype=torch.float32)
@@ -109,12 +109,12 @@ def run_naive_zero(ase_dataset, force_magnitude):
 
         # Compute loss
         loss = compute_loss(
-            pred_forces,
-            pred_energies,
-            pred_stresses,
-            true_forces,
-            true_energy,
-            true_stress,
+            pred_forces.unsqueeze(0),  # Add batch dimension
+            pred_energies.unsqueeze(0),
+            pred_stresses.unsqueeze(0),
+            true_forces.unsqueeze(0),
+            true_energy.unsqueeze(0),
+            true_stress.unsqueeze(0),
             torch.ones(len(true_forces)),  # Weights (assuming equal weighting)
             device="cpu",
             natoms=natoms,
@@ -203,27 +203,23 @@ if __name__ == "__main__":
     # Model was trained on the following dataset
     train_dataset_name = "rattled-1000"
 
-    ## Setup k model
-    # k = 1
-    # force_magnitude = False
+    # Setup k model
+    k = 0
+    force_magnitude = False
 
-    # if force_magnitude:
-    #     model_name = f"{dataset_name}_naive_magnitude_k={k}_model"
-    #     k_model = NaiveMagnitudeModel.load(
-    #         f"checkpoints/naive/{dataset_name}_naive_magnitude_k={k}_model.pkl"
-    #     )
-    # else:
-    #     model_name = f"{dataset_name}_naive_direction_k={k}_model"
-    #     k_model = NaiveDirectionModel.load(
-    #         f"checkpoints/naive/{dataset_name}_naive_direction_k={k}_model.pkl"
-    #     )
+    if force_magnitude:
+        model_name = f"{train_dataset_name}_naive_magnitude_k={k}_model"
+        k_model = NaiveMagnitudeModel.load(f"checkpoints/naive/{model_name}.pkl")
+    else:
+        model_name = f"{train_dataset_name}_naive_direction_k={k}_model"
+        k_model = NaiveDirectionModel.load(f"checkpoints/naive/{model_name}.pkl")
 
-    # Setup mean model
-    mean_model = NaiveMeanModel.load(
-        f"checkpoints/naive/{train_dataset_name}_naive_mean_model.pkl"
-    )
+    # # Setup mean model
+    # mean_model = NaiveMeanModel.load(
+    #     f"checkpoints/naive/{train_dataset_name}_naive_mean_model.pkl"
+    # )
 
     # print(f"{k}: {force_magnitude}")
-    # run_naive_k(k_model, ase_dataset, force_magnitude=False)
+    run_naive_k(k_model, ase_dataset, force_magnitude=False)
     # run_naive_zero(ase_dataset, force_magnitude=False)
-    run_naive_mean(mean_model, ase_dataset)
+    # run_naive_mean(mean_model, ase_dataset)
