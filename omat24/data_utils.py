@@ -12,6 +12,22 @@ DATASETS = {
         "rattled-300-subsampled": {
             "url": "https://drive.google.com/uc?id=1vZE0J9ccC-SkoBYn3K0H0P3PUlpPy_NC",
             "max_n_atoms": 104,
+            "means": {
+                "energy": -61.11903078327683,
+                "forces": [
+                    2.260326148106596e-12,
+                    5.641472828198231e-12,
+                    6.426049926738911e-12,
+                ],
+                "stress": [
+                    -0.04294834421283328,
+                    -0.04285861961557121,
+                    -0.04230156679251802,
+                    -0.00018619362332657064,
+                    -2.250523665894865e-05,
+                    -7.547306737387094e-05,
+                ],
+            },
         },
         "rattled-1000": {
             "url": "https://drive.google.com/uc?id=1XoqQc_5POqLgDQQ0Z-oGCVW72Ohtkv2O",
