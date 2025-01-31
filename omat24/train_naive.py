@@ -4,7 +4,7 @@ from tqdm.auto import tqdm
 
 # Internal
 from models.naive import NaiveMagnitudeModel, NaiveDirectionModel, NaiveMeanModel
-from data import download_dataset
+from data_utils import download_dataset
 from fairchem.core.datasets import AseDBDataset
 
 

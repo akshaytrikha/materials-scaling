@@ -2,15 +2,16 @@
 from pathlib import Path
 
 # Internal
-from data import OMat24Dataset, download_dataset, get_dataloaders
-
+from data import OMat24Dataset, get_dataloaders
+from data_utils import download_dataset
+from tqdm.auto import tqdm
 
 dataset_name = "rattled-300-subsampled"
-dataset_path = Path(f"datasets/{dataset_name}")
+dataset_path = Path(f"datasets/val/{dataset_name}")
 
 if not dataset_path.exists():
     # Fetch and uncompress dataset
-    download_dataset(dataset_name)
+    download_dataset(dataset_name, "val")
 
 dataset = OMat24Dataset(dataset_path=dataset_path, augment=False)
 sample = dataset[0]
@@ -22,12 +23,10 @@ print(
     sample["stress"],
 )
 
-
 # dataloading
 train_loader, val_loader = get_dataloaders(
-    dataset, data_fraction=0.1, batch_size=32, batch_padded=False
+    dataset, train_data_fraction=0.1, batch_size=32, batch_padded=False, seed=100
 )
 
-for batch in train_loader:
-    print(len(batch))
-    breakpoint()
+for i, batch in tqdm(enumerate(train_loader)):
+    pass

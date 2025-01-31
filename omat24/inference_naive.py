@@ -8,7 +8,7 @@ import math
 
 # Internal
 from models.naive import NaiveMagnitudeModel, NaiveDirectionModel, NaiveMeanModel
-from data import download_dataset
+from data_utils import download_dataset
 from loss import compute_loss
 
 
@@ -89,7 +89,7 @@ def run_naive_zero(ase_dataset, force_magnitude):
     """Calculates the loss if a model predicts zero for all properties."""
     total_loss = 0
 
-    for i in range(len(ase_dataset)):
+    for i in tqdm(range(len(ase_dataset))):
         atoms = ase_dataset.get_atoms(i)
         natoms = torch.tensor(len(atoms))
         true_energy = torch.tensor(atoms.get_potential_energy(), dtype=torch.float32)
@@ -109,12 +109,12 @@ def run_naive_zero(ase_dataset, force_magnitude):
 
         # Compute loss
         loss = compute_loss(
-            pred_forces,
-            pred_energies,
-            pred_stresses,
-            true_forces,
-            true_energy,
-            true_stress,
+            pred_forces.unsqueeze(0),  # Add batch dimension
+            pred_energies.unsqueeze(0),
+            pred_stresses.unsqueeze(0),
+            true_forces.unsqueeze(0),
+            true_energy.unsqueeze(0),
+            true_stress.unsqueeze(0),
             torch.ones(len(true_forces)),  # Weights (assuming equal weighting)
             device="cpu",
             natoms=natoms,
@@ -190,36 +190,33 @@ def run_naive_mean(model, ase_dataset, batch_size=256, device="cpu"):
 
 
 if __name__ == "__main__":
-    # Setup dataset
-    split_name = "val"
-    dataset_name = "rattled-300-subsampled"
+    # Setup val dataset (separate from training dataset)
+    val_split_name = "val"
+    val_dataset_name = "rattled-300-subsampled"
 
-    dataset_path = Path(f"datasets/{split_name}/{dataset_name}")
-    if not dataset_path.exists():
-        download_dataset(dataset_name, split_name)
+    val_dataset_path = Path(f"datasets/{val_split_name}/{val_dataset_name}")
+    if not val_dataset_path.exists():
+        download_dataset(val_dataset_name, val_split_name)
 
-    ase_dataset = AseDBDataset(config=dict(src=str(dataset_path)))
+    ase_dataset = AseDBDataset(config=dict(src=str(val_dataset_path)))
 
-    dataset_name = "rattled-1000"
+    # Model was trained on the following dataset
+    train_dataset_name = "rattled-1000"
 
     # Setup k model
-    k = 1
+    k = 0
     force_magnitude = False
 
     if force_magnitude:
-        model_name = f"{dataset_name}_naive_magnitude_k={k}_model"
-        k_model = NaiveMagnitudeModel.load(
-            f"checkpoints/naive/{dataset_name}_naive_magnitude_k={k}_model.pkl"
-        )
+        model_name = f"{train_dataset_name}_naive_magnitude_k={k}_model"
+        k_model = NaiveMagnitudeModel.load(f"checkpoints/naive/{model_name}.pkl")
     else:
-        model_name = f"{dataset_name}_naive_direction_k={k}_model"
-        k_model = NaiveDirectionModel.load(
-            f"checkpoints/naive/{dataset_name}_naive_direction_k={k}_model.pkl"
-        )
+        model_name = f"{train_dataset_name}_naive_direction_k={k}_model"
+        k_model = NaiveDirectionModel.load(f"checkpoints/naive/{model_name}.pkl")
 
-    # Setup mean model
+    # # Setup mean model
     # mean_model = NaiveMeanModel.load(
-    #     f"checkpoints/naive/{dataset_name}_naive_mean_model.pkl"
+    #     f"checkpoints/naive/{train_dataset_name}_naive_mean_model.pkl"
     # )
 
     # print(f"{k}: {force_magnitude}")

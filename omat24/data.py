@@ -18,33 +18,12 @@ from data_utils import (
 )
 
 
-def download_dataset(dataset_name: str):
-    """Downloads a .tar.gz file from the specified URL and extracts it to the given directory."""
-    os.makedirs("./datasets", exist_ok=True)
-    url = DATASETS[dataset_name]
-    dataset_path = Path(f"datasets/{dataset_name}")
-    compressed_path = dataset_path.with_suffix(".tar.gz")
-    print(f"Starting download from {url}...")
-    gdown.download(url, str(compressed_path), quiet=False)
-    # Extract the dataset
-    print(f"Extracting {compressed_path}...")
-    with tarfile.open(compressed_path, "r:gz") as tar:
-        tar.extractall(path=dataset_path.parent)
-    print(f"Extraction completed. Files are available at {dataset_path}.")
-    # Clean up
-    try:
-        compressed_path.unlink()
-        print(f"Deleted the compressed file {compressed_path}.")
-    except Exception as e:
-        print(f"An error occurred while deleting {compressed_path}: {e}")
-
-
 def get_dataloaders(
     dataset: Dataset,
     train_data_amount: float,
     batch_size: int,
     seed: int,
-    batch_padded: bool = True,
+    batch_padded: bool = False,
     return_indices: bool = False,
 ):
     """Creates training and validation DataLoaders from a given dataset.
@@ -125,6 +104,9 @@ class OMat24Dataset(Dataset):
         self.augment = augment
         split_name = dataset_path.parent.name  # Parent directory's name
         dataset_name = dataset_path.name
+        print(dataset_path)
+        print(split_name)
+        print(dataset_name)
         self.max_n_atoms = DATASETS[split_name][dataset_name]["max_n_atoms"]
 
     def __len__(self):

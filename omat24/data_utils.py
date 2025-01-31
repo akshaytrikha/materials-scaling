@@ -10,11 +10,27 @@ from typing import Dict
 DATASETS = {
     "val": {
         "rattled-300-subsampled": {
-            "url": "https://drive.google.com/uc?id=1vZE0J9ccC-SkoBYn3K0H0P3PUlpPy_NC",
+            "url": "https://drive.google.com/uc?export=download&id=1ycJ0uMTaVS42T-A57h9_CkBx-ifwyfvL",
             "max_n_atoms": 104,
+            "means": {
+                "energy": -61.11903078327683,
+                "forces": [
+                    2.260326148106596e-12,
+                    5.641472828198231e-12,
+                    6.426049926738911e-12,
+                ],
+                "stress": [
+                    -0.04294834421283328,
+                    -0.04285861961557121,
+                    -0.04230156679251802,
+                    -0.00018619362332657064,
+                    -2.250523665894865e-05,
+                    -7.547306737387094e-05,
+                ],
+            },
         },
         "rattled-1000": {
-            "url": "https://drive.google.com/uc?id=1XoqQc_5POqLgDQQ0Z-oGCVW72Ohtkv2O",
+            "url": "https://drive.google.com/uc?export=download&id=1nZh6j2G9SNtYXnAWsjYGju1QLAqMvIQ-",
             "max_n_atoms": 152,
         },
     },
@@ -107,22 +123,26 @@ def pad_matrix(
     matrix: torch.Tensor, pad_size_x: int, pad_size_y: int, padding_value: float = 0.0
 ) -> torch.Tensor:
     """
-    Pad a 2D matrix to [pad_size, pad_size].
+    Pad a 2D tensor to the specified dimensions [pad_size_x, pad_size_y].
 
     Args:
-        matrix (torch.Tensor): Tensor of shape [N, M].
-        pad_size (int): Desired size after padding.
-        padding_value (float, optional): Value to use for padding. Defaults to 0.0.
+        matrix (torch.Tensor): Input tensor of shape [rows, cols].
+        pad_size_x (int): Target number of rows.
+        pad_size_y (int): Target number of columns.
+        padding_value (float, optional): Value to fill the padded entries. Defaults to 0.0.
 
     Returns:
-        torch.Tensor: Padded matrix of shape [pad_size, pad_size].
+        torch.Tensor: Padded tensor of shape [pad_size_x, pad_size_y].
     """
-    current_size = matrix.size(0)
-    if current_size >= pad_size_x and matrix.size(1) >= pad_size_y:
-        raise ValueError(f"Matrix size exceeds pad_size.")
+    # Calculate extra rows and columns needed for padding.
+    pad_rows = pad_size_x - matrix.size(0)  # additional rows required
+    pad_cols = pad_size_y - matrix.size(1)  # additional columns required
 
-    # Pad rows (dimension 0)
-    pad_rows = pad_size_x - matrix.size(0)
+    # Ensure the input is not larger than the target dimensions.
+    if pad_rows < 0 and pad_cols < 0:
+        raise ValueError("Matrix dimensions exceed target pad sizes.")
+
+    # If extra rows are needed, create a filler tensor and concatenate along rows.
     if pad_rows > 0:
         pad_row = torch.full(
             (pad_rows, matrix.size(1)),
@@ -132,8 +152,7 @@ def pad_matrix(
         )
         matrix = torch.cat([matrix, pad_row], dim=0)
 
-    # Pad columns (dimension 1)
-    pad_cols = pad_size_y - matrix.size(1)
+    # If extra columns are needed, create a filler tensor and concatenate along columns.
     if pad_cols > 0:
         pad_col = torch.full(
             (matrix.size(0), pad_cols),
@@ -207,7 +226,6 @@ def custom_collate_fn_dataset_padded(
         dim=0,
     )  # Shape: [batch_size, MAX_ATOMS, k]
 
-
     return_dict = {
         "atomic_numbers": padded_atomic_numbers,  # [batch_size, MAX_ATOMS]
         "positions": padded_positions,  # [batch_size, MAX_ATOMS, 3]
@@ -275,7 +293,6 @@ def custom_collate_fn_batch_padded(batch: list) -> Dict[str, torch.Tensor]:
         ],
         dim=0,
     )  # Shape: [batch_size, max_atoms, max_atoms]
-
     padded_factorized_matrices = torch.stack(
         [
             pad_matrix(tensor, max_atoms, 0, padding_value=0.0)

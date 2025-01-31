@@ -152,22 +152,22 @@ def main():
 
     # --- 4. Evaluate Both Models on the Validation Set ---
     print("Evaluating Scaled Model with Scaled Loss...")
-    val_loss_scaled_scaled = run_validation(
+    val_loss_scaled_scaled, _ = run_validation(
         model_scaled, val_loader, device, scale_coefficients=True
     )
 
     print("Evaluating Scaled Model with Unscaled Loss...")
-    val_loss_scaled_unscaled = run_validation(
+    val_loss_scaled_unscaled, _ = run_validation(
         model_scaled, val_loader, device, scale_coefficients=False
     )
 
     print("Evaluating Unscaled Model with Scaled Loss...")
-    val_loss_unscaled_scaled = run_validation(
+    val_loss_unscaled_scaled, _ = run_validation(
         model_unscaled, val_loader, device, scale_coefficients=True
     )
 
     print("Evaluating Unscaled Model with Unscaled Loss...")
-    val_loss_unscaled_unscaled = run_validation(
+    val_loss_unscaled_unscaled, _ = run_validation(
         model_unscaled, val_loader, device, scale_coefficients=False
     )
 
