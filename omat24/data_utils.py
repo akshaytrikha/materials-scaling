@@ -139,7 +139,7 @@ def pad_matrix(
     pad_cols = pad_size_y - matrix.size(1)  # additional columns required
 
     # Ensure the input is not larger than the target dimensions.
-    if pad_rows < 0 or pad_cols < 0:
+    if pad_rows < 0 and pad_cols < 0:
         raise ValueError("Matrix dimensions exceed target pad sizes.")
 
     # If extra rows are needed, create a filler tensor and concatenate along rows.
