@@ -4,6 +4,7 @@ wandb
 *.pyc
 materials-scaling-venv
 *.png
+*.gif
 .env
 *.pt
 *.pth
