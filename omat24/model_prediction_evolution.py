@@ -18,22 +18,6 @@ def natural_sort_key(s):
     ]
 
 
-def load_first_val_sample(json_path):
-    """Load and return the first validation sample from the JSON file."""
-    with open(json_path, "r") as f:
-        data = json.load(f)
-
-    dataset_size = list(data.keys())[0]
-    first_run = data[dataset_size][0]
-
-    # Find first epoch with validation samples
-    for epoch, epoch_data in first_run["losses"].items():
-        if len(epoch_data["val_samples"]) > 0:
-            return epoch_data["val_samples"][0], epoch
-
-    return None, None
-
-
 def plot_atomic_forces(
     pl,
     subplot_idx,
@@ -114,13 +98,13 @@ def plot_force_comparison(
         lr: Learning rate
     """
     # Extract data from sample
-    positions = np.array(sample["sample"]["positions"][0])
-    numbers = np.array(sample["sample"]["atomic_numbers"][0])
-    forces_true = np.array(sample["sample"]["forces"][0])
+    positions = np.array(sample["positions"][0])
+    numbers = np.array(sample["atomic_numbers"][0])
+    forces_true = np.array(sample["true"]["forces"][0])
     forces_pred = np.array(sample["pred"]["forces"][0])
-    energy_true = float(sample["sample"]["energy"][0])
+    energy_true = float(sample["true"]["energy"][0])
     energy_pred = float(sample["pred"]["energy"][0])
-    stress_true = np.array(sample["sample"]["stress"][0])
+    stress_true = np.array(sample["true"]["stress"][0])
     stress_pred = np.array(sample["pred"]["stress"][0])
 
     # Create plotter
@@ -175,7 +159,7 @@ def plot_force_comparison(
     # Add model architecture, parameters and dataset size information
     pl.add_text(
         f"arch: {architecture}",
-        position=(0.75, 0.93),  # Just below epoch
+        position=(0.71, 0.93),  # Just below epoch
         viewport=True,
         font_size=16,
         color="black",
@@ -183,7 +167,7 @@ def plot_force_comparison(
     )
     pl.add_text(
         f"#params: {model_params}",
-        position=(0.75, 0.89),  # Below architecture
+        position=(0.71, 0.89),  # Below architecture
         viewport=True,
         font_size=16,
         color="black",
@@ -191,7 +175,7 @@ def plot_force_comparison(
     )
     pl.add_text(
         f"ds: {dataset_size}",
-        position=(0.75, 0.85),  # Below model size
+        position=(0.71, 0.85),  # Below model size
         viewport=True,
         font_size=16,
         color="black",
@@ -199,7 +183,7 @@ def plot_force_comparison(
     )
     pl.add_text(
         f"lr: {lr}",
-        position=(0.75, 0.81),  # Below dataset size
+        position=(0.71, 0.81),  # Below dataset size
         viewport=True,
         font_size=16,
         color="black",
@@ -211,9 +195,15 @@ def plot_force_comparison(
 
 
 def create_force_comparison_gif(
-    image_dir="figures", output_name="force_comparison.gif", fps=1
+    image_dir="figures", output_name="result.gif", duration=8
 ):
-    """Create a GIF from force comparison screenshots."""
+    """Create a GIF from force comparison screenshots.
+
+    Args:
+        image_dir (str): Directory containing the images
+        output_name (str): Name of the output GIF file
+        duration (int): Total duration of the GIF in seconds
+    """
     # Get all PNG files and sort them by epoch number
     image_files = [f for f in Path(image_dir).glob("forces_comparison_epoch_*.png")]
     image_files.sort(key=lambda x: natural_sort_key(x.name))
@@ -221,6 +211,9 @@ def create_force_comparison_gif(
     if not image_files:
         print(f"No force comparison images found in {image_dir}")
         return
+
+    # Calculate fps based on number of images and desired duration
+    fps = len(image_files) / duration
 
     # Read all images
     images = []
@@ -231,7 +224,7 @@ def create_force_comparison_gif(
     # Create the GIF
     output_path = Path(image_dir) / output_name
     imageio.mimsave(output_path, images, format="GIF", fps=fps, loop=1)
-    print(f"Created GIF at {output_path} with {fps} fps")
+    print(f"Created GIF at {output_path} with {fps:.1f} fps ({duration}s duration)")
 
 
 def main():
@@ -242,10 +235,17 @@ def main():
     )
     parser.add_argument("json_file", type=str, help="Path to the JSON results file")
     parser.add_argument(
-        "--val-sample-idx",
+        "--sample-idx",
         type=int,
         default=0,
-        help="Index of validation sample to visualize (default: 0)",
+        help="Index of sample to visualize (default: 0)",
+    )
+    parser.add_argument(
+        "--sample-type",
+        type=str,
+        choices=["val", "train"],
+        default="val",
+        help="Type of sample to visualize (default: val)",
     )
     args = parser.parse_args()
 
@@ -257,8 +257,8 @@ def main():
         data = json.load(f)
 
     # Get the last run
-    dataset_size = list(data.keys())[0]
-    run = data[dataset_size][0]
+    dataset_size = list(data.keys())[-1]
+    run = data[dataset_size][-1]
 
     # Get model configuration
     model_params = run["config"]["num_params"]
@@ -267,23 +267,27 @@ def main():
     lr = run["config"]["learning_rate"]
 
     print(
-        f"Generating force comparison plots (using validation sample {args.val_sample_idx})..."
+        f"Generating force comparison plots (using {args.sample_type} sample {args.sample_idx})..."
     )
     # Loop through all epochs
     for epoch, epoch_data in run["losses"].items():
-        # Skip epochs without validation samples
-        if not epoch_data["val_samples"]:
+        # Skip epochs without samples or specified sample type
+        if "samples" not in epoch_data or args.sample_type not in epoch_data["samples"]:
             continue
 
-        # Get the specified validation sample for this epoch
-        val_sample = epoch_data["val_samples"][args.val_sample_idx]
+        # Get the specified sample for this epoch
+        samples = epoch_data["samples"][args.sample_type]
+        if args.sample_idx >= len(samples):
+            continue
+
+        sample = samples[args.sample_idx]
 
         # Create the plot
         output_path = f"figures/forces_comparison_epoch_{epoch}.png"
         print(f"Creating plot for epoch {epoch}...")
 
         plot_force_comparison(
-            sample=val_sample,
+            sample=sample,
             epoch=epoch,
             output_path=output_path,
             model_params=model_params,
@@ -295,7 +299,7 @@ def main():
     print("Finished creating all plots.")
 
     print("\nGenerating GIF from plots...")
-    create_force_comparison_gif(fps=1)
+    create_force_comparison_gif(duration=8)
     print("Done!")
 
 
