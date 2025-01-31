@@ -74,6 +74,7 @@ if __name__ == "__main__":
             vocab_size=args.n_elements,
             max_seq_len=dataset.max_n_atoms,
             concatenated=True,
+            use_factorized=use_factorize,
         )
 
     batch_size = args.batch_size[0]

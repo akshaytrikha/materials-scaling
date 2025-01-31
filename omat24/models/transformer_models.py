@@ -4,10 +4,10 @@ from x_transformers import TransformerWrapper, Encoder
 
 
 class CombinedEmbedding(nn.Module):
-    def __init__(self, num_tokens, d_model):
+    def __init__(self, num_tokens, d_model, additional_dim=3):
         super().__init__()
         self.token_emb = nn.Embedding(num_tokens, d_model)
-        self.position_proj = nn.Linear(3, d_model)  # Project 3D positions to d_model
+        self.position_proj = nn.Linear(additional_dim, d_model)  # Project 3D positions to d_model
 
     def forward(self, x, positions):
         """
@@ -40,7 +40,7 @@ class ConcatenatedEmbedding(nn.Module):
         token_embeddings = self.token_emb(x)
         combined_emb = torch.cat(
             [token_embeddings, positions], dim=-1
-        )  # [M, A, d_model + 3]
+        )  # [M, A, d_model + 3 or 5]
         return combined_emb
 
 
@@ -50,6 +50,7 @@ class MetaTransformerModels:
         vocab_size,
         max_seq_len,
         concatenated=False,
+        use_factorized=False,
     ):
         """Initializes TransformerModels with a list of configurations.
 
@@ -97,6 +98,7 @@ class MetaTransformerModels:
 
         self.vocab_size = vocab_size
         self.max_seq_len = max_seq_len
+        self.use_factorized = use_factorized
 
     def __getitem__(self, idx):
         """Retrieves transformer model corresponding to the configuration at index `idx`.
@@ -120,6 +122,7 @@ class MetaTransformerModels:
             n_heads=config["n_heads"],
             d_ff_mult=config["d_ff_mult"],
             concatenated=config["concatenated"],
+            use_factorized=self.use_factorized
         )
 
     def __len__(self):
@@ -133,7 +136,7 @@ class MetaTransformerModels:
 
 
 class XTransformerModel(TransformerWrapper):
-    def __init__(self, num_tokens, d_model, depth, n_heads, d_ff_mult, concatenated):
+    def __init__(self, num_tokens, d_model, depth, n_heads, d_ff_mult, concatenated, use_factorized):
         """Initializes XTransformerModel with specified configurations.
 
         Args:
@@ -143,12 +146,14 @@ class XTransformerModel(TransformerWrapper):
             n_heads (int): Number of attention heads.
             d_ff_mult (int): Multiplier for the feed-forward network dimension.
             concatenated (bool): Whether to concatenate positional information.
+            use_factorized (bool): Whether to use factorized distances instead of positions.
         """
         self.embedding_dim = d_model
         self.depth = depth
         self.n_heads = n_heads
         self.d_ff_mult = d_ff_mult
-        self.additional_dim = 3 if concatenated else 0  # For concatenated positions
+        self.use_factorized = use_factorized
+        self.additional_dim = 5 if use_factorized else 3 if concatenated else 0  # For concatenated positions
 
         # Initialize base TransformerWrapper without its own embedding
         super().__init__(
@@ -164,11 +169,10 @@ class XTransformerModel(TransformerWrapper):
             use_abs_pos_emb=False,  # Disable internal positional embeddings
         )
 
-        # Initialize the combined or concatenated embedding
         if concatenated:
             self.emb = ConcatenatedEmbedding(num_tokens, d_model)
         else:
-            self.emb = CombinedEmbedding(num_tokens, d_model)
+            self.emb = CombinedEmbedding(num_tokens, d_model, self.additional_dim)
 
         # Predictors for Energy, Forces, and Stresses
         self.energy_predictor = nn.Linear(
@@ -184,7 +188,7 @@ class XTransformerModel(TransformerWrapper):
         # Count parameters
         self.num_params = sum(p.numel() for p in self.parameters())
 
-    def forward(self, x, positions, mask=None):
+    def forward(self, x, positions, distance_matrix=None, mask=None):
         """Forward pass of the transformer model.
 
         Args:
@@ -199,7 +203,10 @@ class XTransformerModel(TransformerWrapper):
                 - stresses (Tensor): [M, 6]
         """
         # Obtain combined embeddings
-        combined_emb = self.emb(x, positions)  # [M, A, d_model]
+        if self.use_factorized:
+            combined_emb = self.emb(x, distance_matrix)  # [M, A, d_model]
+        else:
+            combined_emb = self.emb(x, positions)  # [M, A, d_model]
 
         # Pass combined embeddings to the transformer
         output = self.attn_layers(x=combined_emb, mask=mask)  # [M, A, d_model]

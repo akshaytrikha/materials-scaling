@@ -6,11 +6,10 @@ class MetaFCNModels:
     def __init__(self, vocab_size=119, use_factorized=False):
         self.configurations = [
             {"embedding_dim": 4, "hidden_dim": 4, "depth": 2},
-            # {"embedding_dim": 4, "hidden_dim": 4, "depth": 4},
-            # {"embedding_dim": 8, "hidden_dim": 8, "depth": 3},
-            # {"embedding_dim": 8, "hidden_dim": 16, "depth": 3},
-            # {"embedding_dim": 16, "hidden_dim": 32, "depth": 3},
-            # {"embedding_dim": 32, "hidden_dim": 32, "depth": 4},
+            {"embedding_dim": 8, "hidden_dim": 8, "depth": 3},
+            {"embedding_dim": 8, "hidden_dim": 16, "depth": 3},
+            {"embedding_dim": 16, "hidden_dim": 32, "depth": 3},
+            {"embedding_dim": 32, "hidden_dim": 32, "depth": 4},
         ]
         self.vocab_size = vocab_size
         self.use_factorized = use_factorized
@@ -24,7 +23,7 @@ class MetaFCNModels:
             embedding_dim=config["embedding_dim"],
             hidden_dim=config["hidden_dim"],
             depth=config["depth"],
-            use_factorized=self.use_factorized
+            use_factorized=self.use_factorized,
         )
 
     def __len__(self):
@@ -36,7 +35,14 @@ class MetaFCNModels:
 
 
 class FCNModel(nn.Module):
-    def __init__(self, vocab_size=119, embedding_dim=128, hidden_dim=256, depth=4, use_factorized=False):
+    def __init__(
+        self,
+        vocab_size=119,
+        embedding_dim=128,
+        hidden_dim=256,
+        depth=4,
+        use_factorized=False,
+    ):
         super(FCNModel, self).__init__()
         self.vocab_size = vocab_size
         self.embedding_dim = embedding_dim
