@@ -10,7 +10,7 @@ from typing import Dict
 DATASETS = {
     "val": {
         "rattled-300-subsampled": {
-            "url": "https://drive.google.com/uc?id=1vZE0J9ccC-SkoBYn3K0H0P3PUlpPy_NC",
+            "url": "https://drive.google.com/uc?export=download&id=1ycJ0uMTaVS42T-A57h9_CkBx-ifwyfvL",
             "max_n_atoms": 104,
             "means": {
                 "energy": -61.11903078327683,
@@ -30,7 +30,7 @@ DATASETS = {
             },
         },
         "rattled-1000": {
-            "url": "https://drive.google.com/uc?id=1XoqQc_5POqLgDQQ0Z-oGCVW72Ohtkv2O",
+            "url": "https://drive.google.com/uc?export=download&id=1nZh6j2G9SNtYXnAWsjYGju1QLAqMvIQ-",
             "max_n_atoms": 152,
         },
     },
@@ -78,7 +78,6 @@ def download_dataset(dataset_name: str, split_name: str):
         print(f"Deleted the compressed file {compressed_path}.")
     except Exception as e:
         print(f"An error occurred while deleting {compressed_path}: {e}")
-
 
 def pad_tensor(
     tensor: torch.Tensor, pad_size: int, dim: int = 0, padding_value: float = 0.0
