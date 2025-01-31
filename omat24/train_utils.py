@@ -237,17 +237,19 @@ def train(
                 avg_epoch_train_loss,
                 val_loss if epoch % 1000 == 0 else float("nan"),
                 results_path,
-                val_samples if epoch % 10 == 0 else [],
+                val_samples if epoch % 1000 == 0 else [],
             )
         pbar.update(1)
+    val_loss, val_samples = run_validation(model, val_loader, device)
     partial_json_log(
         experiment_results,
         data_size_key,
         run_entry,
         epoch,
         avg_epoch_train_loss,
-        run_validation(model, val_loader, device),
+        val_loss,
         results_path,
+        val_samples
     )
 
     return model, losses
