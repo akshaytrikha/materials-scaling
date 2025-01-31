@@ -8,7 +8,7 @@ import math
 
 # Internal
 from models.naive import NaiveMagnitudeModel, NaiveDirectionModel, NaiveMeanModel
-from data import download_dataset
+from data_utils import download_dataset
 from loss import compute_loss
 
 
@@ -190,39 +190,40 @@ def run_naive_mean(model, ase_dataset, batch_size=256, device="cpu"):
 
 
 if __name__ == "__main__":
-    # Setup dataset
-    split_name = "val"
-    dataset_name = "rattled-300-subsampled"
+    # Setup val dataset (separate from training dataset)
+    val_split_name = "val"
+    val_dataset_name = "rattled-300-subsampled"
 
-    dataset_path = Path(f"datasets/{split_name}/{dataset_name}")
-    if not dataset_path.exists():
-        download_dataset(dataset_name, split_name)
+    val_dataset_path = Path(f"datasets/{val_split_name}/{val_dataset_name}")
+    if not val_dataset_path.exists():
+        download_dataset(val_dataset_name, val_split_name)
 
-    ase_dataset = AseDBDataset(config=dict(src=str(dataset_path)))
+    ase_dataset = AseDBDataset(config=dict(src=str(val_dataset_path)))
 
-    dataset_name = "rattled-1000"
+    # Model was trained on the following dataset
+    train_dataset_name = "rattled-1000"
 
-    # Setup k model
-    k = 1
-    force_magnitude = False
+    ## Setup k model
+    # k = 1
+    # force_magnitude = False
 
-    if force_magnitude:
-        model_name = f"{dataset_name}_naive_magnitude_k={k}_model"
-        k_model = NaiveMagnitudeModel.load(
-            f"checkpoints/naive/{dataset_name}_naive_magnitude_k={k}_model.pkl"
-        )
-    else:
-        model_name = f"{dataset_name}_naive_direction_k={k}_model"
-        k_model = NaiveDirectionModel.load(
-            f"checkpoints/naive/{dataset_name}_naive_direction_k={k}_model.pkl"
-        )
+    # if force_magnitude:
+    #     model_name = f"{dataset_name}_naive_magnitude_k={k}_model"
+    #     k_model = NaiveMagnitudeModel.load(
+    #         f"checkpoints/naive/{dataset_name}_naive_magnitude_k={k}_model.pkl"
+    #     )
+    # else:
+    #     model_name = f"{dataset_name}_naive_direction_k={k}_model"
+    #     k_model = NaiveDirectionModel.load(
+    #         f"checkpoints/naive/{dataset_name}_naive_direction_k={k}_model.pkl"
+    #     )
 
     # Setup mean model
-    # mean_model = NaiveMeanModel.load(
-    #     f"checkpoints/naive/{dataset_name}_naive_mean_model.pkl"
-    # )
+    mean_model = NaiveMeanModel.load(
+        f"checkpoints/naive/{train_dataset_name}_naive_mean_model.pkl"
+    )
 
     # print(f"{k}: {force_magnitude}")
-    run_naive_k(k_model, ase_dataset, force_magnitude=False)
+    # run_naive_k(k_model, ase_dataset, force_magnitude=False)
     # run_naive_zero(ase_dataset, force_magnitude=False)
-    # run_naive_mean(mean_model, ase_dataset)
+    run_naive_mean(mean_model, ase_dataset)

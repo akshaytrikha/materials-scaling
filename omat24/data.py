@@ -18,27 +18,6 @@ from data_utils import (
 )
 
 
-def download_dataset(dataset_name: str):
-    """Downloads a .tar.gz file from the specified URL and extracts it to the given directory."""
-    os.makedirs("./datasets", exist_ok=True)
-    url = DATASETS[dataset_name]
-    dataset_path = Path(f"datasets/{dataset_name}")
-    compressed_path = dataset_path.with_suffix(".tar.gz")
-    print(f"Starting download from {url}...")
-    gdown.download(url, str(compressed_path), quiet=False)
-    # Extract the dataset
-    print(f"Extracting {compressed_path}...")
-    with tarfile.open(compressed_path, "r:gz") as tar:
-        tar.extractall(path=dataset_path.parent)
-    print(f"Extraction completed. Files are available at {dataset_path}.")
-    # Clean up
-    try:
-        compressed_path.unlink()
-        print(f"Deleted the compressed file {compressed_path}.")
-    except Exception as e:
-        print(f"An error occurred while deleting {compressed_path}: {e}")
-
-
 def get_dataloaders(
     dataset: Dataset,
     train_data_fraction: float,
@@ -76,7 +55,7 @@ def get_dataloaders(
     random.shuffle(indices)
 
     val_indices = indices[:val_size]
-    train_indices = indices[val_size:val_size + train_size]
+    train_indices = indices[val_size : val_size + train_size]
 
     train_subset = Subset(dataset, indices=train_indices)
     val_subset = Subset(dataset, indices=val_indices)
@@ -161,14 +140,16 @@ class OMat24Dataset(Dataset):
             positions
         )  # Shape: [N_atoms, N_atoms]
 
-        factorized_matrix = factorize_matrix(distance_matrix) # Left matrix: U * sqrt(Sigma) - Shape: [N_atoms, k=5]
+        factorized_matrix = factorize_matrix(
+            distance_matrix
+        )  # Left matrix: U * sqrt(Sigma) - Shape: [N_atoms, k=5]
 
         # Package the input and labels into a dictionary for model processing
         sample = {
             "atomic_numbers": atomic_numbers,  # Element types
             "positions": positions,  # 3D atomic coordinates
             "distance_matrix": distance_matrix,  # [N_atoms, N_atoms]
-            "factorized_matrix": factorized_matrix, # [N_atoms, k=5]
+            "factorized_matrix": factorized_matrix,  # [N_atoms, k=5]
             "energy": energy,  # Target energy
             "forces": forces,  # Target forces on each atom
             "stress": stress,  # Target stress tensor

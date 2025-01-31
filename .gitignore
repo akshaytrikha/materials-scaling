@@ -16,6 +16,7 @@ bpe_tokenizer/
 wikitext_combined.txt
 *.npz
 *.aselmdb
+*.aselmdb-lock
 omat24/results
 *atom_info.csv
 *-checkpoint.ipynb
