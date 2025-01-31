@@ -6,7 +6,7 @@ set_of_dataset_names = {"rattled-300-subsampled",
                         }
 # Process each dataset and populate the dictionary
 for dataset_name in set_of_dataset_names:
-    dataset_path = Path(f"datasets/{dataset_name}")
+    dataset_path = Path(f"datasets/val/{dataset_name}")
     # Download dataset if not already present
     if not dataset_path.exists():
         download_dataset(dataset_name)
