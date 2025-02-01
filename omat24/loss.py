@@ -141,13 +141,13 @@ def compute_loss(
     pred_isotropic_stress, pred_anisotropic_stress = unvoigt_stress(pred_stress)
     stress_loss_fn = MAELoss()
     stress_isotropic_loss = stress_loss_fn(
-        pred=torch.sum(pred_isotropic_stress, dim=1),
-        target=torch.sum(true_isotropic_stress, dim=1),
+        pred=pred_isotropic_stress,
+        target=true_isotropic_stress
     )
     stress_anisotropic_loss = stress_loss_fn(
-        pred=torch.sum(pred_anisotropic_stress, dim=1),
-        target=torch.sum(true_anisotropic_stress, dim=1),
-    )
+        pred=pred_anisotropic_stress,
+        target=true_anisotropic_stress
+)
 
     return torch.mean(
         energy_loss + force_loss + stress_isotropic_loss + stress_anisotropic_loss
