@@ -14,6 +14,7 @@ import random
 import numpy as np
 from ase import Atoms
 from ase.db import connect
+from ase.calculators.singlepoint import SinglePointCalculator
 
 
 def generate_vc_dim_dataset(db_path, n_samples=10, force_magnitude=1.0):
@@ -47,6 +48,10 @@ def generate_vc_dim_dataset(db_path, n_samples=10, force_magnitude=1.0):
         atoms.set_array("forces", forces)
         atoms.info["stress"] = stress
         atoms.info["energy"] = energy
+
+        atoms.set_calculator(
+            SinglePointCalculator(atoms, energy=energy, forces=forces, stress=stress)
+        )
 
         # Write the atom object to the database.
         # FAIRChem’s AseDBDataset will later load the atoms via ase.db.
