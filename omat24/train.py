@@ -8,6 +8,7 @@ import json
 import math
 from datetime import datetime
 from tqdm import tqdm
+import subprocess
 
 # Internal
 from data import OMat24Dataset, get_dataloaders
@@ -165,4 +166,14 @@ if __name__ == "__main__":
 
     print(
         f"\nTraining completed. {'Results continuously saved to ' + str(results_path) if log else 'No experiment log was written.'}"
+    )
+
+    subprocess.run(
+        [
+            "python3",
+            "model_prediction_evolution.py",
+            str(results_path),
+            "--split",
+            "train",
+        ]
     )
