@@ -113,7 +113,7 @@ def plot_force_comparison(
     forces_true = np.array(sample["forces"][0])
     forces_pred = np.array(predictions["forces"][0])
     energy_true = float(sample["energy"][0])
-    energy_pred = float(predictions["energy"])
+    energy_pred = float(predictions["energy"][0])
     stress_true = np.array(sample["stress"][0])
     stress_pred = np.array(predictions["stress"][0])
 
