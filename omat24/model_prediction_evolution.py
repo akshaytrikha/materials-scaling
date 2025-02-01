@@ -113,7 +113,7 @@ def plot_force_comparison(
     forces_true = np.array(sample["forces"][0])
     forces_pred = np.array(predictions["forces"][0])
     energy_true = float(sample["energy"][0])
-    energy_pred = float(predictions["energy"][0])
+    energy_pred = float(predictions["energy"])
     stress_true = np.array(sample["stress"][0])
     stress_pred = np.array(predictions["stress"][0])
 
@@ -272,6 +272,8 @@ def main():
     # Create output directories
     figures_dir = Path("figures") / filename
     figures_dir.mkdir(parents=True, exist_ok=True)
+    experiment_dir = figures_dir / args.split
+    experiment_dir.mkdir(parents=True, exist_ok=True)
 
     # Load data
     with open(args.json_file, "r") as f:
@@ -299,7 +301,7 @@ def main():
         print(f"\nProcessing {args.split} split sample {sample_idx}...")
 
         # Create a temporary directory for PNG files
-        temp_dir = figures_dir / "temp"
+        temp_dir = experiment_dir / "temp"
         temp_dir.mkdir(exist_ok=True)
 
         # Get the sample data
@@ -336,8 +338,8 @@ def main():
             image_dir=str(temp_dir), output_name=gif_name, duration=7
         )
 
-        # Move the GIF to the figures subdirectory
-        (temp_dir / gif_name).rename(figures_dir / gif_name)
+        # Move the GIF to the split (experiment) directory
+        (temp_dir / gif_name).rename(experiment_dir / gif_name)
 
         # Clean up temporary directory
         for png_file in temp_dir.glob("*.png"):
