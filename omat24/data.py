@@ -117,7 +117,9 @@ class OMat24Dataset(Dataset):
         atoms: ase.atoms.Atoms = self.dataset.get_atoms(idx)
 
         # Extract atomic numbers and positions
-        symbols = atoms.symbols.get_chemical_formula()  # Keep as string, no tensor conversion needed
+        symbols = (
+            atoms.symbols.get_chemical_formula()
+        )  # Keep as string, no tensor conversion needed
         atomic_numbers = atoms.get_atomic_numbers()  # Shape: (N_atoms,)
         positions = atoms.get_positions()  # Shape: (N_atoms, 3)
 

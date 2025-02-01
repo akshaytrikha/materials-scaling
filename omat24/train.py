@@ -36,12 +36,14 @@ if __name__ == "__main__":
     log = not args.no_log
 
     # Load dataset
-    split_name = "val"
-    dataset_name = "rattled-300-subsampled"
+    # split_name = "val"
+    # dataset_name = "rattled-300-subsampled"
+    split_name = "vc_dim"
+    dataset_name = "2_atoms_1_samples"
 
     dataset_path = Path(f"datasets/{split_name}/{dataset_name}")
-    if not dataset_path.exists():
-        download_dataset(dataset_name, split_name)
+    # if not dataset_path.exists():
+    #     download_dataset(dataset_name, split_name)
     dataset = OMat24Dataset(dataset_path=dataset_path, augment=args.augment)
 
     # User Hyperparam Feedback
@@ -59,7 +61,9 @@ if __name__ == "__main__":
 
     # Initialize meta model class based on architecture choice
     if args.architecture == "FCN":
-        meta_models = MetaFCNModels(vocab_size=args.n_elements, use_factorized=use_factorize)
+        meta_models = MetaFCNModels(
+            vocab_size=args.n_elements, use_factorized=use_factorize
+        )
     elif args.architecture == "Transformer":
         meta_models = MetaTransformerModels(
             vocab_size=args.n_elements,
@@ -97,12 +101,11 @@ if __name__ == "__main__":
             )
             dataset_size = len(train_loader.dataset)
             optimizer = optim.AdamW(model.parameters(), lr=lr)
-            
-            lambda_schedule = lambda epoch: 0.5 * (1 + math.cos(math.pi * epoch / num_epochs))
-            scheduler = LambdaLR(
-                optimizer,
-                lr_lambda=lambda_schedule
+
+            lambda_schedule = lambda epoch: 0.5 * (
+                1 + math.cos(math.pi * epoch / num_epochs)
             )
+            scheduler = LambdaLR(optimizer, lr_lambda=lambda_schedule)
 
             # Prepare run entry etc.
             model_name = f"model_ds{dataset_size}_p{int(model.num_params)}"

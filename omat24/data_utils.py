@@ -40,6 +40,12 @@ DATASETS = {
             "max_n_atoms": 160,
         },
     },
+    "vc_dim": {
+        "2_atoms_1_samples": {
+            "url": "",
+            "max_n_atoms": 2,
+        },
+    },
 }
 
 
