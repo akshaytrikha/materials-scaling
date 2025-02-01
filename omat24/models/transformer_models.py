@@ -60,7 +60,7 @@ class MetaTransformerModels:
         """
         self.configurations = [
             {
-                "d_model": 1,
+                "d_model": 16,
                 "depth": 1,
                 "n_heads": 1,
                 "d_ff_mult": 1,

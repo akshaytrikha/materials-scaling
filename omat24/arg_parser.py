@@ -56,5 +56,11 @@ def get_args():
         action="store_true",
         help="Factorize and use inverse distance matrix",
     )
+    parser.add_argument(
+        "--num_visualization_samples",
+        type=int,
+        default=3,
+        help="Number of samples to visualize",
+    )
 
     return parser.parse_args()

@@ -20,15 +20,28 @@ def partial_json_log(
     """
     Append train_loss and val_loss for the given step to the specified run_entry in experiment_results,
     then write the updated experiment_results dictionary to disk.
-
-    Args:
-        experiment_results (dict): Existing JSON data for all experiments.
-        data_size_key (str): Dataset size as a string key (e.g., "256").
-        run_entry (dict): Dict with "model_name", "config", "losses", etc.
-        step (int): Current training step (for indexing in the 'losses' dict).
-        avg_train_loss (float): Current averaged training loss.
-        val_loss (float): Current validation loss.
-        results_path (str): Path to the JSON file where logs are written.
+    
+    Structure:
+    {
+      "dataset_size": [{
+        "model_name": str,
+        "config": dict,
+        "samples": {
+          "train": [{idx, symbols, atomic_numbers, positions}],
+          "val": [{idx, symbols, atomic_numbers, positions}]
+        },
+        "losses": {
+          "step": {
+            train_loss: float,
+            val_loss: float,
+            pred: {
+              train: [{forces, energy, stress}],
+              val: [{forces, energy, stress}]
+            }
+          }
+        }
+      }]
+    }
     """
     if data_size_key not in experiment_results:
         experiment_results[data_size_key] = []
@@ -38,30 +51,100 @@ def partial_json_log(
     for existing_run in experiment_results[data_size_key]:
         if existing_run.get("model_name", "") == run_entry["model_name"]:
             found_existing = True
+            
+            # Initialize samples dict if first time seeing samples
+            if samples and "samples" not in existing_run:
+                existing_run["samples"] = {"train": [], "val": []}
+                for split in ["train", "val"]:
+                    for sample in samples[split]:
+                        existing_run["samples"][split].append({
+                            "idx": sample["idx"],
+                            "symbols": sample["symbols"], 
+                            "atomic_numbers": sample["atomic_numbers"],
+                            "positions": sample["positions"],
+                            "forces": sample["true"]["forces"],
+                            "energy": sample["true"]["energy"],
+                            "stress": sample["true"]["stress"]
+                        })
+
+            # Add loss entry
             if "losses" not in existing_run:
                 existing_run["losses"] = {}
+                
             loss_entry = {}
             if not math.isnan(avg_train_loss):
                 loss_entry["train_loss"] = float(avg_train_loss)
             if not math.isnan(val_loss):
                 loss_entry["val_loss"] = float(val_loss)
-            if samples is not None:
-                loss_entry["samples"] = samples
+                
+            # Add predictions if samples exist
+            if samples:
+                loss_entry["pred"] = {
+                    "train": [{
+                        "forces": s["pred"]["forces"],
+                        "energy": s["pred"]["energy"],
+                        "stress": s["pred"]["stress"]
+                    } for s in samples["train"]],
+                    "val": [{
+                        "forces": s["pred"]["forces"],
+                        "energy": s["pred"]["energy"],
+                        "stress": s["pred"]["stress"]
+                    } for s in samples["val"]]
+                }
+                
             if loss_entry:  # Only add if there's at least one non-NaN value
                 existing_run["losses"][str(step)] = loss_entry
             break
 
     if not found_existing:
+        # Initialize new run entry
+        new_entry = {
+            "model_name": run_entry["model_name"],
+            "config": run_entry["config"],
+            "samples": {"train": [], "val": []},
+            "losses": {}
+        }
+        
+        # Add initial samples if they exist
+        if samples:
+            for split in ["train", "val"]:
+                for sample in samples[split]:
+                    new_entry["samples"][split].append({
+                        "idx": sample["idx"],
+                        "symbols": sample["symbols"],
+                        "atomic_numbers": sample["atomic_numbers"],
+                        "positions": sample["positions"],
+                        "forces": sample["true"]["forces"],
+                        "energy": sample["true"]["energy"],
+                        "stress": sample["true"]["stress"]
+                    })
+        
+        # Add initial loss entry
         loss_entry = {}
         if not math.isnan(avg_train_loss):
             loss_entry["train_loss"] = float(avg_train_loss)
         if not math.isnan(val_loss):
             loss_entry["val_loss"] = float(val_loss)
-        if samples is not None:
-            loss_entry["samples"] = samples
+            
+        # Add predictions if samples exist
+        if samples:
+            loss_entry["pred"] = {
+                "train": [{
+                    "forces": s["pred"]["forces"],
+                    "energy": s["pred"]["energy"],
+                    "stress": s["pred"]["stress"]
+                } for s in samples["train"]],
+                "val": [{
+                    "forces": s["pred"]["forces"],
+                    "energy": s["pred"]["energy"],
+                    "stress": s["pred"]["stress"]
+                } for s in samples["val"]]
+            }
+            
         if loss_entry:  # Only add if there's at least one non-NaN value
-            run_entry["losses"] = {str(step): loss_entry}
-            experiment_results[data_size_key].append(run_entry)
+            new_entry["losses"][str(step)] = loss_entry
+            
+        experiment_results[data_size_key].append(new_entry)
 
     with open(results_path, "w") as f:
         json.dump(experiment_results, f)
@@ -84,7 +167,9 @@ def run_validation(model, val_loader, device):
             true_energy = batch["energy"].to(device)
             true_stress = batch["stress"].to(device)
 
-            pred_forces, pred_energy, pred_stress = model(atomic_numbers, positions, factorized_distances)
+            pred_forces, pred_energy, pred_stress = model(
+                atomic_numbers, positions, factorized_distances
+            )
 
             mask = atomic_numbers != 0
             natoms = mask.sum(dim=1)
@@ -108,16 +193,20 @@ def run_validation(model, val_loader, device):
     return total_val_loss / num_val_batches
 
 
-def collect_train_val_samples(model, train_loader, val_loader, device, num_visualization_samples=3):
+def collect_train_val_samples(
+    model, train_loader, val_loader, device, num_visualization_samples
+):
     """
     Collect samples and predictions from both training and validation sets.
     Uses fixed indices for consistent visualization.
     """
     model.eval()  # Set model to evaluation mode
     samples = {"train": [], "val": []}
-    
+
     # Helper function to process a single batch
     def process_batch(batch, device):
+        idx = batch["idx"]
+        symbols = batch["symbols"]
         atomic_numbers = batch["atomic_numbers"].to(device)
         positions = batch["positions"].to(device)
         factorized_distances = batch["factorized_matrix"].to(device)
@@ -125,60 +214,106 @@ def collect_train_val_samples(model, train_loader, val_loader, device, num_visua
         true_energy = batch["energy"].to(device)
         true_stress = batch["stress"].to(device)
 
-        pred_forces, pred_energy, pred_stress = model(atomic_numbers, positions, factorized_distances)
-        return (atomic_numbers, positions, true_forces, true_energy, true_stress,
-                pred_forces, pred_energy, pred_stress)
-    
+        pred_forces, pred_energy, pred_stress = model(
+            atomic_numbers, positions, factorized_distances
+        )
+        return (
+            idx,
+            symbols,
+            atomic_numbers,
+            positions,
+            true_forces,
+            true_energy,
+            true_stress,
+            pred_forces,
+            pred_energy,
+            pred_stress,
+        )
+
     # Get the underlying dataset from the DataLoader
     train_dataset = train_loader.dataset
     val_dataset = val_loader.dataset
-    
+
     # Process fixed samples
     with torch.no_grad():
         # Process training samples
         for i in range(min(num_visualization_samples, len(train_dataset))):
-            batch = {k: torch.unsqueeze(v, 0) for k, v in train_dataset[i].items()}
-            (atomic_numbers, positions, true_forces, true_energy, true_stress,
-             pred_forces, pred_energy, pred_stress) = process_batch(batch, device)
-            
-            sample_length = ((atomic_numbers != 0).sum(dim=1)[0].item())
-            samples["train"].append({
-                "atomic_numbers": atomic_numbers[:, :sample_length].cpu().tolist(),
-                "positions": positions[:, :sample_length].cpu().tolist(),
-                "true": {
-                    "forces": true_forces[:, :sample_length].cpu().tolist(),
-                    "energy": true_energy.cpu().tolist(),
-                    "stress": true_stress.cpu().tolist(),
-                },
-                "pred": {
-                    "forces": pred_forces[:, :sample_length].cpu().tolist(),
-                    "energy": pred_energy.cpu().tolist(),
-                    "stress": pred_stress.cpu().tolist(),
-                },
-            })
-        
+            batch = {
+                k: torch.unsqueeze(v, 0) if isinstance(v, torch.Tensor) else v
+                for k, v in train_dataset[i].items()
+            }
+            (
+                idx,
+                symbols,
+                atomic_numbers,
+                positions,
+                true_forces,
+                true_energy,
+                true_stress,
+                pred_forces,
+                pred_energy,
+                pred_stress,
+            ) = process_batch(batch, device)
+
+            sample_length = (atomic_numbers != 0).sum(dim=1)[0].item()
+            samples["train"].append(
+                {
+                    "idx": idx,
+                    "symbols": symbols,
+                    "atomic_numbers": atomic_numbers[:, :sample_length].cpu().tolist(),
+                    "positions": positions[:, :sample_length].cpu().tolist(),
+                    "true": {
+                        "forces": true_forces[:, :sample_length].cpu().tolist(),
+                        "energy": true_energy.cpu().tolist(),
+                        "stress": true_stress.cpu().tolist(),
+                    },
+                    "pred": {
+                        "forces": pred_forces[:, :sample_length].cpu().tolist(),
+                        "energy": pred_energy.cpu().tolist(),
+                        "stress": pred_stress.cpu().tolist(),
+                    },
+                }
+            )
+
         # Process validation samples
         for i in range(min(num_visualization_samples, len(val_dataset))):
-            batch = {k: torch.unsqueeze(v, 0) for k, v in val_dataset[i].items()}
-            (atomic_numbers, positions, true_forces, true_energy, true_stress,
-             pred_forces, pred_energy, pred_stress) = process_batch(batch, device)
-            
-            sample_length = ((atomic_numbers != 0).sum(dim=1)[0].item())
-            samples["val"].append({
-                "atomic_numbers": atomic_numbers[:, :sample_length].cpu().tolist(),
-                "positions": positions[:, :sample_length].cpu().tolist(),
-                "true": {
-                    "forces": true_forces[:, :sample_length].cpu().tolist(),
-                    "energy": true_energy.cpu().tolist(),
-                    "stress": true_stress.cpu().tolist(),
-                },
-                "pred": {
-                    "forces": pred_forces[:, :sample_length].cpu().tolist(),
-                    "energy": pred_energy.cpu().tolist(),
-                    "stress": pred_stress.cpu().tolist(),
-                },
-            })
-    
+            batch = {
+                k: torch.unsqueeze(v, 0) if isinstance(v, torch.Tensor) else v
+                for k, v in val_dataset[i].items()
+            }
+            (
+                idx,
+                symbols,
+                atomic_numbers,
+                positions,
+                true_forces,
+                true_energy,
+                true_stress,
+                pred_forces,
+                pred_energy,
+                pred_stress,
+            ) = process_batch(batch, device)
+
+            sample_length = (atomic_numbers != 0).sum(dim=1)[0].item()
+            samples["val"].append(
+                {
+                    "idx": idx,
+                    "symbols": symbols,
+                    "atomic_numbers": atomic_numbers[:, :sample_length].cpu().tolist(),
+                    "positions": positions[:, :sample_length].cpu().tolist(),
+                    "true": {
+                        "forces": true_forces[:, :sample_length].cpu().tolist(),
+                        "energy": true_energy.cpu().tolist(),
+                        "stress": true_stress.cpu().tolist(),
+                    },
+                    "pred": {
+                        "forces": pred_forces[:, :sample_length].cpu().tolist(),
+                        "energy": pred_energy.cpu().tolist(),
+                        "stress": pred_stress.cpu().tolist(),
+                    },
+                }
+            )
+
     return samples
 
 
@@ -195,6 +330,7 @@ def train(
     experiment_results=None,
     data_size_key=None,
     run_entry=None,
+    num_visualization_samples=3,
 ):
     """Train model with validation at epoch 0 and every 10 epochs."""
     model.to(device)
@@ -219,7 +355,7 @@ def train(
 
     # Early stopping setup
     last_val_loss = val_loss
-    samples = None # For visualization
+    samples = None  # For visualization
 
     # Training loop starting from epoch 1
     for epoch in range(1, len(pbar) + 1):
@@ -236,7 +372,9 @@ def train(
             true_stress = batch["stress"].to(device)
 
             optimizer.zero_grad()
-            pred_forces, pred_energy, pred_stress = model(atomic_numbers, positions, factorized_distances)
+            pred_forces, pred_energy, pred_stress = model(
+                atomic_numbers, positions, factorized_distances
+            )
 
             mask = atomic_numbers != 0
             natoms = mask.sum(dim=1)
