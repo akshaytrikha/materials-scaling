@@ -408,19 +408,14 @@ def train(
         avg_epoch_train_loss = train_loss_sum / n_train_batches
         losses[epoch] = {"train_loss": float(avg_epoch_train_loss)}
 
+        validate_every = 1000
+        visualize_every = 10
+
         # Run validation every 10 epochs
-        if epoch % 10 == 0:
+        if epoch % validate_every == 0:
             val_loss = run_validation(model, val_loader, device)
             last_val_loss = val_loss
             losses[epoch]["val_loss"] = float(val_loss)
-
-            samples = collect_train_val_samples(
-                model,
-                train_loader,
-                val_loader,
-                device,
-                num_visualization_samples,
-            )
 
             # Early stopping check
             if val_loss < best_val_loss:
@@ -431,6 +426,15 @@ def train(
                 if epochs_since_improvement >= patience:
                     print(f"Early stopping triggered at epoch {epoch}")
                     return model, losses
+        
+        if epoch % visualize_every == 0:
+            samples = collect_train_val_samples(
+                model,
+                train_loader,
+                val_loader,
+                device,
+                num_visualization_samples,
+            )
 
         if can_write_partial:
             partial_json_log(
@@ -439,9 +443,9 @@ def train(
                 run_entry,
                 epoch,
                 avg_epoch_train_loss,
-                val_loss if epoch % 10 == 0 else float("nan"),
+                val_loss if epoch % validate_every == 0 else float("nan"),
                 results_path,
-                samples if epoch % 10 == 0 else None,
+                samples if epoch % visualize_every == 0 else None,
             )
 
         pbar.update(1)
