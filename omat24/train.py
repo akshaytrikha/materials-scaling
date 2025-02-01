@@ -59,7 +59,9 @@ if __name__ == "__main__":
 
     # Initialize meta model class based on architecture choice
     if args.architecture == "FCN":
-        meta_models = MetaFCNModels(vocab_size=args.n_elements, use_factorized=use_factorize)
+        meta_models = MetaFCNModels(
+            vocab_size=args.n_elements, use_factorized=use_factorize
+        )
     elif args.architecture == "Transformer":
         meta_models = MetaTransformerModels(
             vocab_size=args.n_elements,
@@ -97,12 +99,11 @@ if __name__ == "__main__":
             )
             dataset_size = len(train_loader.dataset)
             optimizer = optim.AdamW(model.parameters(), lr=lr)
-            
-            lambda_schedule = lambda epoch: 0.5 * (1 + math.cos(math.pi * epoch / num_epochs))
-            scheduler = LambdaLR(
-                optimizer,
-                lr_lambda=lambda_schedule
+
+            lambda_schedule = lambda epoch: 0.5 * (
+                1 + math.cos(math.pi * epoch / num_epochs)
             )
+            scheduler = LambdaLR(optimizer, lr_lambda=lambda_schedule)
 
             # Prepare run entry etc.
             model_name = f"model_ds{dataset_size}_p{int(model.num_params)}"
