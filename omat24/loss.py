@@ -137,23 +137,23 @@ def compute_loss(
         # # Then take the mean over the directions and then atoms [B, N, 3] -> [B]
         # force_loss = force_loss.mean(dim=(2, 1))
 
-    true_isotropic_stress, true_anisotropic_stress = unvoigt_stress(true_stress)
-    pred_isotropic_stress, pred_anisotropic_stress = unvoigt_stress(pred_stress)
-    stress_loss_fn = MAELoss()
-    stress_isotropic_loss = stress_loss_fn(
-        pred=torch.sum(pred_isotropic_stress, dim=1),
-        target=torch.sum(true_isotropic_stress, dim=1),
-    )
-    stress_anisotropic_loss = stress_loss_fn(
-        pred=torch.sum(pred_anisotropic_stress, dim=1),
-        target=torch.sum(true_anisotropic_stress, dim=1),
-    )
+    # true_isotropic_stress, true_anisotropic_stress = unvoigt_stress(true_stress)
+    # pred_isotropic_stress, pred_anisotropic_stress = unvoigt_stress(pred_stress)
+    # stress_loss_fn = MAELoss()
+    # stress_isotropic_loss = stress_loss_fn(
+    #     pred=torch.sum(pred_isotropic_stress, dim=1),
+    #     target=torch.sum(true_isotropic_stress, dim=1),
+    # )
+    # stress_anisotropic_loss = stress_loss_fn(
+    #     pred=torch.sum(pred_anisotropic_stress, dim=1),
+    #     target=torch.sum(true_anisotropic_stress, dim=1),
+    # )
 
     return torch.mean(
         energy_loss
-        + force_loss
-        + stress_isotropic_loss
-        + stress_anisotropic_loss
+        # + force_loss
+        # + stress_isotropic_loss
+        # + stress_anisotropic_loss
     )
 
 
