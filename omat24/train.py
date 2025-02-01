@@ -168,12 +168,14 @@ if __name__ == "__main__":
         f"\nTraining completed. {'Results continuously saved to ' + str(results_path) if log else 'No experiment log was written.'}"
     )
 
-    subprocess.run(
-        [
-            "python3",
-            "model_prediction_evolution.py",
-            str(results_path),
-            "--split",
-            "train",
-        ]
-    )
+    if log:
+        # Genereate inference GIFs at different training stages
+        subprocess.run(
+            [
+                "python3",
+                "model_prediction_evolution.py",
+                str(results_path),
+                "--split",
+                "train",
+            ]
+        )
