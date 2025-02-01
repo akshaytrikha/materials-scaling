@@ -48,7 +48,7 @@ def get_dataloaders(
     dataset_size = len(dataset)
     val_size = int(dataset_size * 0.1)
     remaining_size = dataset_size - val_size
-    train_size = int(remaining_size * train_data_fraction)
+    train_size = max(1, int(remaining_size * train_data_fraction))
 
     random.seed(seed)
     indices = list(range(dataset_size))
