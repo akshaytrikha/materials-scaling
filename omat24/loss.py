@@ -143,11 +143,11 @@ def compute_loss(
     stress_isotropic_loss = stress_loss_fn(
         pred=pred_isotropic_stress,
         target=true_isotropic_stress
-    )
+    ).mean(dim=-1)
     stress_anisotropic_loss = stress_loss_fn(
         pred=pred_anisotropic_stress,
         target=true_anisotropic_stress
-)
+    ).mean(dim=-1)
 
     return torch.mean(
         energy_loss + force_loss + stress_isotropic_loss + stress_anisotropic_loss
