@@ -150,8 +150,8 @@ def compute_loss(
     )
 
     return torch.mean(
-        # 2.5 * energy_loss +
-        # 20 * force_loss +
+        2.5 * energy_loss +
+        20 * force_loss +
         5 * stress_isotropic_loss +
         5 * stress_anisotropic_loss
     )
