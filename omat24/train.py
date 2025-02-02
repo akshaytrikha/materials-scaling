@@ -1,11 +1,14 @@
 # External
 import torch
 import torch.optim as optim
+from torch.optim.lr_scheduler import LambdaLR
 from pathlib import Path
 import pprint
 import json
+import math
 from datetime import datetime
 from tqdm import tqdm
+import subprocess
 
 # Internal
 from data import OMat24Dataset, get_dataloaders
@@ -57,7 +60,9 @@ if __name__ == "__main__":
 
     # Initialize meta model class based on architecture choice
     if args.architecture == "FCN":
-        meta_models = MetaFCNModels(vocab_size=args.n_elements, use_factorized=use_factorize)
+        meta_models = MetaFCNModels(
+            vocab_size=args.n_elements, use_factorized=use_factorize
+        )
     elif args.architecture == "Transformer":
         meta_models = MetaTransformerModels(
             vocab_size=args.n_elements,
@@ -98,7 +103,12 @@ if __name__ == "__main__":
                 batch_padded=False,
             )
             dataset_size = len(train_loader.dataset)
-            optimizer = optim.Adam(model.parameters(), lr=lr)
+            optimizer = optim.AdamW(model.parameters(), lr=lr)
+
+            lambda_schedule = lambda epoch: 0.5 * (
+                1 + math.cos(math.pi * epoch / num_epochs)
+            )
+            scheduler = LambdaLR(optimizer, lr_lambda=lambda_schedule)
 
             # Prepare run entry etc.
             model_name = f"model_ds{dataset_size}_p{int(model.num_params)}"
@@ -133,7 +143,7 @@ if __name__ == "__main__":
                 train_loader=train_loader,
                 val_loader=val_loader,
                 optimizer=optimizer,
-                scheduler=None,
+                scheduler=scheduler,
                 pbar=pbar,
                 device=DEVICE,
                 patience=6,
@@ -159,3 +169,15 @@ if __name__ == "__main__":
     print(
         f"\nTraining completed. {'Results continuously saved to ' + str(results_path) if log else 'No experiment log was written.'}"
     )
+
+    if log:
+        # Genereate inference GIFs at different training stages
+        subprocess.run(
+            [
+                "python3",
+                "model_prediction_evolution.py",
+                str(results_path),
+                "--split",
+                "train",
+            ]
+        )

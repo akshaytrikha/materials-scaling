@@ -14,7 +14,7 @@ def get_args():
         "--batch_size",
         type=int,
         nargs="+",
-        default=64,
+        default=[64],
         help="Batch size for training",
     )
     parser.add_argument(
@@ -24,7 +24,7 @@ def get_args():
         "--lr",
         type=float,
         nargs="+",
-        default=[0.0001],
+        default=[0.001],
         help="Learning rate",
     )
     parser.add_argument(

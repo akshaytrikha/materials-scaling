@@ -20,7 +20,7 @@ def partial_json_log(
     """
     Append train_loss and val_loss for the given step to the specified run_entry in experiment_results,
     then write the updated experiment_results dictionary to disk.
-    
+
     Structure:
     {
       "dataset_size": [{
@@ -51,47 +51,55 @@ def partial_json_log(
     for existing_run in experiment_results[data_size_key]:
         if existing_run.get("model_name", "") == run_entry["model_name"]:
             found_existing = True
-            
+
             # Initialize samples dict if first time seeing samples
             if samples and "samples" not in existing_run:
                 existing_run["samples"] = {"train": [], "val": []}
                 for split in ["train", "val"]:
                     for sample in samples[split]:
-                        existing_run["samples"][split].append({
-                            "idx": sample["idx"],
-                            "symbols": sample["symbols"], 
-                            "atomic_numbers": sample["atomic_numbers"],
-                            "positions": sample["positions"],
-                            "forces": sample["true"]["forces"],
-                            "energy": sample["true"]["energy"],
-                            "stress": sample["true"]["stress"]
-                        })
+                        existing_run["samples"][split].append(
+                            {
+                                "idx": sample["idx"],
+                                "symbols": sample["symbols"],
+                                "atomic_numbers": sample["atomic_numbers"],
+                                "positions": sample["positions"],
+                                "forces": sample["true"]["forces"],
+                                "energy": sample["true"]["energy"],
+                                "stress": sample["true"]["stress"],
+                            }
+                        )
 
             # Add loss entry
             if "losses" not in existing_run:
                 existing_run["losses"] = {}
-                
+
             loss_entry = {}
             if not math.isnan(avg_train_loss):
                 loss_entry["train_loss"] = float(avg_train_loss)
             if not math.isnan(val_loss):
                 loss_entry["val_loss"] = float(val_loss)
-                
+
             # Add predictions if samples exist
             if samples:
                 loss_entry["pred"] = {
-                    "train": [{
-                        "forces": s["pred"]["forces"],
-                        "energy": s["pred"]["energy"],
-                        "stress": s["pred"]["stress"]
-                    } for s in samples["train"]],
-                    "val": [{
-                        "forces": s["pred"]["forces"],
-                        "energy": s["pred"]["energy"],
-                        "stress": s["pred"]["stress"]
-                    } for s in samples["val"]]
+                    "train": [
+                        {
+                            "forces": s["pred"]["forces"],
+                            "energy": s["pred"]["energy"],
+                            "stress": s["pred"]["stress"],
+                        }
+                        for s in samples["train"]
+                    ],
+                    "val": [
+                        {
+                            "forces": s["pred"]["forces"],
+                            "energy": s["pred"]["energy"],
+                            "stress": s["pred"]["stress"],
+                        }
+                        for s in samples["val"]
+                    ],
                 }
-                
+
             if loss_entry:  # Only add if there's at least one non-NaN value
                 existing_run["losses"][str(step)] = loss_entry
             break
@@ -102,48 +110,56 @@ def partial_json_log(
             "model_name": run_entry["model_name"],
             "config": run_entry["config"],
             "samples": {"train": [], "val": []},
-            "losses": {}
+            "losses": {},
         }
-        
+
         # Add initial samples if they exist
         if samples:
             for split in ["train", "val"]:
                 for sample in samples[split]:
-                    new_entry["samples"][split].append({
-                        "idx": sample["idx"],
-                        "symbols": sample["symbols"],
-                        "atomic_numbers": sample["atomic_numbers"],
-                        "positions": sample["positions"],
-                        "forces": sample["true"]["forces"],
-                        "energy": sample["true"]["energy"],
-                        "stress": sample["true"]["stress"]
-                    })
-        
+                    new_entry["samples"][split].append(
+                        {
+                            "idx": sample["idx"],
+                            "symbols": sample["symbols"],
+                            "atomic_numbers": sample["atomic_numbers"],
+                            "positions": sample["positions"],
+                            "forces": sample["true"]["forces"],
+                            "energy": sample["true"]["energy"],
+                            "stress": sample["true"]["stress"],
+                        }
+                    )
+
         # Add initial loss entry
         loss_entry = {}
         if not math.isnan(avg_train_loss):
             loss_entry["train_loss"] = float(avg_train_loss)
         if not math.isnan(val_loss):
             loss_entry["val_loss"] = float(val_loss)
-            
+
         # Add predictions if samples exist
         if samples:
             loss_entry["pred"] = {
-                "train": [{
-                    "forces": s["pred"]["forces"],
-                    "energy": s["pred"]["energy"],
-                    "stress": s["pred"]["stress"]
-                } for s in samples["train"]],
-                "val": [{
-                    "forces": s["pred"]["forces"],
-                    "energy": s["pred"]["energy"],
-                    "stress": s["pred"]["stress"]
-                } for s in samples["val"]]
+                "train": [
+                    {
+                        "forces": s["pred"]["forces"],
+                        "energy": s["pred"]["energy"],
+                        "stress": s["pred"]["stress"],
+                    }
+                    for s in samples["train"]
+                ],
+                "val": [
+                    {
+                        "forces": s["pred"]["forces"],
+                        "energy": s["pred"]["energy"],
+                        "stress": s["pred"]["stress"],
+                    }
+                    for s in samples["val"]
+                ],
             }
-            
+
         if loss_entry:  # Only add if there's at least one non-NaN value
             new_entry["losses"][str(step)] = loss_entry
-            
+
         experiment_results[data_size_key].append(new_entry)
 
     with open(results_path, "w") as f:
@@ -426,7 +442,7 @@ def train(
                 if epochs_since_improvement >= patience:
                     print(f"Early stopping triggered at epoch {epoch}")
                     return model, losses
-        
+
         if epoch % visualize_every == 0:
             samples = collect_train_val_samples(
                 model,
