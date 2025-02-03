@@ -276,17 +276,19 @@ def collect_train_val_samples(
                 {
                     "idx": idx,
                     "symbols": symbols,
-                    "atomic_numbers": atomic_numbers[:, :sample_length].cpu().tolist(),
-                    "positions": positions[:, :sample_length].cpu().tolist(),
+                    "atomic_numbers": atomic_numbers[:, :sample_length]
+                    .cpu()
+                    .tolist()[0],
+                    "positions": positions[:, :sample_length].cpu().tolist()[0],
                     "true": {
-                        "forces": true_forces[:, :sample_length].cpu().tolist(),
-                        "energy": true_energy.cpu().tolist(),
-                        "stress": true_stress.cpu().tolist(),
+                        "forces": true_forces[:, :sample_length].cpu().tolist()[0],
+                        "energy": true_energy.cpu().tolist()[0],
+                        "stress": true_stress.cpu().tolist()[0],
                     },
                     "pred": {
-                        "forces": pred_forces[:, :sample_length].cpu().tolist(),
-                        "energy": pred_energy.cpu().tolist(),
-                        "stress": pred_stress.cpu().tolist(),
+                        "forces": pred_forces[:, :sample_length].cpu().tolist()[0],
+                        "energy": pred_energy.cpu().tolist()[0],
+                        "stress": pred_stress.cpu().tolist()[0],
                     },
                 }
             )
@@ -315,17 +317,19 @@ def collect_train_val_samples(
                 {
                     "idx": idx,
                     "symbols": symbols,
-                    "atomic_numbers": atomic_numbers[:, :sample_length].cpu().tolist(),
-                    "positions": positions[:, :sample_length].cpu().tolist(),
+                    "atomic_numbers": atomic_numbers[:, :sample_length]
+                    .cpu()
+                    .tolist()[0],
+                    "positions": positions[:, :sample_length].cpu().tolist()[0],
                     "true": {
-                        "forces": true_forces[:, :sample_length].cpu().tolist(),
-                        "energy": true_energy.cpu().tolist(),
-                        "stress": true_stress.cpu().tolist(),
+                        "forces": true_forces[:, :sample_length].cpu().tolist()[0],
+                        "energy": true_energy.cpu().tolist()[0],
+                        "stress": true_stress.cpu().tolist()[0],
                     },
                     "pred": {
-                        "forces": pred_forces[:, :sample_length].cpu().tolist(),
-                        "energy": pred_energy.cpu().tolist(),
-                        "stress": pred_stress.cpu().tolist(),
+                        "forces": pred_forces[:, :sample_length].cpu().tolist()[0],
+                        "energy": pred_energy.cpu().tolist()[0],
+                        "stress": pred_stress.cpu().tolist()[0],
                     },
                 }
             )
@@ -425,7 +429,7 @@ def train(
         losses[epoch] = {"train_loss": float(avg_epoch_train_loss)}
 
         validate_every = 10000
-        visualize_every = 500
+        visualize_every = 5
 
         # Run validation every 10 epochs
         if epoch % validate_every == 0:

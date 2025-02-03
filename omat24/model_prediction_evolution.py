@@ -108,14 +108,14 @@ def plot_force_comparison(
         split: Dataset split (train/val)
     """
     # Extract data from sample and predictions
-    positions = np.array(sample["positions"][0])
-    numbers = np.array(sample["atomic_numbers"][0])
-    forces_true = np.array(sample["forces"][0])
-    forces_pred = np.array(predictions["forces"][0])
-    energy_true = float(sample["energy"][0])
-    energy_pred = float(predictions["energy"][0])
-    stress_true = np.array(sample["stress"][0])
-    stress_pred = np.array(predictions["stress"][0])
+    positions = np.array(sample["positions"])
+    numbers = np.array(sample["atomic_numbers"])
+    forces_true = np.array(sample["forces"])
+    forces_pred = np.array(predictions["forces"])
+    energy_true = float(sample["energy"])
+    energy_pred = float(predictions["energy"])
+    stress_true = np.array(sample["stress"])
+    stress_pred = np.array(predictions["stress"])
 
     # Create plotter
     pl = pv.Plotter(shape=(1, 2), off_screen=True, window_size=[1920, 1080])
