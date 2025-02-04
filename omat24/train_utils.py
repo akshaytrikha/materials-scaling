@@ -183,11 +183,12 @@ def run_validation(model, val_loader, device):
             true_energy = batch["energy"].to(device)
             true_stress = batch["stress"].to(device)
 
-            pred_forces, pred_energy, pred_stress = model(
-                atomic_numbers, positions, factorized_distances
-            )
-
             mask = atomic_numbers != 0
+            
+            pred_forces, pred_energy, pred_stress = model(
+                atomic_numbers, positions, factorized_distances, mask
+            )
+            
             natoms = mask.sum(dim=1)
             val_loss = compute_loss(
                 pred_forces,
@@ -230,8 +231,9 @@ def collect_train_val_samples(
         true_energy = batch["energy"].to(device)
         true_stress = batch["stress"].to(device)
 
+        mask = atomic_numbers != 0
         pred_forces, pred_energy, pred_stress = model(
-            atomic_numbers, positions, factorized_distances
+            atomic_numbers, positions, factorized_distances, mask
         )
         return (
             idx,
@@ -393,12 +395,13 @@ def train(
             true_energy = batch["energy"].to(device)
             true_stress = batch["stress"].to(device)
 
+            mask = atomic_numbers != 0
+
             optimizer.zero_grad()
             pred_forces, pred_energy, pred_stress = model(
-                atomic_numbers, positions, factorized_distances
+                atomic_numbers, positions, factorized_distances, mask
             )
 
-            mask = atomic_numbers != 0
             natoms = mask.sum(dim=1)
             train_loss = compute_loss(
                 pred_forces,
