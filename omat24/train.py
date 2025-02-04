@@ -142,7 +142,7 @@ if __name__ == "__main__":
                 scheduler=scheduler,
                 pbar=pbar,
                 device=DEVICE,
-                patience=6,
+                patience=50,
                 results_path=results_path if log else None,
                 experiment_results=experiment_results if log else None,
                 data_size_key=ds_key if log else None,

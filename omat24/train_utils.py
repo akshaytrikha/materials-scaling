@@ -184,11 +184,11 @@ def run_validation(model, val_loader, device):
             true_stress = batch["stress"].to(device)
 
             mask = atomic_numbers != 0
-            
+
             pred_forces, pred_energy, pred_stress = model(
                 atomic_numbers, positions, factorized_distances, mask
             )
-            
+
             natoms = mask.sum(dim=1)
             val_loss = compute_loss(
                 pred_forces,
@@ -347,7 +347,7 @@ def train(
     scheduler,
     pbar,
     device,
-    patience=6,
+    patience=50,
     results_path=None,
     experiment_results=None,
     data_size_key=None,
@@ -431,7 +431,7 @@ def train(
         avg_epoch_train_loss = train_loss_sum / n_train_batches
         losses[epoch] = {"train_loss": float(avg_epoch_train_loss)}
 
-        validate_every = 2000
+        validate_every = 200
         visualize_every = 200
 
         # Run validation every 10 epochs
