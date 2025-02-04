@@ -15,3 +15,10 @@
 1. Open VSCode settings and search for `editor: default formatter`
 2. Select `Black Formatter`
 2. Select `Format on Save` right below
+
+### Visualizing model's prediction
+
+For one sample
+python3 model_prediction_evolution.py results/experiments_20250131_160623.json --split train  --sample-idx 0 
+
+For all samples just simply remove --sample-idx flag

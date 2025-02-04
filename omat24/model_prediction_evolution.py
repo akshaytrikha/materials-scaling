@@ -18,22 +18,6 @@ def natural_sort_key(s):
     ]
 
 
-def load_first_val_sample(json_path):
-    """Load and return the first validation sample from the JSON file."""
-    with open(json_path, "r") as f:
-        data = json.load(f)
-
-    dataset_size = list(data.keys())[0]
-    first_run = data[dataset_size][0]
-
-    # Find first epoch with validation samples
-    for epoch, epoch_data in first_run["losses"].items():
-        if len(epoch_data["val_samples"]) > 0:
-            return epoch_data["val_samples"][0], epoch
-
-    return None, None
-
-
 def plot_atomic_forces(
     pl,
     subplot_idx,
@@ -100,28 +84,38 @@ def plot_atomic_forces(
 
 
 def plot_force_comparison(
-    sample, epoch, output_path, model_params, dataset_size, architecture, lr
+    sample,
+    predictions,
+    epoch,
+    output_path,
+    model_params,
+    dataset_size,
+    architecture,
+    lr,
+    split,
 ):
     """Create and save a comparison plot of ground truth vs predicted forces.
 
     Args:
-        sample: Dictionary containing the sample data
+        sample: Dictionary containing the sample metadata (positions, numbers, etc.)
+        predictions: Dictionary containing the predicted values
         epoch: Current epoch number
         output_path: Path to save the output image
         model_params: Number of model parameters
         dataset_size: Size of the dataset
         architecture: Model architecture name
         lr: Learning rate
+        split: Dataset split (train/val)
     """
-    # Extract data from sample
-    positions = np.array(sample["sample"]["positions"][0])
-    numbers = np.array(sample["sample"]["atomic_numbers"][0])
-    forces_true = np.array(sample["sample"]["forces"][0])
-    forces_pred = np.array(sample["pred"]["forces"][0])
-    energy_true = float(sample["sample"]["energy"][0])
-    energy_pred = float(sample["pred"]["energy"][0])
-    stress_true = np.array(sample["sample"]["stress"][0])
-    stress_pred = np.array(sample["pred"]["stress"][0])
+    # Extract data from sample and predictions
+    positions = np.array(sample["positions"])
+    numbers = np.array(sample["atomic_numbers"])
+    forces_true = np.array(sample["forces"])
+    forces_pred = np.array(predictions["forces"])
+    energy_true = float(sample["energy"])
+    energy_pred = float(predictions["energy"])
+    stress_true = np.array(sample["stress"])
+    stress_pred = np.array(predictions["stress"])
 
     # Create plotter
     pl = pv.Plotter(shape=(1, 2), off_screen=True, window_size=[1920, 1080])
@@ -175,7 +169,7 @@ def plot_force_comparison(
     # Add model architecture, parameters and dataset size information
     pl.add_text(
         f"arch: {architecture}",
-        position=(0.75, 0.93),  # Just below epoch
+        position=(0.71, 0.93),  # Just below epoch
         viewport=True,
         font_size=16,
         color="black",
@@ -183,7 +177,7 @@ def plot_force_comparison(
     )
     pl.add_text(
         f"#params: {model_params}",
-        position=(0.75, 0.89),  # Below architecture
+        position=(0.71, 0.89),  # Below architecture
         viewport=True,
         font_size=16,
         color="black",
@@ -191,7 +185,7 @@ def plot_force_comparison(
     )
     pl.add_text(
         f"ds: {dataset_size}",
-        position=(0.75, 0.85),  # Below model size
+        position=(0.71, 0.85),  # Below model size
         viewport=True,
         font_size=16,
         color="black",
@@ -199,7 +193,15 @@ def plot_force_comparison(
     )
     pl.add_text(
         f"lr: {lr}",
-        position=(0.75, 0.81),  # Below dataset size
+        position=(0.71, 0.81),  # Below dataset size
+        viewport=True,
+        font_size=16,
+        color="black",
+        font="arial",
+    )
+    pl.add_text(
+        f"split: {split}",
+        position=(0.71, 0.77),  # Below dataset size
         viewport=True,
         font_size=16,
         color="black",
@@ -211,9 +213,15 @@ def plot_force_comparison(
 
 
 def create_force_comparison_gif(
-    image_dir="figures", output_name="force_comparison.gif", fps=1
+    image_dir="figures", output_name="result.gif", duration=8
 ):
-    """Create a GIF from force comparison screenshots."""
+    """Create a GIF from force comparison screenshots.
+
+    Args:
+        image_dir (str): Directory containing the images
+        output_name (str): Name of the output GIF file
+        duration (int): Total duration of the GIF in seconds
+    """
     # Get all PNG files and sort them by epoch number
     image_files = [f for f in Path(image_dir).glob("forces_comparison_epoch_*.png")]
     image_files.sort(key=lambda x: natural_sort_key(x.name))
@@ -221,6 +229,10 @@ def create_force_comparison_gif(
     if not image_files:
         print(f"No force comparison images found in {image_dir}")
         return
+
+    # Calculate fps based on number of images and desired duration
+    fps = len(image_files) / duration
+    fps = min(1, fps)
 
     # Read all images
     images = []
@@ -231,34 +243,45 @@ def create_force_comparison_gif(
     # Create the GIF
     output_path = Path(image_dir) / output_name
     imageio.mimsave(output_path, images, format="GIF", fps=fps, loop=1)
-    print(f"Created GIF at {output_path} with {fps} fps")
+    print(f"Created GIF at {output_path} with {fps:.1f} fps ({duration}s duration)")
 
 
 def main():
     """Main function to run the visualization and create GIF."""
-    # Parse command line arguments
     parser = argparse.ArgumentParser(
         description="Visualize model prediction evolution."
     )
     parser.add_argument("json_file", type=str, help="Path to the JSON results file")
     parser.add_argument(
-        "--val-sample-idx",
+        "--sample-idx",
         type=int,
-        default=0,
-        help="Index of validation sample to visualize (default: 0)",
+        help="Index of specific sample to visualize (if not specified, all samples will be processed)",
+    )
+    parser.add_argument(
+        "--split",
+        type=str,
+        choices=["val", "train"],
+        default="val",
+        help="Split of sample to visualize (default: val)",
     )
     args = parser.parse_args()
 
-    # Create output directory
-    Path("figures").mkdir(exist_ok=True)
+    # Get filename without extension to use as subdirectory name
+    filename = Path(args.json_file).stem
+
+    # Create output directories
+    figures_dir = Path("figures") / filename
+    figures_dir.mkdir(parents=True, exist_ok=True)
+    experiment_dir = figures_dir / args.split
+    experiment_dir.mkdir(parents=True, exist_ok=True)
 
     # Load data
     with open(args.json_file, "r") as f:
         data = json.load(f)
 
     # Get the last run
-    dataset_size = list(data.keys())[0]
-    run = data[dataset_size][0]
+    dataset_size = list(data.keys())[-1]
+    run = data[dataset_size][-1]
 
     # Get model configuration
     model_params = run["config"]["num_params"]
@@ -266,37 +289,64 @@ def main():
     architecture = run["config"]["architecture"]
     lr = run["config"]["learning_rate"]
 
-    print(
-        f"Generating force comparison plots (using validation sample {args.val_sample_idx})..."
+    # Get samples for the specified split
+    samples = run["samples"][args.split]
+
+    # Determine which samples to process
+    sample_indices = (
+        [args.sample_idx] if args.sample_idx is not None else range(len(samples))
     )
-    # Loop through all epochs
-    for epoch, epoch_data in run["losses"].items():
-        # Skip epochs without validation samples
-        if not epoch_data["val_samples"]:
-            continue
 
-        # Get the specified validation sample for this epoch
-        val_sample = epoch_data["val_samples"][args.val_sample_idx]
+    for sample_idx in sample_indices:
+        print(f"\nProcessing {args.split} split sample {sample_idx}...")
 
-        # Create the plot
-        output_path = f"figures/forces_comparison_epoch_{epoch}.png"
-        print(f"Creating plot for epoch {epoch}...")
+        # Create a temporary directory for PNG files
+        temp_dir = experiment_dir / "temp"
+        temp_dir.mkdir(exist_ok=True)
 
-        plot_force_comparison(
-            sample=val_sample,
-            epoch=epoch,
-            output_path=output_path,
-            model_params=model_params,
-            dataset_size=dataset_size,
-            architecture=architecture,
-            lr=lr,
+        # Get the sample data
+        sample = samples[sample_idx]
+
+        # Loop through all epochs
+        for epoch, epoch_data in run["losses"].items():
+            # Skip epochs without predictions
+            if "pred" not in epoch_data or args.split not in epoch_data["pred"]:
+                continue
+
+            # Get the predictions for this sample
+            predictions = epoch_data["pred"][args.split][sample_idx]
+
+            # Create the plot
+            output_path = temp_dir / f"forces_comparison_epoch_{epoch}.png"
+            print(f"Creating plot for epoch {epoch}...")
+
+            plot_force_comparison(
+                sample=sample,
+                predictions=predictions,
+                epoch=epoch,
+                output_path=output_path,
+                model_params=model_params,
+                dataset_size=dataset_size,
+                architecture=architecture,
+                lr=lr,
+                split=args.split,
+            )
+
+        print(f"\nGenerating GIF for sample {sample_idx}...")
+        gif_name = f"sample_{sample_idx}.gif"
+        create_force_comparison_gif(
+            image_dir=str(temp_dir), output_name=gif_name, duration=7
         )
 
-    print("Finished creating all plots.")
+        # Move the GIF to the split (experiment) directory
+        (temp_dir / gif_name).rename(experiment_dir / gif_name)
 
-    print("\nGenerating GIF from plots...")
-    create_force_comparison_gif(fps=1)
-    print("Done!")
+        # Clean up temporary directory
+        for png_file in temp_dir.glob("*.png"):
+            png_file.unlink()
+        temp_dir.rmdir()
+
+    print("All done!")
 
 
 if __name__ == "__main__":
