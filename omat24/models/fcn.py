@@ -5,11 +5,13 @@ import torch.nn as nn
 class MetaFCNModels:
     def __init__(self, vocab_size=119, use_factorized=False):
         self.configurations = [
-            {"embedding_dim": 4, "hidden_dim": 4, "depth": 2},
-            # {"embedding_dim": 8, "hidden_dim": 8, "depth": 3},
+            # {"embedding_dim": 1, "hidden_dim": 1, "depth": 1},  # 148 params
+            # {"embedding_dim": 4, "hidden_dim": 4, "depth": 2},
+            {"embedding_dim": 6, "hidden_dim": 6, "depth": 4},  # 1060 params
             # {"embedding_dim": 8, "hidden_dim": 16, "depth": 3},
             # {"embedding_dim": 16, "hidden_dim": 32, "depth": 3},
-            # {"embedding_dim": 32, "hidden_dim": 32, "depth": 4},
+            {"embedding_dim": 32, "hidden_dim": 32, "depth": 4},  # 9770 params
+            {"embedding_dim": 64, "hidden_dim": 64, "depth": 20},  # 98378 params
         ]
         self.vocab_size = vocab_size
         self.use_factorized = use_factorized
