@@ -67,5 +67,22 @@ def get_args():
         default=3,
         help="Number of samples to visualize",
     )
+    parser.add_argument(
+        "--train_workers",
+        type=int,
+        default=0,
+        help="Number of workers for training",
+    )
+    parser.add_argument(
+        "--val_workers",
+        type=int,
+        default=0,
+        help="Number of workers for validation",
+    )
 
     return parser.parse_args()
+
+
+if __name__ == "__main__":
+    args = get_args()
+    print(args)

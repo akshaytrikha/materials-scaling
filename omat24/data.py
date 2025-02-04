@@ -1,3 +1,4 @@
+# data.py
 # External
 from torch.utils.data import DataLoader, Subset, Dataset
 from pathlib import Path
@@ -26,6 +27,8 @@ def get_dataloaders(
     batch_padded: bool = False,
     return_indices: bool = False,
     val_data_fraction: float = 0.1,
+    train_workers: int = 0,
+    val_workers: int = 0,
 ):
     """Creates training and validation DataLoaders from a given dataset.
 
@@ -41,6 +44,8 @@ def get_dataloaders(
         batch_padded (bool, optional): Whether to pad variable-length tensors.
         return_indices (bool, optional): Whether to return dataset indices for debugging.
         val_data_fraction (float, optional): Fraction of the dataset to use for validation.
+        train_workers (int, optional): Number of worker processes for the training DataLoader.
+        val_workers (int, optional): Number of worker processes for the validation DataLoader.
 
     Returns:
         tuple:
@@ -76,6 +81,7 @@ def get_dataloaders(
         batch_size=batch_size,
         shuffle=True,
         collate_fn=collate_fn,
+        num_workers=train_workers,
     )
 
     val_loader = DataLoader(
@@ -83,6 +89,7 @@ def get_dataloaders(
         batch_size=batch_size,
         shuffle=False,  # Typically, shuffle=False for validation
         collate_fn=collate_fn,
+        num_workers=val_workers,
     )
 
     if return_indices:
@@ -164,5 +171,3 @@ class OMat24Dataset(Dataset):
         }
 
         return sample
-
-# The remainder of the file (data_utils.py, etc.) remains unchanged.

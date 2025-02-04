@@ -1,3 +1,4 @@
+# train.py
 # External
 import torch
 import torch.optim as optim
@@ -98,6 +99,8 @@ if __name__ == "__main__":
                 seed=SEED,
                 batch_padded=False,
                 val_data_fraction=args.val_data_fraction,
+                train_workers=args.train_workers,
+                val_workers=args.val_workers,
             )
             dataset_size = len(train_loader.dataset)
             optimizer = optim.AdamW(model.parameters(), lr=lr)
@@ -168,7 +171,7 @@ if __name__ == "__main__":
     )
 
     if log:
-        # Genereate inference GIFs at different training stages
+        # Generate inference GIFs at different training stages
         subprocess.run(
             [
                 "python3",
