@@ -7,7 +7,9 @@ class CombinedEmbedding(nn.Module):
     def __init__(self, num_tokens, d_model, additional_dim=3):
         super().__init__()
         self.token_emb = nn.Embedding(num_tokens, d_model)
-        self.position_proj = nn.Linear(additional_dim, d_model)  # Project 3D positions to d_model
+        self.position_proj = nn.Linear(
+            additional_dim, d_model
+        )  # Project 3D positions to d_model
 
     def forward(self, x, positions):
         """
@@ -59,18 +61,25 @@ class MetaTransformerModels:
             max_seq_len (int): Maximum sequence length for the transformer.
         """
         self.configurations = [
-            # {
-            #     "d_model": 16,
-            #     "depth": 1,
-            #     "n_heads": 1,
-            #     "d_ff_mult": 1,
-            #     "concatenated": concatenated,
-            # },
             {
-                "d_model": 2,
+                "d_model": 1,
                 "depth": 1,
                 "n_heads": 1,
+                "d_ff_mult": 1,
+                "concatenated": concatenated,
+            },
+            {
+                "d_model": 4,
+                "depth": 2,
+                "n_heads": 2,
                 "d_ff_mult": 2,
+                "concatenated": concatenated,
+            },
+            {
+                "d_model": 8,
+                "depth": 8,
+                "n_heads": 4,
+                "d_ff_mult": 8,
                 "concatenated": concatenated,
             },
             # {
@@ -122,7 +131,7 @@ class MetaTransformerModels:
             n_heads=config["n_heads"],
             d_ff_mult=config["d_ff_mult"],
             concatenated=config["concatenated"],
-            use_factorized=self.use_factorized
+            use_factorized=self.use_factorized,
         )
 
     def __len__(self):
@@ -136,7 +145,16 @@ class MetaTransformerModels:
 
 
 class XTransformerModel(TransformerWrapper):
-    def __init__(self, num_tokens, d_model, depth, n_heads, d_ff_mult, concatenated, use_factorized):
+    def __init__(
+        self,
+        num_tokens,
+        d_model,
+        depth,
+        n_heads,
+        d_ff_mult,
+        concatenated,
+        use_factorized,
+    ):
         """Initializes XTransformerModel with specified configurations.
 
         Args:
@@ -153,7 +171,9 @@ class XTransformerModel(TransformerWrapper):
         self.n_heads = n_heads
         self.d_ff_mult = d_ff_mult
         self.use_factorized = use_factorized
-        self.additional_dim = 5 if use_factorized else 3 if concatenated else 0  # For concatenated positions
+        self.additional_dim = (
+            5 if use_factorized else 3 if concatenated else 0
+        )  # For concatenated positions
 
         # Initialize base TransformerWrapper without its own embedding
         super().__init__(
