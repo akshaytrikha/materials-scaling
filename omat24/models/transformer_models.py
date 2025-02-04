@@ -213,7 +213,7 @@ class XTransformerModel(TransformerWrapper):
 
         # Energy: Global pooling and linear layer
         pooled_output = output.mean(dim=1)  # Shape: [M, d_model]
-        energy = self.energy_predictor(pooled_output).squeeze()  # Shape: [M]
+        energy = self.energy_predictor(pooled_output).squeeze(-1)  # Shape: [M]
 
         # Forces: Per-atom output via linear layer
         forces = self.forces_predictor(output)  # Shape: [M, A, 3]
