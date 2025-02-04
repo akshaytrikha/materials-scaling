@@ -97,6 +97,7 @@ if __name__ == "__main__":
                 batch_size=batch_size,
                 seed=SEED,
                 batch_padded=False,
+                val_data_fraction=args.val_data_fraction,
             )
             dataset_size = len(train_loader.dataset)
             optimizer = optim.AdamW(model.parameters(), lr=lr)

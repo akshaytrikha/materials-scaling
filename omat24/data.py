@@ -25,20 +25,22 @@ def get_dataloaders(
     seed: int,
     batch_padded: bool = False,
     return_indices: bool = False,
+    val_data_fraction: float = 0.1,
 ):
     """Creates training and validation DataLoaders from a given dataset.
 
     This function splits the dataset into training and validation subsets based on the
-    specified `data_fraction`. It then creates DataLoaders for each subset, using either
-    a custom collate function that keeps variable-length tensors as lists or one that
-    pads them to uniform sizes.
+    specified fractions. It then creates DataLoaders for each subset, using either a custom
+    collate function that keeps variable-length tensors as lists or one that pads them to uniform sizes.
 
     Args:
         dataset (Dataset): The dataset to create DataLoaders from.
-        data_fraction (float): Fraction of the dataset to use (e.g., 0.9 for 90%).
+        train_data_fraction (float): Fraction of the remaining data (after validation split) to use for training.
         batch_size (int): Number of samples per batch.
-        seed (int): Seed for random number generators to ensure reproducibility
-        batch_padded (bool, optional): Whether to pad variable-length tensors. Defaults to True.
+        seed (int): Seed for random number generators to ensure reproducibility.
+        batch_padded (bool, optional): Whether to pad variable-length tensors.
+        return_indices (bool, optional): Whether to return dataset indices for debugging.
+        val_data_fraction (float, optional): Fraction of the dataset to use for validation.
 
     Returns:
         tuple:
@@ -46,7 +48,7 @@ def get_dataloaders(
             - val_loader (DataLoader): DataLoader for the validation subset.
     """
     dataset_size = len(dataset)
-    val_size = int(dataset_size * 0.1)
+    val_size = int(dataset_size * val_data_fraction)
     remaining_size = dataset_size - val_size
     train_size = max(1, int(remaining_size * train_data_fraction))
 
@@ -96,7 +98,7 @@ class OMat24Dataset(Dataset):
     Args:
         dataset_path (Path): Path to the extracted dataset directory.
         config_kwargs (dict, optional): Additional configuration parameters for AseDBDataset. Defaults to {}.
-        augment (bool, optional): Whether to apply data augmentation (random rotations). Defaults to True.
+        augment (bool, optional): Whether to apply data augmentation (random rotations).
     """
 
     def __init__(self, dataset_path: Path, config_kwargs={}, augment: bool = False):
@@ -162,3 +164,5 @@ class OMat24Dataset(Dataset):
         }
 
         return sample
+
+# The remainder of the file (data_utils.py, etc.) remains unchanged.
