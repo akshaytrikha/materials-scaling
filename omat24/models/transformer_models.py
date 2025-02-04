@@ -59,20 +59,20 @@ class MetaTransformerModels:
             max_seq_len (int): Maximum sequence length for the transformer.
         """
         self.configurations = [
-            {
-                "d_model": 16,
-                "depth": 1,
-                "n_heads": 1,
-                "d_ff_mult": 1,
-                "concatenated": concatenated,
-            },
             # {
-            #     "d_model": 2,
+            #     "d_model": 16,
             #     "depth": 1,
             #     "n_heads": 1,
-            #     "d_ff_mult": 2,
+            #     "d_ff_mult": 1,
             #     "concatenated": concatenated,
             # },
+            {
+                "d_model": 2,
+                "depth": 1,
+                "n_heads": 1,
+                "d_ff_mult": 2,
+                "concatenated": concatenated,
+            },
             # {
             #     "d_model": 2,
             #     "depth": 1,
@@ -175,13 +175,13 @@ class XTransformerModel(TransformerWrapper):
             self.emb = CombinedEmbedding(num_tokens, d_model, self.additional_dim)
 
         # Predictors for Energy, Forces, and Stresses
-        self.energy_predictor = nn.Linear(
+        self.energy_output = nn.Linear(
             d_model + self.additional_dim, 1
         )  # Energy: [M, 1]
-        self.forces_predictor = nn.Linear(
+        self.force_output = nn.Linear(
             d_model + self.additional_dim, 3
         )  # Forces: [M, A, 3]
-        self.stresses_predictor = nn.Linear(
+        self.stress_output = nn.Linear(
             d_model + self.additional_dim, 6
         )  # Stresses: [M, 6]
 
@@ -211,14 +211,20 @@ class XTransformerModel(TransformerWrapper):
         # Pass combined embeddings to the transformer
         output = self.attn_layers(x=combined_emb, mask=mask)  # [M, A, d_model]
 
-        # Energy: Global pooling and linear layer
-        pooled_output = output.mean(dim=1)  # Shape: [M, d_model]
-        energy = self.energy_predictor(pooled_output).squeeze(-1)  # Shape: [M]
+        # Predict forces
+        forces = self.force_output(output)  # [M, A, 3]
+        expanded_mask = mask.unsqueeze(-1).expand(-1, -1, 3)
+        forces = forces * expanded_mask.float()  # Mask padded atoms
 
-        # Forces: Per-atom output via linear layer
-        forces = self.forces_predictor(output)  # Shape: [M, A, 3]
+        # Predict per-atom energy contributions and sum
+        energy_contrib = self.energy_output(output).squeeze(-1)  # [M, A]
+        energy_contrib = energy_contrib * mask.squeeze(-1).float()
+        energy = energy_contrib.sum(dim=1)  # [batch_size]
 
-        # Stresses: Global pooling and linear layer
-        stresses = self.stresses_predictor(pooled_output)  # Shape: [M, 6]
+        # Predict per-atom stress contributions and sum
+        stress_contrib = self.stress_output(output)  # [M, A, 6]
+        expanded_mask = mask.unsqueeze(-1).expand(-1, -1, 6)
+        stress_contrib = stress_contrib * expanded_mask.float()
+        stress = stress_contrib.sum(dim=1)  # [batch_size, 6]
 
-        return forces, energy, stresses
+        return forces, energy, stress

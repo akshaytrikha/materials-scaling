@@ -431,8 +431,8 @@ def train(
         avg_epoch_train_loss = train_loss_sum / n_train_batches
         losses[epoch] = {"train_loss": float(avg_epoch_train_loss)}
 
-        validate_every = 10000
-        visualize_every = 5
+        validate_every = 2000
+        visualize_every = 200
 
         # Run validation every 10 epochs
         if epoch % validate_every == 0:
