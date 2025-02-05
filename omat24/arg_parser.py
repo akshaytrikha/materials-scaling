@@ -32,7 +32,13 @@ def get_args():
         type=float,
         nargs="+",
         default=[1.0],
-        help="Fractions of data",
+        help="Fractions of data for training (applied to the remainder after validation split)",
+    )
+    parser.add_argument(
+        "--val_data_fraction",
+        type=float,
+        default=0.1,
+        help="Fraction of the dataset to use for validation",
     )
     parser.add_argument(
         "--no_log", action="store_true", default=False, help="Enable logging"
@@ -50,7 +56,6 @@ def get_args():
         help="Maximum number of unique elements in a sample",
     )
     parser.add_argument("--augment", action="store_true", help="Rotation augmentation")
-
     parser.add_argument(
         "--factorize",
         action="store_true",
@@ -62,5 +67,22 @@ def get_args():
         default=3,
         help="Number of samples to visualize",
     )
+    parser.add_argument(
+        "--train_workers",
+        type=int,
+        default=0,
+        help="Number of workers for training",
+    )
+    parser.add_argument(
+        "--val_workers",
+        type=int,
+        default=0,
+        help="Number of workers for validation",
+    )
 
     return parser.parse_args()
+
+
+if __name__ == "__main__":
+    args = get_args()
+    print(args)
