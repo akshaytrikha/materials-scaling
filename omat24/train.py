@@ -1,4 +1,3 @@
-# train.py
 # External
 import torch
 import torch.optim as optim
@@ -18,21 +17,21 @@ from arg_parser import get_args
 from models.fcn import MetaFCNModels
 from models.transformer_models import MetaTransformerModels
 from models.schnet import MetaSchNetModels
-from train_utils import train, partial_json_log, run_validation
+from train_utils import train
 
 # Set seed & device
 SEED = 1024
 torch.manual_seed(SEED)
-if torch.cuda.is_available():
-    DEVICE = torch.device("cuda")
-    torch.cuda.manual_seed(SEED)
-    torch.cuda.manual_seed_all(SEED)
-    torch.backends.cudnn.deterministic = True
-    torch.backends.cudnn.benchmark = False
-elif torch.backends.mps.is_available():
-    DEVICE = torch.device("mps")
-else:
-    DEVICE = torch.device("cpu")
+# if torch.cuda.is_available():
+#     DEVICE = torch.device("cuda")
+#     torch.cuda.manual_seed(SEED)
+#     torch.cuda.manual_seed_all(SEED)
+#     torch.backends.cudnn.deterministic = True
+#     torch.backends.cudnn.benchmark = False
+# elif torch.backends.mps.is_available():
+#     DEVICE = torch.device("mps")
+# else:
+DEVICE = torch.device("cpu")
 
 if __name__ == "__main__":
     args = get_args()
@@ -45,7 +44,7 @@ if __name__ == "__main__":
     dataset_path = Path(f"datasets/{split_name}/{dataset_name}")
     if not dataset_path.exists():
         download_dataset(dataset_name, split_name)
-    dataset = OMat24Dataset(dataset_path=dataset_path, augment=args.augment)
+    dataset = OMat24Dataset(dataset_path=dataset_path, augment=args.augment, graph=True if args.architecture == "SchNet" else False)
 
     # User Hyperparam Feedback
     params = vars(args) | {

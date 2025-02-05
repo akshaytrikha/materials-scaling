@@ -177,31 +177,26 @@ def run_validation(model, val_loader, device):
         for batch in val_loader:
             # print(batch)
             atomic_numbers = batch["atomic_numbers"].to(device)
-            positions = batch["positions"].to(device)
-            factorized_distances = batch["factorized_matrix"].to(device)
+            # positions = batch["positions"].to(device)
+            # factorized_distances = batch["factorized_matrix"].to(device)
             true_forces = batch["forces"].to(device)
             true_energy = batch["energy"].to(device)
             true_stress = batch["stress"].to(device)
 
             mask = atomic_numbers != 0
 
-            pred_forces, pred_energy, pred_stress = model(
-                atomic_numbers, positions, factorized_distances, mask
+            pred_forces, pred_energy = model(
+                
             )
 
             natoms = mask.sum(dim=1)
             val_loss = compute_loss(
-                pred_forces,
-                pred_energy,
-                pred_stress,
-                true_forces,
-                true_energy,
-                true_stress,
-                mask,
-                device,
+                pred_forces=pred_forces,
+                pred_energy=pred_energy,
+                true_forces=true_forces,
+                true_energy=true_energy,
+                device=device,
                 natoms=natoms,
-                use_mask=True,
-                force_magnitude=False,
             )
             total_val_loss += val_loss.item()
 
@@ -362,7 +357,8 @@ def train(
     losses = {}
 
     # Initial validation at epoch 0
-    val_loss = run_validation(model, val_loader, device)
+    # val_loss = run_validation(model, val_loader, device)
+    val_loss = 100000000000000
     losses[0] = {"val_loss": float(val_loss)}
     if can_write_partial:
         partial_json_log(
@@ -389,8 +385,8 @@ def train(
 
         for batch_idx, batch in enumerate(train_loader):
             atomic_numbers = batch["atomic_numbers"].to(device)
-            positions = batch["positions"].to(device)
-            factorized_distances = batch["factorized_matrix"].to(device)
+            # positions = batch["positions"].to(device)
+            # factorized_distances = batch["factorized_matrix"].to(device)
             true_forces = batch["forces"].to(device)
             true_energy = batch["energy"].to(device)
             true_stress = batch["stress"].to(device)
@@ -398,23 +394,22 @@ def train(
             mask = atomic_numbers != 0
 
             optimizer.zero_grad()
-            pred_forces, pred_energy, pred_stress = model(
-                atomic_numbers, positions, factorized_distances, mask
+            # pred_forces, pred_energy, pred_stress = model(
+            #     atomic_numbers, positions, factorized_distances, mask
+            # )
+            pred_forces, pred_energy = model(
+                batch
             )
 
-            natoms = mask.sum(dim=1)
+            # natoms = mask.sum(dim=1)
+            natoms = len(atomic_numbers)
             train_loss = compute_loss(
-                pred_forces,
-                pred_energy,
-                pred_stress,
-                true_forces,
-                true_energy,
-                true_stress,
-                mask,
-                device,
+                pred_forces=pred_forces,
+                pred_energy=pred_energy,
+                true_forces=true_forces,
+                true_energy=true_energy,
+                device=device,
                 natoms=natoms,
-                use_mask=True,
-                force_magnitude=False,
             )
             train_loss.backward()
             optimizer.step()

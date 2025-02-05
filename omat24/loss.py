@@ -81,14 +81,13 @@ def unvoigt_stress(voigt_stress_batch):
 def compute_loss(
     pred_forces,
     pred_energy,
-    pred_stress,
     true_forces,
     true_energy,
-    true_stress,
-    mask,
     device,
+    pred_stress=None,
+    true_stress=None,
+    mask=None,
     natoms=None,
-    use_mask=True,
     force_magnitude=False,
 ):
     """Compute composite loss for forces, energy, and stress, considering the mask.
@@ -117,7 +116,7 @@ def compute_loss(
         natoms = torch.tensor(
             data=[len(pred_forces[i]) for i in range(len(pred_forces))], device=device
         )
-    if use_mask:
+    if mask is not None:
         mask = mask.unsqueeze(-1)  # Shape: [batch_size, max_atoms, 1]
         pred_forces = pred_forces * mask.float()
         true_forces = true_forces * mask.float()
@@ -125,6 +124,8 @@ def compute_loss(
     # Compute losses
     energy_loss_fn = PerAtomMAELoss()
     energy_loss = energy_loss_fn(pred=pred_energy, target=true_energy, natoms=natoms)
+
+    breakpoint()
 
     if force_magnitude:
         force_loss_fn = L2NormLoss()
@@ -139,22 +140,26 @@ def compute_loss(
         # # Then take the mean over the directions and then atoms [B, N, 3] -> [B]
         # force_loss = force_loss.mean(dim=(2, 1))
 
-    true_isotropic_stress, true_anisotropic_stress = unvoigt_stress(true_stress)
-    pred_isotropic_stress, pred_anisotropic_stress = unvoigt_stress(pred_stress)
-    stress_loss_fn = MAELoss()
-    stress_isotropic_loss = stress_loss_fn(
-        pred=pred_isotropic_stress, target=true_isotropic_stress
-    ).mean(dim=-1)
-    stress_anisotropic_loss = stress_loss_fn(
-        pred=pred_anisotropic_stress, target=true_anisotropic_stress
-    ).mean(dim=-1)
+    # Only compute stress loss if stress tensors are provided
+    if pred_stress is None or true_stress is None:
+        return torch.mean(energy_loss + force_loss)
+    else:
+        true_isotropic_stress, true_anisotropic_stress = unvoigt_stress(true_stress)
+        pred_isotropic_stress, pred_anisotropic_stress = unvoigt_stress(pred_stress)
+        stress_loss_fn = MAELoss()
+        stress_isotropic_loss = stress_loss_fn(
+            pred=pred_isotropic_stress, target=true_isotropic_stress
+        ).mean(dim=-1)
+        stress_anisotropic_loss = stress_loss_fn(
+            pred=pred_anisotropic_stress, target=true_anisotropic_stress
+        ).mean(dim=-1)
 
-    return torch.mean(
-        energy_loss +
-        force_loss +
-        stress_isotropic_loss +
-        stress_anisotropic_loss
-    )
+        return torch.mean(
+            energy_loss +
+            force_loss +
+            stress_isotropic_loss +
+            stress_anisotropic_loss
+        )
 
 
 # Not in use
