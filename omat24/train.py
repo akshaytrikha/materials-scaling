@@ -17,6 +17,7 @@ from data_utils import download_dataset
 from arg_parser import get_args
 from models.fcn import MetaFCNModels
 from models.transformer_models import MetaTransformerModels
+from models.schnet import MetaSchNetModels
 from train_utils import train, partial_json_log, run_validation
 
 # Set seed & device
@@ -70,6 +71,10 @@ if __name__ == "__main__":
             max_seq_len=dataset.max_n_atoms,
             concatenated=True,
             use_factorized=use_factorize,
+        )
+    elif args.architecture == "SchNet":
+        meta_models = MetaSchNetModels(
+            device=DEVICE
         )
 
     experiment_results = {}

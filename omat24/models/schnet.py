@@ -1,16 +1,51 @@
-import os
-import os.path as osp
-import warnings
 from math import pi as PI
-from typing import Optional
-import ase
-import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-# from torch.nn import Embedding, Linear, ModuleList, Sequential
 from torch_scatter import scatter
 from torch_geometric.nn import radius_graph
+
+
+class MetaSchNetModels:
+    def __init__(self, device):
+        """
+        Initializes a list of SchNet model configurations.
+
+        Args:
+            device (str): Device to run the models on.
+        """
+        # Define a list of configurations with varying hyperparameters.
+        # You can add or remove configurations as needed.
+        self.configurations = [
+            {"hidden_channels": 64, "num_filters": 64, "num_interactions": 3, "num_gaussians": 50},
+            {"hidden_channels": 128, "num_filters": 128, "num_interactions": 6, "num_gaussians": 50},
+            {"hidden_channels": 256, "num_filters": 256, "num_interactions": 8, "num_gaussians": 50},
+        ]
+        self.device = device
+
+    def __getitem__(self, idx):
+        if idx >= len(self.configurations):
+            raise IndexError("Configuration index out of range")
+        config = self.configurations[idx]
+
+        return SchNet(
+            hidden_channels=config["hidden_channels"],
+            num_filters=config["num_filters"],
+            num_interactions=config["num_interactions"],
+            num_gaussians=config["num_gaussians"],
+            cutoff=5.0,               
+            max_num_neighbors=32,     # default maximum number of neighbors
+            readout="add",
+            dipole=False,
+            device=self.device
+        )
+
+    def __len__(self):
+        return len(self.configurations)
+
+    def __iter__(self):
+        for idx in range(len(self.configurations)):
+            yield self[idx]
 
 
 class InteractionBlock(nn.Module):
@@ -176,19 +211,20 @@ class SchNet(nn.Module):
     aggregates atom-wise contributions to yield a global energy, and computes forces
     as the negative gradient of the energy with respect to positions.
     """
-    def __init__(self,
-                 hidden_channels=128,
-                 num_filters=128,
-                 num_interactions=6,
-                 num_gaussians=50,
-                 cutoff=5.0,
-                 max_num_neighbors=32,
-                 readout="add",
-                 dipole=False,
-                 mean=None,
-                 std=None,
-                 atomref=None,
-                 device="cpu"):
+    def __init__(
+            self,
+            hidden_channels=128,
+            num_filters=128,
+            num_interactions=6,
+            num_gaussians=50,
+            cutoff=5.0,
+            max_num_neighbors=32,
+            readout="add",
+            dipole=False,
+            mean=None,
+            std=None,
+            device="cpu" 
+        ):
         super(SchNet, self).__init__()
         self.hidden_channels = hidden_channels
         self.num_filters = num_filters
