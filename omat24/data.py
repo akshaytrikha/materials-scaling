@@ -4,9 +4,6 @@ from pathlib import Path
 import torch
 from fairchem.core.datasets import AseDBDataset
 import ase
-import tarfile
-import gdown
-import os
 import random
 from typing import Tuple
 from torch_geometric.data import Data
