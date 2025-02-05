@@ -5,6 +5,7 @@ import tarfile
 import gdown
 import os
 from typing import Dict
+from torch_geometric.nn import radius_graph
 
 
 DATASETS = {
@@ -312,3 +313,32 @@ def custom_collate_fn_batch_padded(batch: list) -> Dict[str, torch.Tensor]:
     }
 
     return return_dict
+
+def generate_graph(positions, distance_matrix):
+    """
+    Generate graph connectivity and edge attributes based on positions or distance matrix.
+    Customize this method based on how you want to define edges.
+
+    Args:
+        positions (torch.Tensor): [N_atoms, 3]
+        distance_matrix (torch.Tensor): [N_atoms, N_atoms]
+
+    Returns:
+        edge_index (torch.LongTensor): [2, num_edges]
+        edge_attr (torch.Tensor): [num_edges, feature_dim]
+    """
+    # Example: Using radius graph with cutoff 6.0
+    cutoff = 6.0
+    edge_index = radius_graph(positions, r=cutoff, loop=False)
+
+    # Compute edge attributes based on distance or other features
+    # Example: Compute distance for each edge
+    row, col = edge_index
+    edge_distances = torch.norm(positions[row] - positions[col], dim=1).unsqueeze(
+        1
+    )  # [num_edges, 1]
+
+    # Example: Include distance as edge attribute
+    edge_attr = edge_distances  # You can add more features as needed
+
+    return edge_index, edge_attr
