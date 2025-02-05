@@ -36,7 +36,7 @@ def split_dataset(dataset, train_data_fraction, val_data_fraction, seed):
     train_subset = Subset(dataset, indices=train_indices)
     val_subset = Subset(dataset, indices=val_indices)
     
-    return train_subset, val_subset
+    return train_subset, val_subset, train_indices, val_indices
 
 
 def get_dataloaders(
@@ -49,6 +49,7 @@ def get_dataloaders(
     val_data_fraction: float = 0.1,
     train_workers: int = 0,
     val_workers: int = 0,
+    graph: bool = False,
 ):
     """Creates training and validation DataLoaders from a given dataset.
 
@@ -66,6 +67,7 @@ def get_dataloaders(
         val_data_fraction (float, optional): Fraction of the dataset to use for validation.
         train_workers (int, optional): Number of worker processes for the training DataLoader.
         val_workers (int, optional): Number of worker processes for the validation DataLoader.
+        graph (bool, optional): Whether to create PyG DataLoaders for graph datasets.
 
     Returns:
         tuple:
@@ -73,31 +75,36 @@ def get_dataloaders(
             - val_loader (DataLoader): DataLoader for the validation subset.
     """
     train_subset, val_subset, train_indices, val_indices = split_dataset(dataset, train_data_fraction, val_data_fraction, seed)
-
-    # Select the appropriate collate function
-    if batch_padded:
-        collate_fn = custom_collate_fn_batch_padded
+    
+    if graph:
+        # Create PyG DataLoaders
+        train_loader = PyGDataLoader(train_subset, batch_size=batch_size, shuffle=True, num_workers=train_workers)
+        val_loader = PyGDataLoader(val_subset, batch_size=batch_size, shuffle=False, num_workers=val_workers)
     else:
-        collate_fn = lambda batch: custom_collate_fn_dataset_padded(
-            batch, dataset.max_n_atoms
+        # Select the appropriate collate function
+        if batch_padded:
+            collate_fn = custom_collate_fn_batch_padded
+        else:
+            collate_fn = lambda batch: custom_collate_fn_dataset_padded(
+                batch, dataset.max_n_atoms
+            )
+
+        # Create DataLoaders
+        train_loader = DataLoader(
+            train_subset,
+            batch_size=batch_size,
+            shuffle=True,
+            collate_fn=collate_fn,
+            num_workers=train_workers,
         )
 
-    # Create DataLoaders
-    train_loader = DataLoader(
-        train_subset,
-        batch_size=batch_size,
-        shuffle=True,
-        collate_fn=collate_fn,
-        num_workers=train_workers,
-    )
-
-    val_loader = DataLoader(
-        val_subset,
-        batch_size=batch_size,
-        shuffle=False,  # Typically, shuffle=False for validation
-        collate_fn=collate_fn,
-        num_workers=val_workers,
-    )
+        val_loader = DataLoader(
+            val_subset,
+            batch_size=batch_size,
+            shuffle=False,  # Typically, shuffle=False for validation
+            collate_fn=collate_fn,
+            num_workers=val_workers,
+        )
 
     if return_indices:
         # For debugging
@@ -106,38 +113,7 @@ def get_dataloaders(
         return train_loader, val_loader
 
 
-def get_pyg_dataloaders(
-    dataset: Dataset,
-    train_data_fraction: float,
-    batch_size: int,
-    seed: int,
-    return_indices: bool = False,
-    val_data_fraction: float = 0.1,
-    train_workers: int = 0,
-    val_workers: int = 0,
-) -> Tuple[PyGDataLoader, PyGDataLoader]:
-    """
-    Creates training and validation PyG DataLoaders from a given dataset.
 
-    Args:
-        dataset (Dataset): The dataset to create DataLoaders from.
-        data_fraction (float, optional): Fraction of the dataset to use (e.g., 0.9 for 90%). Defaults to 0.9.
-        batch_size (int, optional): Number of samples per batch. Defaults to 32.
-
-    Returns:
-        Tuple[PyGDataLoader, PyGDataLoader]: Training and validation DataLoaders.
-    """
-    train_subset, val_subset, train_indices, val_indices = split_dataset(dataset, train_data_fraction, val_data_fraction, seed)
-
-    # Create PyG DataLoaders
-    train_loader = PyGDataLoader(train_subset, batch_size=batch_size, shuffle=True, num_workers=train_workers)
-    val_loader = PyGDataLoader(val_subset, batch_size=batch_size, shuffle=False, num_workers=val_workers)
-
-    if return_indices:
-        # For debugging
-        return train_loader, val_loader, train_indices, val_indices
-    else:
-        return train_loader, val_loader
 
 
 class OMat24Dataset(Dataset):

@@ -106,6 +106,7 @@ if __name__ == "__main__":
                 val_data_fraction=args.val_data_fraction,
                 train_workers=args.train_workers,
                 val_workers=args.val_workers,
+                graph=True if args.architecture == "SchNet" else False,
             )
             dataset_size = len(train_loader.dataset)
             optimizer = optim.AdamW(model.parameters(), lr=lr)

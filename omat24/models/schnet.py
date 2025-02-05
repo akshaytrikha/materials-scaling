@@ -2,6 +2,7 @@ from math import pi as PI
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch.nn import Linear, Sequential
 from torch_scatter import scatter
 from torch_geometric.nn import radius_graph
 
@@ -60,16 +61,16 @@ class InteractionBlock(nn.Module):
         """
         super().__init__()
         # mlp computes filter applied to node features
-        self.mlp = nn.Sequential(
-            nn.Linear(num_gaussians, num_filters, device=device),
+        self.mlp = Sequential(
+            Linear(num_gaussians, num_filters, device=device),
             ShiftedSoftplus(device=device),
-            nn.Linear(num_filters, num_filters, device=device),
+            Linear(num_filters, num_filters, device=device),
         )
         self.conv = CFConv(
             hidden_channels, hidden_channels, num_filters, self.mlp, cutoff, device=device
         )
         self.activation = ShiftedSoftplus(device=device)
-        self.linear = nn.Linear(hidden_channels, hidden_channels, device=device)
+        self.linear = Linear(hidden_channels, hidden_channels, device=device)
 
         self.reset_parameters()
 
@@ -112,9 +113,9 @@ class CFConv(nn.Module):
             device (str): device to load data on
         """
         super().__init__()
-        self.lin1 = nn.Linear(in_channels, num_filters, bias=False, device=device)
+        self.lin1 = Linear(in_channels, num_filters, bias=False, device=device)
         # self.lin1.weight = self.lin1.weight.to(device)
-        self.lin2 = nn.Linear(num_filters, out_channels, device=device)
+        self.lin2 = Linear(num_filters, out_channels, device=device)
         self.nn = nn.to(device)
         self.cutoff = cutoff
         self.device = device
@@ -253,10 +254,13 @@ class SchNet(nn.Module):
         ])
 
         # Atom-wise readout layers
-        self.lin1 = nn.Linear(hidden_channels, hidden_channels // 2)
+        self.lin1 = Linear(hidden_channels, hidden_channels // 2)
         self.act = ShiftedSoftplus(device=device)
-        self.lin2 = nn.Linear(hidden_channels // 2, 1)
+        self.lin2 = Linear(hidden_channels // 2, 1)
         self.reset_parameters()
+
+        # Calculate number of parameters
+        self.num_params = sum(p.numel() for p in self.parameters())
 
     def reset_parameters(self):
         self.embedding.reset_parameters()
