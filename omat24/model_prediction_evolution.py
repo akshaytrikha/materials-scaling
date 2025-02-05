@@ -253,7 +253,7 @@ def main():
     )
     parser.add_argument("json_file", type=str, help="Path to the JSON results file")
     parser.add_argument(
-        "--sample-idx",
+        "--sample_idx",
         type=int,
         help="Index of specific sample to visualize (if not specified, all samples will be processed)",
     )
@@ -265,7 +265,7 @@ def main():
         help="Split of sample to visualize (default: val)",
     )
     parser.add_argument(
-        "--model-name",
+        "--model_name",
         type=str,
         help="Model name to visualize (e.g., model_ds336_p12273)",
     )
