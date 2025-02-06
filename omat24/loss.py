@@ -74,7 +74,6 @@ def compute_loss(
     mask,
     device,
     natoms=None,
-    use_mask=True,
 ):
     """Compute composite loss for forces, energy, and stress, considering the mask.
 
@@ -101,7 +100,7 @@ def compute_loss(
         natoms = torch.tensor(
             data=[len(pred_forces[i]) for i in range(len(pred_forces))], device=device
         )
-    if use_mask:
+    if mask is not None:
         mask = mask.unsqueeze(-1)  # Shape: [batch_size, max_atoms, 1]
         pred_forces = pred_forces * mask.float()
         true_forces = true_forces * mask.float()

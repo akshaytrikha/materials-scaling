@@ -200,7 +200,6 @@ def run_validation(model, val_loader, device):
                 mask,
                 device,
                 natoms=natoms,
-                use_mask=True,
             )
             total_val_loss += val_loss.item()
 
@@ -412,7 +411,6 @@ def train(
                 mask,
                 device,
                 natoms=natoms,
-                use_mask=True,
             )
             train_loss.backward()
             optimizer.step()
