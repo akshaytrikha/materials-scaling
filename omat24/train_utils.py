@@ -186,7 +186,7 @@ def run_validation(model, val_loader, device):
             mask = atomic_numbers != 0
 
             pred_forces, pred_energy = model(
-                
+                batch
             )
 
             natoms = mask.sum(dim=1)
@@ -197,6 +197,7 @@ def run_validation(model, val_loader, device):
                 true_energy=true_energy,
                 device=device,
                 natoms=natoms,
+                graph=True,
             )
             total_val_loss += val_loss.item()
 
@@ -227,8 +228,8 @@ def collect_train_val_samples(
         true_stress = batch["stress"].to(device)
 
         mask = atomic_numbers != 0
-        pred_forces, pred_energy, pred_stress = model(
-            atomic_numbers, positions, factorized_distances, mask
+        pred_forces, pred_energy = model(
+            batch
         )
         return (
             idx,
@@ -358,7 +359,7 @@ def train(
 
     # Initial validation at epoch 0
     # val_loss = run_validation(model, val_loader, device)
-    val_loss = 100000000000000
+    val_loss = -1
     losses[0] = {"val_loss": float(val_loss)}
     if can_write_partial:
         partial_json_log(
@@ -409,6 +410,7 @@ def train(
                 true_energy=true_energy,
                 device=device,
                 natoms=natoms,
+                graph=True,
             )
             train_loss.backward()
             optimizer.step()
@@ -425,8 +427,8 @@ def train(
         avg_epoch_train_loss = train_loss_sum / n_train_batches
         losses[epoch] = {"train_loss": float(avg_epoch_train_loss)}
 
-        validate_every = 200
-        visualize_every = 200
+        validate_every = 20000
+        visualize_every = 20000
 
         # Run validation every 10 epochs
         if epoch % validate_every == 0:

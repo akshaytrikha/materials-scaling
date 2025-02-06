@@ -74,6 +74,7 @@ def compute_loss(
     true_stress=None,
     mask=None,
     natoms=None,
+    graph=False,
 ):
     """Compute composite loss for forces, energy, and stress, considering the mask.
 
@@ -90,6 +91,7 @@ def compute_loss(
         natoms (Tensor, optional): Number of atoms per molecule. If provided, shape is [batch_size].
         mask (Tensor, optional): A mask to filter the input data.
         device (torch.device): Device to use for computation.
+        graph (bool): Whether or not the input data is in graph format.
 
     Returns:
         dict: A dictionary containing the computed MAE losses for forces, energy, and stress.
@@ -111,11 +113,16 @@ def compute_loss(
     # Use reduction="none" to compute the loss per atom
     force_loss_fn = nn.MSELoss(reduction="none")
     force_loss = force_loss_fn(pred_forces, true_forces)
-    force_loss = force_loss.sum(dim=(2, 1)) / (
-        3 * natoms
-    )  # [B, N, 3] -> [B] / natoms
-    # # Then take the mean over the directions and then atoms [B, N, 3] -> [B]
-    # force_loss = force_loss.mean(dim=(2, 1))
+    
+    if graph:
+        # [N, 3] -> [N] / natoms
+        force_loss = force_loss.sum() / (3 * natoms)
+        
+    else:
+        force_loss = force_loss.sum(dim=(2, 1)) / (
+            3 * natoms
+        )  # [B, N, 3] -> [B] / natoms
+        # # Then take the mean over the directions and then atoms [B, N, 3] -> [B]
 
     # Only compute stress loss if stress tensors are provided
     if pred_stress is None or true_stress is None:
