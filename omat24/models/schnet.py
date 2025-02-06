@@ -334,6 +334,6 @@ class SchNet(nn.Module):
         # Compute forces as the negative gradient of energy with respect to positions
         forces = - torch.autograd.grad(energy.sum(), pos, create_graph=True)[0]
 
-        return energy, forces
+        return forces, energy
 
 

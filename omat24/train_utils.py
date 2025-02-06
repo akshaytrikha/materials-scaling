@@ -391,8 +391,7 @@ def train(
             true_energy = batch["energy"].to(device)
             true_stress = batch["stress"].to(device)
 
-            mask = atomic_numbers != 0
-
+            # mask = atomic_numbers != 0
             optimizer.zero_grad()
             # pred_forces, pred_energy, pred_stress = model(
             #     atomic_numbers, positions, factorized_distances, mask
