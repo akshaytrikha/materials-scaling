@@ -178,7 +178,7 @@ class OMat24Dataset(Dataset):
             edge_index, edge_attr = generate_graph(positions, distance_matrix)
 
             # Create PyG Data object
-            data = Data(
+            sample = Data(
                 pos=positions,
                 atomic_numbers=atomic_numbers,
                 edge_index=edge_index,
@@ -187,8 +187,8 @@ class OMat24Dataset(Dataset):
                 forces=forces,
                 stress=stress,
             )
-            data.natoms = torch.tensor([len(atoms)])
-            return data
+            sample.natoms = torch.tensor(len(atoms))
+            return sample
         else:
             factorized_matrix = factorize_matrix(
                 distance_matrix

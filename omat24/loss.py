@@ -115,8 +115,13 @@ def compute_loss(
     force_loss = force_loss_fn(pred_forces, true_forces)
     
     if graph:
-        # [N, 3] -> [N] / natoms
-        force_loss = force_loss.sum() / (3 * natoms)
+        # [total num atoms, 3] -> [B] / natoms
+        force_loss_components = torch.split(force_loss, natoms.tolist())
+
+        force_loss = []
+        for i, component in enumerate(force_loss_components):
+            force_loss += [component.sum() / (3 * natoms[i])]
+        force_loss = torch.tensor(force_loss)
         
     else:
         force_loss = force_loss.sum(dim=(2, 1)) / (

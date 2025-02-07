@@ -402,7 +402,7 @@ def train(
             )
 
             # natoms = mask.sum(dim=1)
-            natoms = len(atomic_numbers)
+            natoms = batch.natoms
             train_loss = compute_loss(
                 pred_forces=pred_forces,
                 pred_energy=pred_energy,
