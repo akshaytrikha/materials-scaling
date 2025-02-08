@@ -109,18 +109,14 @@ def compute_loss(
     energy_loss_fn = PerAtomMAELoss()
     energy_loss = energy_loss_fn(pred=pred_energy, target=true_energy, natoms=natoms)
 
-    if force_magnitude:
-        force_loss_fn = L2NormLoss()
-        force_loss = force_loss_fn(pred=pred_forces, target=true_forces, natoms=natoms)
-    else:
-        # Use reduction="none" to compute the loss per atom
-        force_loss_fn = nn.MSELoss(reduction="none")
-        force_loss = force_loss_fn(pred_forces, true_forces)
-        force_loss = force_loss.sum(dim=(2, 1)) / (
-            3 * natoms
-        )  # [B, N, 3] -> [B] / natoms
-        # # Then take the mean over the directions and then atoms [B, N, 3] -> [B]
-        # force_loss = force_loss.mean(dim=(2, 1))
+    # Use reduction="none" to compute the loss per atom
+    force_loss_fn = nn.MSELoss(reduction="none")
+    force_loss = force_loss_fn(pred_forces, true_forces)
+    force_loss = force_loss.sum(dim=(2, 1)) / (
+        3 * natoms
+    )  # [B, N, 3] -> [B] / natoms
+    # # Then take the mean over the directions and then atoms [B, N, 3] -> [B]
+    # force_loss = force_loss.mean(dim=(2, 1))
 
     true_isotropic_stress, true_anisotropic_stress = unvoigt_stress(true_stress)
     pred_isotropic_stress, pred_anisotropic_stress = unvoigt_stress(pred_stress)
