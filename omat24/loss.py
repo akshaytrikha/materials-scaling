@@ -136,6 +136,7 @@ def compute_loss(
         force_loss = force_loss.sum(dim=(2, 1)) / (
             3 * natoms
         )  # [B, N, 3] -> [B] / natoms
+        breakpoint()
         # # Then take the mean over the directions and then atoms [B, N, 3] -> [B]
         # force_loss = force_loss.mean(dim=(2, 1))
 
