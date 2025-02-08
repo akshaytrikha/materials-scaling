@@ -36,20 +36,6 @@ class MAELoss(nn.Module):
         return self.loss(pred, target)
 
 
-class L2NormLoss(nn.Module):
-    """Currently this loss is intened to used with vectors."""
-
-    def __init__(self) -> None:
-        super().__init__()
-
-    def forward(
-        self, pred: torch.Tensor, target: torch.Tensor, natoms: torch.Tensor
-    ) -> torch.Tensor:
-        assert target.dim() == 2
-        assert target.shape[1] != 1
-        return torch.linalg.vector_norm(pred - target, ord=2, dim=-1)
-
-
 def unvoigt_stress(voigt_stress_batch):
     """Separates stress tensors in Voigt notation into isotropic and anisotropic components for a batch.
 
@@ -88,8 +74,6 @@ def compute_loss(
     mask,
     device,
     natoms=None,
-    use_mask=True,
-    force_magnitude=False,
 ):
     """Compute composite loss for forces, energy, and stress, considering the mask.
 
@@ -107,7 +91,6 @@ def compute_loss(
         mask (Tensor, optional): A mask to filter the input data.
         device (torch.device): Device to use for computation.
         use_mask (bool, optional): Whether to use the mask to filter the input data.
-        force_magnitude (bool, optional): Whether to compute the force loss using L2NormLoss or nn.MSELoss.
 
     Returns:
         dict: A dictionary containing the computed MAE losses for forces, energy, and stress.
@@ -117,7 +100,7 @@ def compute_loss(
         natoms = torch.tensor(
             data=[len(pred_forces[i]) for i in range(len(pred_forces))], device=device
         )
-    if use_mask:
+    if mask is not None:
         mask = mask.unsqueeze(-1)  # Shape: [batch_size, max_atoms, 1]
         pred_forces = pred_forces * mask.float()
         true_forces = true_forces * mask.float()
@@ -136,7 +119,6 @@ def compute_loss(
         force_loss = force_loss.sum(dim=(2, 1)) / (
             3 * natoms
         )  # [B, N, 3] -> [B] / natoms
-        breakpoint()
         # # Then take the mean over the directions and then atoms [B, N, 3] -> [B]
         # force_loss = force_loss.mean(dim=(2, 1))
 

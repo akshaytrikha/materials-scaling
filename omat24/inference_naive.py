@@ -71,8 +71,6 @@ def run_naive_k(model, ase_dataset, force_magnitude, batch_size=256, device="cpu
             mask=torch.ones(len(true_forces), device=device),
             device=device,
             natoms=natoms,
-            use_mask=False,
-            force_magnitude=force_magnitude,
         )
 
         total_loss += batch_loss
@@ -118,8 +116,6 @@ def run_naive_zero(ase_dataset, force_magnitude):
             torch.ones(len(true_forces)),  # Weights (assuming equal weighting)
             device="cpu",
             natoms=natoms,
-            use_mask=False,
-            force_magnitude=False,
         )
 
         total_loss += loss.item()
@@ -179,8 +175,6 @@ def run_naive_mean(model, ase_dataset, batch_size=256, device="cpu"):
             mask=torch.ones(len(true_forces), device=device),
             device=device,
             natoms=natoms,
-            use_mask=False,
-            force_magnitude=False,  # Since we're predicting (x, y, z) forces
         )
 
         total_loss += batch_loss
