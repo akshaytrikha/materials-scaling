@@ -36,20 +36,6 @@ class MAELoss(nn.Module):
         return self.loss(pred, target)
 
 
-class L2NormLoss(nn.Module):
-    """Currently this loss is intened to used with vectors."""
-
-    def __init__(self) -> None:
-        super().__init__()
-
-    def forward(
-        self, pred: torch.Tensor, target: torch.Tensor, natoms: torch.Tensor
-    ) -> torch.Tensor:
-        assert target.dim() == 2
-        assert target.shape[1] != 1
-        return torch.linalg.vector_norm(pred - target, ord=2, dim=-1)
-
-
 def unvoigt_stress(voigt_stress_batch):
     """Separates stress tensors in Voigt notation into isotropic and anisotropic components for a batch.
 
@@ -88,8 +74,6 @@ def compute_loss(
     mask,
     device,
     natoms=None,
-    use_mask=True,
-    force_magnitude=False,
 ):
     """Compute composite loss for forces, energy, and stress, considering the mask.
 
@@ -107,7 +91,6 @@ def compute_loss(
         mask (Tensor, optional): A mask to filter the input data.
         device (torch.device): Device to use for computation.
         use_mask (bool, optional): Whether to use the mask to filter the input data.
-        force_magnitude (bool, optional): Whether to compute the force loss using L2NormLoss or nn.MSELoss.
 
     Returns:
         dict: A dictionary containing the computed MAE losses for forces, energy, and stress.
@@ -117,7 +100,7 @@ def compute_loss(
         natoms = torch.tensor(
             data=[len(pred_forces[i]) for i in range(len(pred_forces))], device=device
         )
-    if use_mask:
+    if mask is not None:
         mask = mask.unsqueeze(-1)  # Shape: [batch_size, max_atoms, 1]
         pred_forces = pred_forces * mask.float()
         true_forces = true_forces * mask.float()
@@ -126,18 +109,14 @@ def compute_loss(
     energy_loss_fn = PerAtomMAELoss()
     energy_loss = energy_loss_fn(pred=pred_energy, target=true_energy, natoms=natoms)
 
-    if force_magnitude:
-        force_loss_fn = L2NormLoss()
-        force_loss = force_loss_fn(pred=pred_forces, target=true_forces, natoms=natoms)
-    else:
-        # Use reduction="none" to compute the loss per atom
-        force_loss_fn = nn.MSELoss(reduction="none")
-        force_loss = force_loss_fn(pred_forces, true_forces)
-        force_loss = force_loss.sum(dim=(2, 1)) / (
-            3 * natoms
-        )  # [B, N, 3] -> [B] / natoms
-        # # Then take the mean over the directions and then atoms [B, N, 3] -> [B]
-        # force_loss = force_loss.mean(dim=(2, 1))
+    # Use reduction="none" to compute the loss per atom
+    force_loss_fn = nn.MSELoss(reduction="none")
+    force_loss = force_loss_fn(pred_forces, true_forces)
+    force_loss = force_loss.sum(dim=(2, 1)) / (
+        3 * natoms
+    )  # [B, N, 3] -> [B] / natoms
+    # # Then take the mean over the directions and then atoms [B, N, 3] -> [B]
+    # force_loss = force_loss.mean(dim=(2, 1))
 
     true_isotropic_stress, true_anisotropic_stress = unvoigt_stress(true_stress)
     pred_isotropic_stress, pred_anisotropic_stress = unvoigt_stress(pred_stress)
@@ -150,7 +129,10 @@ def compute_loss(
     ).mean(dim=-1)
 
     total_loss = torch.mean(
-        energy_loss + force_loss + stress_isotropic_loss + stress_anisotropic_loss
+        energy_loss +
+        force_loss +
+        stress_isotropic_loss +
+        stress_anisotropic_loss
     )
 
     loss_dict = {

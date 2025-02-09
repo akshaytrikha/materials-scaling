@@ -253,7 +253,7 @@ def main():
     )
     parser.add_argument("json_file", type=str, help="Path to the JSON results file")
     parser.add_argument(
-        "--sample-idx",
+        "--sample_idx",
         type=int,
         help="Index of specific sample to visualize (if not specified, all samples will be processed)",
     )
@@ -263,6 +263,11 @@ def main():
         choices=["val", "train"],
         default="val",
         help="Split of sample to visualize (default: val)",
+    )
+    parser.add_argument(
+        "--model_name",
+        type=str,
+        help="Model name to visualize (e.g., model_ds336_p12273)",
     )
     args = parser.parse_args()
 
@@ -279,9 +284,22 @@ def main():
     with open(args.json_file, "r") as f:
         data = json.load(f)
 
-    # Get the last run
-    dataset_size = list(data.keys())[-1]
-    run = data[dataset_size][-1]
+    # Find the specified run by model name if provided
+    if args.model_name:
+        run = None
+        for dataset_size, runs in data.items():
+            for r in runs:
+                if r["model_name"] == args.model_name:
+                    run = r
+                    break
+            if run:
+                break
+        if not run:
+            raise ValueError(f"Model {args.model_name} not found in the results file")
+    else:
+        # Get the last run from the last dataset size (default behavior)
+        dataset_size = list(data.keys())[-1]
+        run = data[dataset_size][-1]
 
     # Get model configuration
     model_params = run["config"]["num_params"]

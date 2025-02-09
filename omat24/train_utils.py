@@ -217,44 +217,12 @@ def run_validation(
             true_energy = batch["energy"].to(device)
             true_stress = batch["stress"].to(device)
 
-            pred_forces, pred_energy, pred_stress = model(atomic_numbers, positions)
-
-            # Get samples from this batch if we still need more
-            if len(val_samples) < num_samples:
-                batch_samples_needed = num_samples - len(val_samples)
-                for i in range(min(batch_samples_needed, atomic_numbers.shape[0])):
-                    # Get the length of non-zero atomic numbers
-                    sample_length = (
-                        (atomic_numbers[i : i + 1] != 0).sum(dim=1)[0].item()
-                    )
-                    val_samples.append(
-                        {
-                            "sample": {
-                                "atomic_numbers": atomic_numbers[
-                                    i : i + 1, :sample_length
-                                ]
-                                .cpu()
-                                .tolist(),
-                                "positions": positions[i : i + 1, :sample_length]
-                                .cpu()
-                                .tolist(),
-                                "forces": true_forces[i : i + 1, :sample_length]
-                                .cpu()
-                                .tolist(),
-                                "energy": true_energy[i : i + 1].cpu().tolist(),
-                                "stress": true_stress[i : i + 1].cpu().tolist(),
-                            },
-                            "pred": {
-                                "forces": pred_forces[i : i + 1, :sample_length]
-                                .cpu()
-                                .tolist(),
-                                "energy": pred_energy[i : i + 1].cpu().tolist(),
-                                "stress": pred_stress[i : i + 1].cpu().tolist(),
-                            },
-                        }
-                    )
-
             mask = atomic_numbers != 0
+
+            pred_forces, pred_energy, pred_stress = model(
+                atomic_numbers, positions, factorized_distances, mask
+            )
+
             natoms = mask.sum(dim=1)
 
             # Modified compute_loss to return total_loss and a dict of sub-losses
@@ -268,8 +236,6 @@ def run_validation(
                 mask,
                 device,
                 natoms=natoms,
-                use_mask=True,
-                force_magnitude=False,
             )
             total_val_loss += val_loss_dict["total_loss"].item()
 
@@ -308,8 +274,9 @@ def collect_train_val_samples(
         true_energy = batch["energy"].to(device)
         true_stress = batch["stress"].to(device)
 
+        mask = atomic_numbers != 0
         pred_forces, pred_energy, pred_stress = model(
-            atomic_numbers, positions, factorized_distances
+            atomic_numbers, positions, factorized_distances, mask
         )
         return (
             idx,
@@ -423,7 +390,7 @@ def train(
     scheduler,
     pbar,
     device,
-    patience=6,
+    patience=50,
     results_path=None,
     experiment_results=None,
     data_size_key=None,
@@ -494,12 +461,13 @@ def train(
             true_energy = batch["energy"].to(device)
             true_stress = batch["stress"].to(device)
 
+            mask = atomic_numbers != 0
+
             optimizer.zero_grad()
             pred_forces, pred_energy, pred_stress = model(
-                atomic_numbers, positions, factorized_distances
+                atomic_numbers, positions, factorized_distances, mask
             )
 
-            mask = atomic_numbers != 0
             natoms = mask.sum(dim=1)
 
             train_loss_dict = compute_loss(
@@ -512,8 +480,6 @@ def train(
                 mask,
                 device,
                 natoms=natoms,
-                use_mask=True,
-                force_magnitude=False,
             )
             total_train_loss = train_loss_dict["total_loss"]
             total_train_loss.backward()
@@ -533,8 +499,8 @@ def train(
         avg_epoch_train_loss = train_loss_sum / n_train_batches
         losses[epoch] = {"train_loss": float(avg_epoch_train_loss)}
 
-        validate_every = 10000
-        visualize_every = 5
+        validate_every = 1000
+        visualize_every = 500
 
         # Run validation every 10 epochs
         if epoch % validate_every == 0:

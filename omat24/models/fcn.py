@@ -5,11 +5,13 @@ import torch.nn as nn
 class MetaFCNModels:
     def __init__(self, vocab_size=119, use_factorized=False):
         self.configurations = [
-            {"embedding_dim": 4, "hidden_dim": 4, "depth": 2},
-            # {"embedding_dim": 8, "hidden_dim": 8, "depth": 3},
+            # {"embedding_dim": 1, "hidden_dim": 1, "depth": 1},  # 148 params
+            # {"embedding_dim": 4, "hidden_dim": 4, "depth": 2},
+            {"embedding_dim": 6, "hidden_dim": 6, "depth": 4},  # 1060 params
             # {"embedding_dim": 8, "hidden_dim": 16, "depth": 3},
             # {"embedding_dim": 16, "hidden_dim": 32, "depth": 3},
-            # {"embedding_dim": 32, "hidden_dim": 32, "depth": 4},
+            {"embedding_dim": 32, "hidden_dim": 32, "depth": 4},  # 9770 params
+            {"embedding_dim": 64, "hidden_dim": 64, "depth": 20},  # 98378 params
         ]
         self.vocab_size = vocab_size
         self.use_factorized = use_factorized
@@ -79,7 +81,7 @@ class FCNModel(nn.Module):
         # Calculate number of parameters
         self.num_params = sum(p.numel() for p in self.parameters())
 
-    def forward(self, atomic_numbers, positions, distance_matrix=None):
+    def forward(self, atomic_numbers, positions, distance_matrix=None, mask=None):
         """
         Args:
             atomic_numbers: Tensor of shape [batch_size, vocab_size]
@@ -92,7 +94,7 @@ class FCNModel(nn.Module):
             stress: Tensor of shape [batch_size, 6]
         """
         # Create a mask for valid atoms (non-padded)
-        mask = (atomic_numbers != 0).unsqueeze(-1)  # Shape: [batch_size, vocab_size, 1]
+        new_mask = mask.unsqueeze(-1)  # Shape: [batch_size, vocab_size, 1]
 
         # Embed atomic numbers
         atomic_embeddings = self.embedding(
@@ -119,16 +121,16 @@ class FCNModel(nn.Module):
 
         # Predict forces
         forces = self.force_output(x)  # [batch_size, vocab_size, 3]
-        forces = forces * mask.float()  # Mask padded atoms
+        forces = forces * new_mask.float()  # Mask padded atoms
 
         # Predict per-atom energy contributions and sum
         energy_contrib = self.energy_output(x).squeeze(-1)  # [batch_size, vocab_size]
-        energy_contrib = energy_contrib * mask.squeeze(-1).float()
+        energy_contrib = energy_contrib * new_mask.squeeze(-1).float()
         energy = energy_contrib.sum(dim=1)  # [batch_size]
 
         # Predict per-atom stress contributions and sum
         stress_contrib = self.stress_output(x)  # [batch_size, vocab_size, 6]
-        stress_contrib = stress_contrib * mask.float()
+        stress_contrib = stress_contrib * new_mask.float()
         stress = stress_contrib.sum(dim=1)  # [batch_size, 6]
 
         return forces, energy, stress
