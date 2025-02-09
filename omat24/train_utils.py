@@ -1,9 +1,9 @@
 # External
 import torch
 import json
+import math
 import torch.nn as nn
 from torch.utils.tensorboard import SummaryWriter
-import math
 
 # Internal
 from loss import compute_loss
@@ -48,7 +48,6 @@ def partial_json_log(
     if data_size_key not in experiment_results:
         experiment_results[data_size_key] = []
 
-    # Check if this run_entry is already in the list for data_size_key
     found_existing = False
     for existing_run in experiment_results[data_size_key]:
         if existing_run.get("model_name", "") == run_entry["model_name"]:
@@ -102,7 +101,7 @@ def partial_json_log(
                     ],
                 }
 
-            if loss_entry:  # Only add if there's at least one non-NaN value
+            if loss_entry:  # Only add if there's something valid
                 existing_run["losses"][str(step)] = loss_entry
             break
 
@@ -115,7 +114,6 @@ def partial_json_log(
             "losses": {},
         }
 
-        # Add initial samples if they exist
         if samples:
             for split in ["train", "val"]:
                 for sample in samples[split]:
@@ -131,14 +129,12 @@ def partial_json_log(
                         }
                     )
 
-        # Add initial loss entry
         loss_entry = {}
         if not math.isnan(avg_train_loss):
             loss_entry["train_loss"] = float(avg_train_loss)
         if not math.isnan(val_loss):
             loss_entry["val_loss"] = float(val_loss)
 
-        # Add predictions if samples exist
         if samples:
             loss_entry["pred"] = {
                 "train": [
@@ -159,7 +155,7 @@ def partial_json_log(
                 ],
             }
 
-        if loss_entry:  # Only add if there's at least one non-NaN value
+        if loss_entry:
             new_entry["losses"][str(step)] = loss_entry
 
         experiment_results[data_size_key].append(new_entry)
@@ -169,41 +165,33 @@ def partial_json_log(
 
 
 def tensorboard_log(
-    loss_dict: dict, train: bool, writer: SummaryWriter, epoch, tensorboard_prefix: str
+    loss_value, train: bool, writer: SummaryWriter, epoch: int, tensorboard_prefix: str
 ):
     """
-    Log losses to TensorBoard.
-
-    Args:
-        train_loss_dict (dict): Dictionary of training losses.
-        val_loss_dict (dict): Dictionary of validation losses.
-        writer (SummaryWriter): TensorBoard SummaryWriter object.
-        step (int): Current training step.
-        tensorboard_prefix (str): Prefix for naming the logs in TensorBoard.
+    Log a single loss value to TensorBoard.
     """
-    if train:
-        log_var_name_prefix = "train"
-    else:
-        log_var_name_prefix = "val"
+    if writer is None:
+        return
 
-    for loss_name, loss_value in loss_dict.items():
-        writer.add_scalar(
-            f"{tensorboard_prefix}/{log_var_name_prefix}_{loss_name}",
-            loss_value,
-            global_step=epoch,
-        )
+    if train:
+        tag = f"{tensorboard_prefix}/train_loss"
+    else:
+        tag = f"{tensorboard_prefix}/val_loss"
+
+    writer.add_scalar(tag, loss_value, global_step=epoch)
 
 
 def run_validation(
     model,
     val_loader,
     device,
-    writer,
-    epoch: int,
-    tensorboard_prefix: str,
-    num_samples=3,
+    writer=None,
+    epoch=0,
+    tensorboard_prefix="model",
 ):
-    """Compute and return the average validation loss."""
+    """
+    Compute and return the average validation loss, optionally logging to TensorBoard.
+    """
     model.to(device)
     model.eval()
     total_val_loss = 0.0
@@ -213,6 +201,7 @@ def run_validation(
         for batch in val_loader:
             atomic_numbers = batch["atomic_numbers"].to(device)
             positions = batch["positions"].to(device)
+            factorized_distances = batch["factorized_matrix"].to(device)
             true_forces = batch["forces"].to(device)
             true_energy = batch["energy"].to(device)
             true_stress = batch["stress"].to(device)
@@ -225,8 +214,7 @@ def run_validation(
 
             natoms = mask.sum(dim=1)
 
-            # Modified compute_loss to return total_loss and a dict of sub-losses
-            val_loss_dict = compute_loss(
+            val_loss = compute_loss(
                 pred_forces,
                 pred_energy,
                 pred_stress,
@@ -237,20 +225,23 @@ def run_validation(
                 device,
                 natoms=natoms,
             )
-            total_val_loss += val_loss_dict["total_loss"].item()
-
-            # Log validation loss to TensorBoard
-            tensorboard_log(
-                loss_dict=val_loss_dict,
-                train=False,
-                writer=writer,
-                epoch=epoch,
-                tensorboard_prefix=tensorboard_prefix,
-            )
+            total_val_loss += val_loss.item()
 
     if num_val_batches == 0:
-        return float("inf")
-    return total_val_loss / num_val_batches
+        average_val_loss = float("inf")
+    else:
+        average_val_loss = total_val_loss / num_val_batches
+
+    # Log to TensorBoard
+    tensorboard_log(
+        loss_value=average_val_loss,
+        train=False,
+        writer=writer,
+        epoch=epoch,
+        tensorboard_prefix=tensorboard_prefix,
+    )
+
+    return average_val_loss
 
 
 def collect_train_val_samples(
@@ -260,10 +251,9 @@ def collect_train_val_samples(
     Collect samples and predictions from both training and validation sets.
     Uses fixed indices for consistent visualization.
     """
-    model.eval()  # Set model to evaluation mode
+    model.eval()
     samples = {"train": [], "val": []}
 
-    # Helper function to process a single batch
     def process_batch(batch, device):
         idx = batch["idx"]
         symbols = batch["symbols"]
@@ -291,13 +281,11 @@ def collect_train_val_samples(
             pred_stress,
         )
 
-    # Get the underlying dataset from the DataLoader
     train_dataset = train_loader.dataset
     val_dataset = val_loader.dataset
 
-    # Process fixed samples
     with torch.no_grad():
-        # Process training samples
+        # Training samples
         for i in range(min(num_visualization_samples, len(train_dataset))):
             batch = {
                 k: torch.unsqueeze(v, 0) if isinstance(v, torch.Tensor) else v
@@ -338,7 +326,7 @@ def collect_train_val_samples(
                 }
             )
 
-        # Process validation samples
+        # Validation samples
         for i in range(min(num_visualization_samples, len(val_dataset))):
             batch = {
                 k: torch.unsqueeze(v, 0) if isinstance(v, torch.Tensor) else v
@@ -400,35 +388,21 @@ def train(
     num_visualization_samples=3,
 ):
     """
-    Train model with validation at epoch 0 and every 10 epochs.
-
-    Args:
-        model: PyTorch model
-        train_loader: DataLoader for training
-        val_loader: DataLoader for validation
-        optimizer: Optimizer
-        scheduler: Learning rate scheduler (or None)
-        pbar: A tqdm progress bar
-        device: Torch device (cuda, cpu, etc.)
-        patience: Early stopping patience
-        results_path, experiment_results, data_size_key, run_entry: For JSON logging
-        writer: TensorBoard SummaryWriter for logging
-        tensorboard_prefix: Prefix for naming the logs in TensorBoard
+    Train the model, log progress to JSON (optional) and TensorBoard (optional),
+    with validation at epoch 0 and then periodically.
     """
     model.to(device)
-    can_write_partial = all(
-        [results_path, experiment_results, data_size_key, run_entry]
-    )
+    can_write_partial = all([results_path, experiment_results, data_size_key, run_entry])
     losses = {}
 
     # Initial validation at epoch 0
-    val_loss, val_samples = run_validation(
+    val_loss = run_validation(
         model,
         val_loader,
         device,
-        writer,
-        epoch,
-        tensorboard_prefix,
+        writer=writer,
+        epoch=0,
+        tensorboard_prefix=tensorboard_prefix,
     )
     losses[0] = {"val_loss": float(val_loss)}
     if can_write_partial:
@@ -442,13 +416,12 @@ def train(
             results_path,
         )
 
-    # Early stopping setup
     best_val_loss = val_loss
     epochs_since_improvement = 0
     last_val_loss = val_loss
-    samples = None  # For visualization
+    samples = None
 
-    # Training loop starting from epoch 1
+    # Training loop
     for epoch in range(1, len(pbar) + 1):
         model.train()
         train_loss_sum = 0.0
@@ -457,6 +430,7 @@ def train(
         for batch_idx, batch in enumerate(train_loader):
             atomic_numbers = batch["atomic_numbers"].to(device)
             positions = batch["positions"].to(device)
+            factorized_distances = batch["factorized_matrix"].to(device)
             true_forces = batch["forces"].to(device)
             true_energy = batch["energy"].to(device)
             true_stress = batch["stress"].to(device)
@@ -469,8 +443,7 @@ def train(
             )
 
             natoms = mask.sum(dim=1)
-
-            train_loss_dict = compute_loss(
+            train_loss = compute_loss(
                 pred_forces,
                 pred_energy,
                 pred_stress,
@@ -481,12 +454,10 @@ def train(
                 device,
                 natoms=natoms,
             )
-            total_train_loss = train_loss_dict["total_loss"]
-            total_train_loss.backward()
+            train_loss.backward()
             optimizer.step()
-            train_loss_sum += total_train_loss.item()
 
-            # Update running average
+            train_loss_sum += train_loss.item()
             current_avg_loss = train_loss_sum / (batch_idx + 1)
             pbar.set_description(
                 f"train_loss={current_avg_loss:.2f} val_loss={last_val_loss:.2f}"
@@ -495,69 +466,46 @@ def train(
         if scheduler is not None:
             scheduler.step()
 
-        # Average training loss for the epoch
         avg_epoch_train_loss = train_loss_sum / n_train_batches
         losses[epoch] = {"train_loss": float(avg_epoch_train_loss)}
 
-        validate_every = 1000
-        visualize_every = 500
-
-        # Run validation every 10 epochs
-        if epoch % validate_every == 0:
-            val_loss = run_validation(model, val_loader, device)
-            last_val_loss = val_loss
-            losses[epoch]["val_loss"] = float(val_loss)
-            val_loss_to_log = val_loss
-
-            # Early stopping check
-            if val_loss < best_val_loss:
-                best_val_loss = val_loss
-                epochs_since_improvement = 0
-            else:
-                epochs_since_improvement += 1
-                if epochs_since_improvement >= patience:
-                    print(f"Early stopping triggered at epoch {epoch}")
-                    return model, losses
-
-        if epoch % visualize_every == 0:
-            samples = collect_train_val_samples(
-                model,
-                train_loader,
-                val_loader,
-                device,
-                num_visualization_samples,
-            )
-
-        if can_write_partial:
-            partial_json_log(
-                experiment_results,
-                data_size_key,
-                run_entry,
-                epoch,
-                avg_epoch_train_loss,
-                val_loss if epoch % validate_every == 0 else float("nan"),
-                results_path,
-                samples if epoch % visualize_every == 0 else None,
-            )
-
-        # === TensorBoard logging (once per epoch) ===
-        # Log train loss to TensorBoard
+        # === TensorBoard logging for training loss (epoch-level) ===
         tensorboard_log(
-            loss_dict=train_loss_dict,
+            loss_value=avg_epoch_train_loss,
             train=True,
             writer=writer,
             epoch=epoch,
             tensorboard_prefix=tensorboard_prefix,
         )
 
-        # Log layer norms for *all* parameters
-        for name, param in model.named_parameters():
-            writer.add_scalar(
-                f"{tensorboard_prefix}/LayerNorm/{name}",
-                param.data.norm().item(),
-                global_step=epoch,
+        # Log parameter norms if requested
+        if writer is not None:
+            for name, param in model.named_parameters():
+                if param is not None and param.requires_grad:
+                    writer.add_scalar(
+                        f"{tensorboard_prefix}/LayerNorm/{name}",
+                        param.data.norm().item(),
+                        global_step=epoch,
+                    )
+
+        validate_every = 1000
+        visualize_every = 500
+
+        # Validation check
+        if epoch % validate_every == 0:
+            val_loss = run_validation(
+                model,
+                val_loader,
+                device,
+                writer=writer,
+                epoch=epoch,
+                tensorboard_prefix=tensorboard_prefix,
             )
+            last_val_loss = val_loss
+            losses[epoch]["val_loss"] = float(val_loss)
 
-        pbar.update(1)
-
-    return model, losses
+            if val_loss < best_val_loss:
+                best_val_loss = val_loss
+                epochs_since_improvement = 0
+            else:
+     
