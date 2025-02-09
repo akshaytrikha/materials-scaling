@@ -61,7 +61,7 @@ def run_naive_k(model, ase_dataset, force_magnitude, batch_size=256, device="cpu
         true_forces = torch.tensor(np.array(padded_true_forces), device=device)
 
         # Compute loss for the current batch
-        batch_loss = compute_loss(
+        batch_loss_dict = compute_loss(
             pred_forces,
             pred_energies,
             pred_stresses,
@@ -73,7 +73,7 @@ def run_naive_k(model, ase_dataset, force_magnitude, batch_size=256, device="cpu
             natoms=natoms,
         )
 
-        total_loss += batch_loss
+        total_loss += batch_loss_dict["total_loss"]
 
     average_loss = total_loss / num_batches
 
@@ -106,7 +106,7 @@ def run_naive_zero(ase_dataset, force_magnitude):
         pred_stresses = torch.zeros_like(true_stress)
 
         # Compute loss
-        loss = compute_loss(
+        loss_dict = compute_loss(
             pred_forces.unsqueeze(0),  # Add batch dimension
             pred_energies.unsqueeze(0),
             pred_stresses.unsqueeze(0),
@@ -118,7 +118,7 @@ def run_naive_zero(ase_dataset, force_magnitude):
             natoms=natoms,
         )
 
-        total_loss += loss.item()
+        total_loss += loss_dict["total_loss"].item()
 
     average_loss = total_loss / len(ase_dataset)
     print(f"Average Loss Per Structure: {average_loss}")
@@ -165,7 +165,7 @@ def run_naive_mean(model, ase_dataset, batch_size=256, device="cpu"):
         true_forces = torch.tensor(np.array(padded_true_forces), device=device)
 
         # Compute loss for the current batch
-        batch_loss = compute_loss(
+        batch_loss_dict = compute_loss(
             pred_forces,
             pred_energies,
             pred_stresses,
@@ -177,7 +177,7 @@ def run_naive_mean(model, ase_dataset, batch_size=256, device="cpu"):
             natoms=natoms,
         )
 
-        total_loss += batch_loss
+        total_loss += batch_loss_dict["total_loss"]
 
     average_loss = total_loss / num_batches
     print(f"NaiveMeanModel Average Loss Per Batch: {average_loss.item()}")

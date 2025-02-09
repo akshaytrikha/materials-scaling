@@ -39,8 +39,7 @@ if __name__ == "__main__":
     args = get_args()
     log = not args.no_log
 
-    # Create a TensorBoard SummaryWriter
-    # (log_dir can be customized; here we use a timestamped folder in "runs/")
+    # For TensorBoard
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     tb_logdir = os.path.join("runs", f"exp_{timestamp}")
     writer = SummaryWriter(log_dir=tb_logdir)
@@ -80,12 +79,11 @@ if __name__ == "__main__":
             use_factorized=use_factorize,
         )
 
-    batch_size = args.batch_size[0]
-    lr = args.lr[0]
-    num_epochs = args.epochs
-    experiment_results = {}
+    
 
     # Create results path and initialize file if logging is enabled
+    experiment_results = {}
+
     results_path = Path("results") / f"experiments_{timestamp}.json"
     if log:
         Path("results").mkdir(exist_ok=True)
@@ -95,6 +93,7 @@ if __name__ == "__main__":
     else:
         print("\nLogging disabled. No experiment log will be saved.")
 
+    # Train
     for data_fraction in args.data_fractions:
         print(f"\nData fraction: {data_fraction}")
         for model_idx, model in enumerate(meta_models):

@@ -60,7 +60,7 @@ def run_validation(model, loader, device, scale_coefficients=True):
             natoms = mask.sum(dim=1)
 
             # Compute loss with or without scaling coefficients
-            val_loss = compute_loss(
+            val_loss_dict = compute_loss(
                 pred_forces=pred_forces,
                 pred_energy=pred_energy,
                 pred_stress=pred_stress,
@@ -74,7 +74,7 @@ def run_validation(model, loader, device, scale_coefficients=True):
                 force_magnitude=False,
                 scale_coefficients=scale_coefficients,  # Control scaling
             )
-            total_val_loss += val_loss.item()
+            total_val_loss += val_loss_dict["total_loss"].item()
 
     if num_val_batches == 0:
         return float("inf")

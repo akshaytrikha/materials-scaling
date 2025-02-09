@@ -233,7 +233,7 @@ def run_validation(model, val_loader, device):
             )
 
             natoms = mask.sum(dim=1)
-            val_loss = compute_loss(
+            val_loss_dict = compute_loss(
                 pred_forces,
                 pred_energy,
                 pred_stress,
@@ -244,7 +244,7 @@ def run_validation(model, val_loader, device):
                 device,
                 natoms=natoms,
             )
-            total_val_loss += val_loss.item()
+            total_val_loss += val_loss_dict["total_loss"].item()
 
     if num_val_batches == 0:
         return float("inf")
@@ -482,7 +482,7 @@ def train(
             )
 
             natoms = mask.sum(dim=1)
-            train_loss = compute_loss(
+            train_loss_dict = compute_loss(
                 pred_forces,
                 pred_energy,
                 pred_stress,
@@ -493,10 +493,11 @@ def train(
                 device,
                 natoms=natoms,
             )
-            train_loss.backward()
+            total_train_loss = train_loss_dict["total_loss"]
+            total_train_loss.backward()
             optimizer.step()
 
-            train_loss_sum += train_loss.item()
+            train_loss_sum += total_train_loss.item()
             current_avg_loss = train_loss_sum / (batch_idx + 1)
 
             pbar.set_description(
