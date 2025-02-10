@@ -2,6 +2,7 @@
 import torch
 import json
 import math
+import wandb
 
 # Internal
 from loss import compute_loss
@@ -454,6 +455,15 @@ def train(
                 device,
                 num_visualization_samples,
             )
+
+        # Log metrics
+        wandb.log(
+            {
+                "epoch": epoch,
+                "train_loss": avg_epoch_train_loss,
+                "val_loss": val_loss if epoch % validate_every == 0 else None,
+            }
+        )
 
         if can_write_partial:
             partial_json_log(

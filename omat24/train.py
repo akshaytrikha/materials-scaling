@@ -10,6 +10,7 @@ import math
 from datetime import datetime
 from tqdm import tqdm
 import subprocess
+import wandb
 
 # Internal
 from data import OMat24Dataset, get_dataloaders
@@ -73,9 +74,10 @@ if __name__ == "__main__":
         )
 
     experiment_results = {}
-
+    
     # Create results path and initialize file if logging is enabled
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    group_name = f"{args.architecture}_{timestamp}"  # Group name for wandb
     results_path = Path("results") / f"experiments_{timestamp}.json"
     if log:
         Path("results").mkdir(exist_ok=True)
@@ -137,7 +139,32 @@ if __name__ == "__main__":
                 with open(results_path, "w") as f:
                     json.dump(experiment_results, f, indent=4)
 
+            # Initialize new wandb run for this model
+            wandb.init(
+                project="omat24",
+                name=model_name,
+                group=group_name,
+                config={
+                    "architecture": args.architecture,
+                    "data_fraction": data_fraction,
+                    "dataset_size": dataset_size,
+                    "num_params": model.num_params,
+                    "batch_size": batch_size,
+                    "learning_rate": lr,
+                    "num_epochs": num_epochs,
+                    "seed": SEED,
+                },
+            )
+            # Define metrics for this run
+            if torch.cuda.is_available():
+                wandb.define_metric("gpu_utilization", step_metric="epoch")
+                wandb.define_metric("gpu_memory_allocated", step_metric="epoch")
+                wandb.define_metric("train_loss", step_metric="epoch")
+                wandb.define_metric("val_loss", step_metric="epoch")
+                wandb.define_metric("learning_rate", step_metric="epoch")
+
             pbar = tqdm(range(num_epochs + 1))
+            
             trained_model, losses = train(
                 model=model,
                 train_loader=train_loader,
@@ -165,6 +192,9 @@ if __name__ == "__main__":
                 checkpoint_path,
             )
             pbar.close()
+
+            # Finish this wandb run
+            wandb.finish()
 
     print(
         f"\nTraining completed. {'Results continuously saved to ' + str(results_path) if log else 'No experiment log was written.'}"
