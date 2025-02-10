@@ -7,6 +7,38 @@ import math
 from loss import compute_loss
 
 
+def forward_pass(model, batch, architecture, device):
+    """"""
+    if architecture in ["FCN", "Transformer"]:
+        atomic_numbers = batch["atomic_numbers"].to(device)
+        positions = batch["positions"].to(device)
+        factorized_distances = batch["factorized_matrix"].to(device)
+        true_forces = batch["forces"].to(device)
+        true_energy = batch["energy"].to(device)
+        true_stress = batch["stress"].to(device)
+        mask = atomic_numbers != 0
+        natoms = mask.sum(dim=1)
+
+        pred_forces, pred_energy, pred_stress = model(
+            atomic_numbers, positions, factorized_distances, mask
+        )
+    elif architecture == "SchNet":
+        mask = None
+        natoms = batch.natoms
+        pred_forces, pred_energy, pred_stress = model(batch)
+
+    return (
+        pred_forces,
+        pred_energy,
+        pred_stress,
+        true_forces,
+        true_energy,
+        true_stress,
+        mask,
+        natoms
+    )
+
+
 def partial_json_log(
     experiment_results,
     data_size_key,
@@ -166,7 +198,7 @@ def partial_json_log(
         json.dump(experiment_results, f)
 
 
-def run_validation(model, val_loader, device):
+def run_validation(model, val_loader, architecture, device):
     """Compute and return the average validation loss."""
     model.to(device)
     model.eval()
@@ -175,21 +207,17 @@ def run_validation(model, val_loader, device):
 
     with torch.no_grad():
         for batch in val_loader:
-            # print(batch)
-            atomic_numbers = batch["atomic_numbers"].to(device)
-            positions = batch["positions"].to(device)
-            factorized_distances = batch["factorized_matrix"].to(device)
-            true_forces = batch["forces"].to(device)
-            true_energy = batch["energy"].to(device)
-            true_stress = batch["stress"].to(device)
+            (
+                pred_forces,
+                pred_energy,
+                pred_stress,
+                true_forces,
+                true_energy,
+                true_stress,
+                mask,
+                natoms
+            ) = forward_pass(model, batch, architecture, device)
 
-            mask = atomic_numbers != 0
-
-            pred_forces, pred_energy, pred_stress = model(
-                atomic_numbers, positions, factorized_distances, mask
-            )
-
-            natoms = mask.sum(dim=1)
             val_loss = compute_loss(
                 pred_forces,
                 pred_energy,
@@ -199,7 +227,7 @@ def run_validation(model, val_loader, device):
                 true_stress,
                 mask,
                 device,
-                natoms=natoms,
+                natoms,
             )
             total_val_loss += val_loss.item()
 
@@ -344,6 +372,7 @@ def train(
     optimizer,
     scheduler,
     pbar,
+    architecture,
     device,
     patience=50,
     results_path=None,
@@ -360,7 +389,8 @@ def train(
     losses = {}
 
     # Initial validation at epoch 0
-    val_loss = run_validation(model, val_loader, device)
+    # val_loss = run_validation(model, val_loader, device)
+    val_loss = -1
     losses[0] = {"val_loss": float(val_loss)}
     if can_write_partial:
         partial_json_log(
@@ -386,21 +416,18 @@ def train(
         n_train_batches = len(train_loader)
 
         for batch_idx, batch in enumerate(train_loader):
-            atomic_numbers = batch["atomic_numbers"].to(device)
-            positions = batch["positions"].to(device)
-            factorized_distances = batch["factorized_matrix"].to(device)
-            true_forces = batch["forces"].to(device)
-            true_energy = batch["energy"].to(device)
-            true_stress = batch["stress"].to(device)
-
-            mask = atomic_numbers != 0
-
             optimizer.zero_grad()
-            pred_forces, pred_energy, pred_stress = model(
-                atomic_numbers, positions, factorized_distances, mask
-            )
+            (
+                pred_forces,
+                pred_energy,
+                pred_stress,
+                true_forces,
+                true_energy,
+                true_stress,
+                mask,
+                natoms
+            ) = forward_pass(model, batch, architecture, device)
 
-            natoms = mask.sum(dim=1)
             train_loss = compute_loss(
                 pred_forces,
                 pred_energy,
@@ -410,7 +437,7 @@ def train(
                 true_stress,
                 mask,
                 device,
-                natoms=natoms,
+                natoms,
             )
             train_loss.backward()
             optimizer.step()

@@ -240,8 +240,8 @@ class SchNet(nn.Module):
         self.std = std
         self.device = device
 
-        # Embedding for atomic numbers (assumes atomic numbers < 100)
-        self.embedding = nn.Embedding(100, hidden_channels)
+        # Embedding for atomic numbers
+        self.embedding = nn.Embedding(119, hidden_channels)
         self.embedding.to(device)
 
         # Radial basis function expansion for distances
@@ -286,6 +286,7 @@ class SchNet(nn.Module):
         Returns:
             energy: Tensor of shape [num_molecules] representing the predicted energy.
             forces: Tensor of shape [N_atoms, 3] representing the negative gradient of energy.
+            stress: Tensor of shape [num_molecules, 6] representing the predicted stress.
         """
         # Extract atomic numbers and positions
         if isinstance(data, dict):
@@ -334,5 +335,8 @@ class SchNet(nn.Module):
         # Compute forces as the negative gradient of energy with respect to positions
         forces = - torch.autograd.grad(energy.sum(), pos, create_graph=True)[0]
 
-        return forces, energy
+        # Dummy stress tensor
+        stress = torch.zeros((energy.shape[0], 6), device=self.device)
+
+        return forces, energy, stress
 

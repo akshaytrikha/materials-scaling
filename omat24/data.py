@@ -191,6 +191,7 @@ class OMat24Dataset(Dataset):
                 stress=stress,
             )
             sample.natoms = torch.tensor(len(atoms))
+            sample.postiions = positions
             return sample
         else:
             factorized_matrix = factorize_matrix(
