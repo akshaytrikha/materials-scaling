@@ -99,18 +99,18 @@ def train(
         n_train_batches = len(train_loader)
 
         for batch_idx, batch in enumerate(train_loader):
-            # Debug print for first batch of first epoch
-            if epoch == 1 and batch_idx == 0:
-                print(f"Batch tensors device check:")
-                print(f"atomic_numbers device: {batch['atomic_numbers'].device}")
-                print(f"positions device: {batch['positions'].device}")
-                print(f"forces device: {batch['forces'].device}")
             atomic_numbers = batch["atomic_numbers"].to(device)
             positions = batch["positions"].to(device)
             factorized_distances = batch["factorized_matrix"].to(device)
             true_forces = batch["forces"].to(device)
             true_energy = batch["energy"].to(device)
             true_stress = batch["stress"].to(device)
+            # Debug print for first batch of first epoch
+            if epoch == 1 and batch_idx == 0:
+                print(f"Batch tensors device check:")
+                print(f"atomic_numbers device: {batch['atomic_numbers'].device}")
+                print(f"positions device: {batch['positions'].device}")
+                print(f"forces device: {batch['forces'].device}")
 
             mask = atomic_numbers != 0
 
