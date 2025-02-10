@@ -8,7 +8,7 @@ from loss import compute_loss
 from log_utils import partial_json_log, collect_train_val_samples
 
 
-def tensorboard_log(loss_value, train, writer, epoch, tensorboard_prefix):
+def tensorboard_log(loss_value, loss_type, train, writer, epoch, tensorboard_prefix):
     """
     Log a loss value to TensorBoard.
 
@@ -24,7 +24,7 @@ def tensorboard_log(loss_value, train, writer, epoch, tensorboard_prefix):
     """
     if writer is None:
         return
-    tag = f"{tensorboard_prefix}/{'train' if train else 'val'}_loss"
+    tag = f"{tensorboard_prefix}/{'train' if train else 'val'}_{loss_type}_loss"
     writer.add_scalar(tag, loss_value, global_step=epoch)
 
 
@@ -130,13 +130,7 @@ def train(
     val_loss = run_validation(model, val_loader, device)
     losses[0] = {"val_loss": float(val_loss)}
     if writer is not None:
-        tensorboard_log(
-            val_loss,
-            train=False,
-            writer=writer,
-            epoch=0,
-            tensorboard_prefix=tensorboard_prefix,
-        )
+        tensorboard_log(val_loss, '',train=False, writer=writer, epoch=0, tensorboard_prefix=tensorboard_prefix)
 
     # Write partial JSON if everything is provided
     if can_write_partial:
@@ -163,6 +157,11 @@ def train(
     for epoch in range(1, len(pbar) + 1):
         model.train()
         train_loss_sum = 0.0
+        energy_loss_sum = 0.0
+        force_loss_sum = 0.0
+        stress_iso_loss_sum = 0.0
+        stress_aniso_loss_sum = 0.0
+
         n_train_batches = len(train_loader)
 
         for batch_idx, batch in enumerate(train_loader):
@@ -197,6 +196,10 @@ def train(
             optimizer.step()
 
             train_loss_sum += total_train_loss.item()
+            energy_loss_sum += train_loss_dict["energy_loss"].item()
+            force_loss_sum += train_loss_dict["force_loss"].item()
+            stress_iso_loss_sum += train_loss_dict["stress_iso_loss"].item()
+            stress_aniso_loss_sum += train_loss_dict["stress_aniso_loss"].item()
             current_avg_loss = train_loss_sum / (batch_idx + 1)
 
             pbar.set_description(
@@ -208,23 +211,38 @@ def train(
             scheduler.step()
 
         avg_epoch_train_loss = train_loss_sum / n_train_batches
+        avg_epoch_energy_loss = energy_loss_sum / n_train_batches
+        avg_epoch_force_loss = force_loss_sum / n_train_batches
+        avg_epoch_stress_iso_loss = stress_iso_loss_sum / n_train_batches
+        avg_epoch_stress_aniso_loss = stress_aniso_loss_sum / n_train_batches
+
         losses[epoch] = {"train_loss": float(avg_epoch_train_loss)}
 
         # TensorBoard logging for training loss
         if writer is not None:
-            tensorboard_log(
-                avg_epoch_train_loss,
-                train=True,
-                writer=writer,
-                epoch=epoch,
-                tensorboard_prefix=tensorboard_prefix,
-            )
             # Log parameter norms (example usage)
+            tensorboard_log(avg_epoch_train_loss, '', train=True, writer=writer, epoch=epoch, tensorboard_prefix=tensorboard_prefix)
+            tensorboard_log(avg_epoch_energy_loss, 'energy', train=True, writer=writer, epoch=epoch, tensorboard_prefix=tensorboard_prefix)
+            tensorboard_log(avg_epoch_force_loss, 'force', train=True, writer=writer, epoch=epoch, tensorboard_prefix=tensorboard_prefix)
+            tensorboard_log(avg_epoch_stress_iso_loss, 'stress_iso', train=True, writer=writer, epoch=epoch, tensorboard_prefix=tensorboard_prefix)
+            tensorboard_log(avg_epoch_stress_aniso_loss, 'stress_aniso', train=True, writer=writer, epoch=epoch, tensorboard_prefix=tensorboard_prefix)
+            # Simple gradient logging for debugging (skip bias layers)
             for name, param in model.named_parameters():
-                if param is not None and param.requires_grad:
+                if (param is not None and param.requires_grad and param.grad is not None 
+                    and not name.endswith('bias')):  # Skip bias layers
+                    # Log mean gradient - key indicator for vanishing/exploding gradients
+                    grad_mean = param.grad.abs().mean().item()
                     writer.add_scalar(
-                        f"{tensorboard_prefix}/LayerNorm/{name}",
-                        param.data.norm().item(),
+                        f"{tensorboard_prefix}/Grads/{name}",
+                        grad_mean,
+                        global_step=epoch,
+                    )
+                    
+                    # Log gradient-to-weight ratio - indicates if updates are well-scaled
+                    grad_to_weight = (param.grad.abs().mean() / (param.data.abs().mean() + 1e-8)).item()
+                    writer.add_scalar(
+                        f"{tensorboard_prefix}/G2W/{name}",
+                        grad_to_weight,
                         global_step=epoch,
                     )
 
