@@ -22,4 +22,6 @@ omat24/results
 *atom_info.csv
 *-checkpoint.ipynb
 context.txt
-runs
+runs/
+omat24/colab-scaling.ipynb
+omat24/scaling-laws.ipynb

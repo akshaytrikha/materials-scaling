@@ -95,6 +95,8 @@ def train(
     writer=None,
     tensorboard_prefix="model",
     num_visualization_samples=3,
+    validate_every=500,
+    visualize_every=500
 ):
     """
     Train model with validation at epoch 0 and every 'validate_every' epochs.

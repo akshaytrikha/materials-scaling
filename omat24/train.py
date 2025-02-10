@@ -162,6 +162,8 @@ if __name__ == "__main__":
                 writer=writer,
                 tensorboard_prefix=model_name,
                 num_visualization_samples=args.num_visualization_samples,
+                validate_every=args.val_every,
+                visualize_every=args.vis_every
             )
 
             # --- Save checkpoint ---
