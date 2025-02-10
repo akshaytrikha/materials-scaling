@@ -22,8 +22,9 @@ class TestGetDataloaders(unittest.TestCase):
         """Test if the dataset is split into correct train and validation sizes."""
         train_data_fraction = 0.01  # Use 1% of the full dataset to train with
         val_data_fraction = 0.1
-        train_size_expected = int(len(dataset) * train_data_fraction)
+        # We first reserve 10% of the dataset for validation, and then use 1% of the remaining data for training
         val_size_expected = int(len(dataset) * val_data_fraction)
+        train_size_expected = int((len(dataset) - val_size_expected) * train_data_fraction)
 
         train_loader, val_loader = get_dataloaders(
             dataset=dataset,

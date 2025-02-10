@@ -19,6 +19,26 @@ from data_utils import (
 )
 
 
+def split_dataset(dataset, train_data_fraction, val_data_fraction, seed):
+    """Splits a dataset into training and validation subsets."""
+    dataset_size = len(dataset)
+    val_size = int(dataset_size * val_data_fraction)
+    remaining_size = dataset_size - val_size
+    train_size = max(1, int(remaining_size * train_data_fraction))
+
+    random.seed(seed)
+    indices = list(range(dataset_size))
+    random.shuffle(indices)
+
+    val_indices = indices[:val_size]
+    train_indices = indices[val_size : val_size + train_size]
+
+    train_subset = Subset(dataset, indices=train_indices)
+    val_subset = Subset(dataset, indices=val_indices)
+
+    return train_subset, val_subset, train_indices, val_indices
+
+
 def get_dataloaders(
     dataset: Dataset,
     train_data_fraction: float,
@@ -52,20 +72,9 @@ def get_dataloaders(
             - train_loader (DataLoader): DataLoader for the training subset.
             - val_loader (DataLoader): DataLoader for the validation subset.
     """
-    dataset_size = len(dataset)
-    val_size = int(dataset_size * val_data_fraction)
-    remaining_size = dataset_size - val_size
-    train_size = max(1, int(remaining_size * train_data_fraction))
-
-    random.seed(seed)
-    indices = list(range(dataset_size))
-    random.shuffle(indices)
-
-    val_indices = indices[:val_size]
-    train_indices = indices[val_size : val_size + train_size]
-
-    train_subset = Subset(dataset, indices=train_indices)
-    val_subset = Subset(dataset, indices=val_indices)
+    train_subset, val_subset, train_indices, val_indices = split_dataset(
+        dataset, train_data_fraction, val_data_fraction, seed
+    )
 
     # Select the appropriate collate function
     if batch_padded:
@@ -126,7 +135,9 @@ class OMat24Dataset(Dataset):
         atoms: ase.atoms.Atoms = self.dataset.get_atoms(idx)
 
         # Extract atomic numbers and positions
-        symbols = atoms.symbols.get_chemical_formula()  # Keep as string, no tensor conversion needed
+        symbols = (
+            atoms.symbols.get_chemical_formula()
+        )  # Keep as string, no tensor conversion needed
         atomic_numbers = atoms.get_atomic_numbers()  # Shape: (N_atoms,)
         positions = atoms.get_positions()  # Shape: (N_atoms, 3)
 
