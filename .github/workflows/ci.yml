@@ -14,9 +14,17 @@ jobs:
         uses: actions/setup-python@v2
         with:
           python-version: '3.11.8'
+      - name: Cache pip packages
+        uses: actions/cache@v2
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
       - name: Install dependencies
         run: |
           pip install -r requirements.txt
-          pip install pytest
-      - name: Run test_dataloader.py
+          pip install torch-scatter -f https://data.pyg.org/whl/torch-2.4.0+cpu.html
+          cd omat24
+      - name: Run tests
         run: pytest test_dataloader.py
