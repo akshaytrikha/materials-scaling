@@ -28,3 +28,4 @@ jobs:
       - name: Run tests
         run: 
           pytest omat24/test_dataloader.py
+          pytest omat24/test_fcn.py
