@@ -412,6 +412,8 @@ def train(
                 device,
                 natoms=natoms,
             )
+            max_norm = 1.0  # Adjust this value based on your needs
+            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm)
             train_loss.backward()
             optimizer.step()
 
@@ -427,7 +429,7 @@ def train(
         avg_epoch_train_loss = train_loss_sum / n_train_batches
         losses[epoch] = {"train_loss": float(avg_epoch_train_loss)}
 
-        validate_every = 1000
+        validate_every = 5000
         visualize_every = 500
 
         # Run validation every 10 epochs
