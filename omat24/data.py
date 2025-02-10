@@ -95,6 +95,9 @@ def get_dataloaders(
                 batch, dataset.max_n_atoms
             )
 
+        # Determine if we should use pin_memory
+        pin_memory = torch.cuda.is_available()
+
         # Create DataLoaders
         train_loader = DataLoader(
             train_subset,
@@ -102,6 +105,7 @@ def get_dataloaders(
             shuffle=True,
             collate_fn=collate_fn,
             num_workers=train_workers,
+            pin_memory=pin_memory,
         )
 
         val_loader = DataLoader(
@@ -110,6 +114,7 @@ def get_dataloaders(
             shuffle=False,  # Typically, shuffle=False for validation
             collate_fn=collate_fn,
             num_workers=val_workers,
+            pin_memory=pin_memory,
         )
 
     if return_indices:

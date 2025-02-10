@@ -64,6 +64,7 @@ def train(
     num_visualization_samples=3,
 ):
     """Train model with validation at epoch 0 and every 10 epochs."""
+    print(f"Training on device: {device}")
     model.to(device)
     can_write_partial = all(
         [results_path, experiment_results, data_size_key, run_entry]
