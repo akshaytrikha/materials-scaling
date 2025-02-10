@@ -9,6 +9,8 @@ import json
 import math
 from datetime import datetime
 from tqdm import tqdm
+from torch.utils.tensorboard import SummaryWriter
+import os
 import subprocess
 
 # Internal
@@ -37,10 +39,15 @@ if __name__ == "__main__":
     args = get_args()
     log = not args.no_log
 
+    # For TensorBoard
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    tb_logdir = os.path.join("runs", f"exp_{timestamp}")
+    writer = SummaryWriter(log_dir=tb_logdir)
+    print(f"TensorBoard logs will be saved to: {tb_logdir}")
+
     # Load dataset
     split_name = "val"
     dataset_name = "rattled-300-subsampled"
-
     dataset_path = Path(f"datasets/{split_name}/{dataset_name}")
     if not dataset_path.exists():
         download_dataset(dataset_name, split_name)
@@ -72,10 +79,9 @@ if __name__ == "__main__":
             use_factorized=use_factorize,
         )
 
+    # Create results path and initialize file if logging is enabled
     experiment_results = {}
 
-    # Create results path and initialize file if logging is enabled
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     results_path = Path("results") / f"experiments_{timestamp}.json"
     if log:
         Path("results").mkdir(exist_ok=True)
@@ -85,11 +91,13 @@ if __name__ == "__main__":
     else:
         print("\nLogging disabled. No experiment log will be saved.")
 
+    # Train
     for data_fraction in args.data_fractions:
         print(f"\nData fraction: {data_fraction}")
         for model_idx, model in enumerate(meta_models):
             print(
-                f"\nModel {model_idx + 1}/{len(meta_models)} is on device {DEVICE} and has {model.num_params} parameters"
+                f"\nModel {model_idx + 1}/{len(meta_models)} is on device {DEVICE} "
+                f"and has {model.num_params} parameters"
             )
 
             train_loader, val_loader = get_dataloaders(
@@ -151,11 +159,14 @@ if __name__ == "__main__":
                 experiment_results=experiment_results if log else None,
                 data_size_key=ds_key if log else None,
                 run_entry=run_entry if log else None,
+                writer=writer,
+                tensorboard_prefix=model_name,
                 num_visualization_samples=args.num_visualization_samples,
                 validate_every=args.val_every,
                 visualize_every=args.vis_every
             )
 
+            # --- Save checkpoint ---
             Path("checkpoints").mkdir(exist_ok=True)
             torch.save(
                 {
@@ -167,6 +178,9 @@ if __name__ == "__main__":
                 checkpoint_path,
             )
             pbar.close()
+
+    # Close the SummaryWriter
+    writer.close()
 
     print(
         f"\nTraining completed. {'Results continuously saved to ' + str(results_path) if log else 'No experiment log was written.'}"
