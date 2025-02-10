@@ -62,6 +62,8 @@ def train(
     data_size_key=None,
     run_entry=None,
     num_visualization_samples=3,
+    validate_every=500,
+    visualize_every=500
 ):
     """Train model with validation at epoch 0 and every 10 epochs."""
     model.to(device)
@@ -137,9 +139,6 @@ def train(
 
         avg_epoch_train_loss = train_loss_sum / n_train_batches
         losses[epoch] = {"train_loss": float(avg_epoch_train_loss)}
-
-        validate_every = 1000
-        visualize_every = 500
 
         # Run validation every 10 epochs
         if epoch % validate_every == 0:
