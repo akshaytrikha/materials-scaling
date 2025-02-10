@@ -8,6 +8,7 @@ filenames_to_include = [
     "models/transformer_models.py",
     "train.py",
     "train_utils.py",
+    "log_utils.py",
     "arg_parser.py",
 ]
 directory_path = "."

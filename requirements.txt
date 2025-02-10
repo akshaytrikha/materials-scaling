@@ -16,6 +16,7 @@ plotly==5.24.1
 notebook==7.2.2
 ipywidgets==8.1.5
 # pip install torch-scatter -f https://data.pyg.org/whl/torch-2.4.0+cpu.html
+# pip install torch-cluster -f https://data.pyg.org/whl/torch-2.4.0+cpu.html
 tensorboard==2.18.0
 dash==2.18.2
 dash-bootstrap-components==1.7.1
