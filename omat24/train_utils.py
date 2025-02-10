@@ -351,6 +351,7 @@ def train(
     data_size_key=None,
     run_entry=None,
     num_visualization_samples=3,
+    gradient_clip=0.1
 ):
     """Train model with validation at epoch 0 and every 10 epochs."""
     model.to(device)
@@ -412,8 +413,7 @@ def train(
                 device,
                 natoms=natoms,
             )
-            max_norm = 1.0  # Adjust this value based on your needs
-            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm)
+            torch.nn.utils.clip_grad_norm_(model.parameters(), gradient_clip)
             train_loss.backward()
             optimizer.step()
 

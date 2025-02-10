@@ -152,6 +152,7 @@ if __name__ == "__main__":
                 data_size_key=ds_key if log else None,
                 run_entry=run_entry if log else None,
                 num_visualization_samples=args.num_visualization_samples,
+                gradient_clip=args.gradient_clip
             )
 
             Path("checkpoints").mkdir(exist_ok=True)
