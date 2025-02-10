@@ -79,8 +79,6 @@ if __name__ == "__main__":
             use_factorized=use_factorize,
         )
 
-    
-
     # Create results path and initialize file if logging is enabled
     experiment_results = {}
 

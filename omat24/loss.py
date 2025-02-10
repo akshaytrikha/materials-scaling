@@ -112,9 +112,7 @@ def compute_loss(
     # Use reduction="none" to compute the loss per atom
     force_loss_fn = nn.MSELoss(reduction="none")
     force_loss = force_loss_fn(pred_forces, true_forces)
-    force_loss = force_loss.sum(dim=(2, 1)) / (
-        3 * natoms
-    )  # [B, N, 3] -> [B] / natoms
+    force_loss = force_loss.sum(dim=(2, 1)) / (3 * natoms)  # [B, N, 3] -> [B] / natoms
     # # Then take the mean over the directions and then atoms [B, N, 3] -> [B]
     # force_loss = force_loss.mean(dim=(2, 1))
 
@@ -129,10 +127,7 @@ def compute_loss(
     ).mean(dim=-1)
 
     total_loss = torch.mean(
-        energy_loss +
-        force_loss +
-        stress_isotropic_loss +
-        stress_anisotropic_loss
+        energy_loss + force_loss + stress_isotropic_loss + stress_anisotropic_loss
     )
 
     loss_dict = {

@@ -121,14 +121,22 @@ def train(
         (nn.Module, dict): The trained model and a dictionary of recorded losses.
     """
     model.to(device)
-    can_write_partial = all([results_path, experiment_results, data_size_key, run_entry])
+    can_write_partial = all(
+        [results_path, experiment_results, data_size_key, run_entry]
+    )
     losses = {}
 
     # Initial validation at epoch 0
     val_loss = run_validation(model, val_loader, device)
     losses[0] = {"val_loss": float(val_loss)}
     if writer is not None:
-        tensorboard_log(val_loss, train=False, writer=writer, epoch=0, tensorboard_prefix=tensorboard_prefix)
+        tensorboard_log(
+            val_loss,
+            train=False,
+            writer=writer,
+            epoch=0,
+            tensorboard_prefix=tensorboard_prefix,
+        )
 
     # Write partial JSON if everything is provided
     if can_write_partial:
@@ -204,7 +212,13 @@ def train(
 
         # TensorBoard logging for training loss
         if writer is not None:
-            tensorboard_log(avg_epoch_train_loss, train=True, writer=writer, epoch=epoch, tensorboard_prefix=tensorboard_prefix)
+            tensorboard_log(
+                avg_epoch_train_loss,
+                train=True,
+                writer=writer,
+                epoch=epoch,
+                tensorboard_prefix=tensorboard_prefix,
+            )
             # Log parameter norms (example usage)
             for name, param in model.named_parameters():
                 if param is not None and param.requires_grad:
@@ -222,7 +236,13 @@ def train(
 
             # Also log validation loss to TensorBoard
             if writer is not None:
-                tensorboard_log(val_loss, train=False, writer=writer, epoch=epoch, tensorboard_prefix=tensorboard_prefix)
+                tensorboard_log(
+                    val_loss,
+                    train=False,
+                    writer=writer,
+                    epoch=epoch,
+                    tensorboard_prefix=tensorboard_prefix,
+                )
 
             # Early stopping check
             if val_loss < best_val_loss:
