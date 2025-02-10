@@ -108,9 +108,9 @@ def train(
             # Debug print for first batch of first epoch
             if epoch == 1 and batch_idx == 0:
                 print(f"Batch tensors device check:")
-                print(f"atomic_numbers device: {batch['atomic_numbers'].device}")
-                print(f"positions device: {batch['positions'].device}")
-                print(f"forces device: {batch['forces'].device}")
+                print(f"atomic_numbers device: {atomic_numbers.device}")
+                print(f"positions device: {positions.device}")
+                print(f"forces device: {true_forces.device}")
 
             mask = atomic_numbers != 0
 
