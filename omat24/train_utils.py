@@ -153,10 +153,6 @@ def train(
     last_val_loss = val_loss
     samples = None
 
-    # Training loop
-    validate_every = 1000
-    visualize_every = 500
-
     for epoch in range(1, len(pbar) + 1):
         model.train()
         train_loss_sum = 0.0
@@ -195,8 +191,8 @@ def train(
                 natoms=natoms,
             )
             total_train_loss = train_loss_dict["total_loss"]
-            torch.nn.utils.clip_grad_norm_(model.parameters(), gradient_clip)
             total_train_loss.backward()
+            torch.nn.utils.clip_grad_norm_(model.parameters(), gradient_clip)
             optimizer.step()
 
             train_loss_sum += total_train_loss.item()
@@ -222,8 +218,6 @@ def train(
 
         losses[epoch] = {"train_loss": float(avg_epoch_train_loss)}
 
-        validate_every = 5000
-        visualize_every = 500
         # TensorBoard logging for training loss
         if writer is not None:
             # Log parameter norms (example usage)
