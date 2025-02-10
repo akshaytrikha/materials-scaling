@@ -23,16 +23,16 @@ from train_utils import train, partial_json_log, run_validation
 # Set seed & device
 SEED = 1024
 torch.manual_seed(SEED)
-if torch.cuda.is_available():
-    DEVICE = torch.device("cuda")
-    torch.cuda.manual_seed(SEED)
-    torch.cuda.manual_seed_all(SEED)
-    torch.backends.cudnn.deterministic = True
-    torch.backends.cudnn.benchmark = False
-elif torch.backends.mps.is_available():
-    DEVICE = torch.device("mps")
-else:
-    DEVICE = torch.device("cpu")
+# if torch.cuda.is_available():
+#     DEVICE = torch.device("cuda")
+#     torch.cuda.manual_seed(SEED)
+#     torch.cuda.manual_seed_all(SEED)
+#     torch.backends.cudnn.deterministic = True
+#     torch.backends.cudnn.benchmark = False
+# elif torch.backends.mps.is_available():
+#     DEVICE = torch.device("mps")
+# else:
+DEVICE = torch.device("cpu")
 
 if __name__ == "__main__":
     args = get_args()

@@ -15,15 +15,19 @@ def forward_pass(model, batch, architecture, device):
         true_forces = batch["forces"].to(device)
         true_energy = batch["energy"].to(device)
         true_stress = batch["stress"].to(device)
-        mask = atomic_numbers != 0
+        mask = atomic_numbers != 0 
         natoms = mask.sum(dim=1)
 
         pred_forces, pred_energy, pred_stress = model(
             atomic_numbers, positions, factorized_distances, mask
         )
     elif architecture == "SchNet":
+        true_forces = batch.forces.to(device)
+        true_energy = batch.energy.to(device)
+        true_stress = batch.stress.to(device)
         mask = None
         natoms = batch.natoms
+
         pred_forces, pred_energy, pred_stress = model(batch)
 
     return (

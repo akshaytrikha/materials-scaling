@@ -336,7 +336,7 @@ class SchNet(nn.Module):
         forces = - torch.autograd.grad(energy.sum(), pos, create_graph=True)[0]
 
         # Dummy stress tensor
-        stress = torch.zeros((energy.shape[0], 6), device=self.device)
+        stress = torch.zeros((6), device=self.device)
 
         return forces, energy, stress
 
