@@ -66,6 +66,7 @@ def train(
     """Train model with validation at epoch 0 and every 10 epochs."""
     print(f"Training on device: {device}")
     model.to(device)
+    print(f"Model is on device: {next(model.parameters()).device}")  # Debug print
     can_write_partial = all(
         [results_path, experiment_results, data_size_key, run_entry]
     )
@@ -98,6 +99,12 @@ def train(
         n_train_batches = len(train_loader)
 
         for batch_idx, batch in enumerate(train_loader):
+            # Debug print for first batch of first epoch
+            if epoch == 1 and batch_idx == 0:
+                print(f"Batch tensors device check:")
+                print(f"atomic_numbers device: {batch['atomic_numbers'].device}")
+                print(f"positions device: {batch['positions'].device}")
+                print(f"forces device: {batch['forces'].device}")
             atomic_numbers = batch["atomic_numbers"].to(device)
             positions = batch["positions"].to(device)
             factorized_distances = batch["factorized_matrix"].to(device)
