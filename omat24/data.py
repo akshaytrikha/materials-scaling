@@ -1,20 +1,20 @@
-# data.py
 # External
 from torch.utils.data import DataLoader, Subset, Dataset
 from pathlib import Path
 import torch
 from fairchem.core.datasets import AseDBDataset
 import ase
-import tarfile
-import gdown
-import os
 import random
+from typing import Tuple
+from torch_geometric.data import Data
+from torch_geometric.data import DataLoader as PyGDataLoader
 
 # Internal
 from matrix import compute_distance_matrix, factorize_matrix, random_rotate_atoms
 from data_utils import (
     custom_collate_fn_batch_padded,
     custom_collate_fn_dataset_padded,
+    generate_graph,
     DATASETS,
 )
 
@@ -49,6 +49,7 @@ def get_dataloaders(
     val_data_fraction: float = 0.1,
     train_workers: int = 0,
     val_workers: int = 0,
+    graph: bool = False,
 ):
     """Creates training and validation DataLoaders from a given dataset.
 
@@ -66,6 +67,7 @@ def get_dataloaders(
         val_data_fraction (float, optional): Fraction of the dataset to use for validation.
         train_workers (int, optional): Number of worker processes for the training DataLoader.
         val_workers (int, optional): Number of worker processes for the validation DataLoader.
+        graph (bool, optional): Whether to create PyG DataLoaders for graph datasets.
 
     Returns:
         tuple:
@@ -76,30 +78,39 @@ def get_dataloaders(
         dataset, train_data_fraction, val_data_fraction, seed
     )
 
-    # Select the appropriate collate function
-    if batch_padded:
-        collate_fn = custom_collate_fn_batch_padded
+    if graph:
+        # Create PyG DataLoaders
+        train_loader = PyGDataLoader(
+            train_subset, batch_size=batch_size, shuffle=True, num_workers=train_workers
+        )
+        val_loader = PyGDataLoader(
+            val_subset, batch_size=batch_size, shuffle=False, num_workers=val_workers
+        )
     else:
-        collate_fn = lambda batch: custom_collate_fn_dataset_padded(
-            batch, dataset.max_n_atoms
+        # Select the appropriate collate function
+        if batch_padded:
+            collate_fn = custom_collate_fn_batch_padded
+        else:
+            collate_fn = lambda batch: custom_collate_fn_dataset_padded(
+                batch, dataset.max_n_atoms
+            )
+
+        # Create DataLoaders
+        train_loader = DataLoader(
+            train_subset,
+            batch_size=batch_size,
+            shuffle=True,
+            collate_fn=collate_fn,
+            num_workers=train_workers,
         )
 
-    # Create DataLoaders
-    train_loader = DataLoader(
-        train_subset,
-        batch_size=batch_size,
-        shuffle=True,
-        collate_fn=collate_fn,
-        num_workers=train_workers,
-    )
-
-    val_loader = DataLoader(
-        val_subset,
-        batch_size=batch_size,
-        shuffle=False,  # Typically, shuffle=False for validation
-        collate_fn=collate_fn,
-        num_workers=val_workers,
-    )
+        val_loader = DataLoader(
+            val_subset,
+            batch_size=batch_size,
+            shuffle=False,  # Typically, shuffle=False for validation
+            collate_fn=collate_fn,
+            num_workers=val_workers,
+        )
 
     if return_indices:
         # For debugging
@@ -114,17 +125,21 @@ class OMat24Dataset(Dataset):
     Args:
         dataset_path (Path): Path to the extracted dataset directory.
         config_kwargs (dict, optional): Additional configuration parameters for AseDBDataset. Defaults to {}.
-        augment (bool, optional): Whether to apply data augmentation (random rotations).
+        augment (bool, optional): Whether to apply data augmentation (random rotations). Defaults to True.
     """
 
-    def __init__(self, dataset_path: Path, config_kwargs={}, augment: bool = False):
+    def __init__(
+        self,
+        dataset_path: Path,
+        config_kwargs={},
+        augment: bool = False,
+        graph: bool = False,
+    ):
         self.dataset = AseDBDataset(config=dict(src=str(dataset_path), **config_kwargs))
         self.augment = augment
+        self.graph = graph
         split_name = dataset_path.parent.name  # Parent directory's name
         dataset_name = dataset_path.name
-        print(dataset_path)
-        print(split_name)
-        print(dataset_name)
         self.max_n_atoms = DATASETS[split_name][dataset_name]["max_n_atoms"]
 
     def __len__(self):
@@ -135,13 +150,10 @@ class OMat24Dataset(Dataset):
         atoms: ase.atoms.Atoms = self.dataset.get_atoms(idx)
 
         # Extract atomic numbers and positions
-        symbols = (
-            atoms.symbols.get_chemical_formula()
-        )  # Keep as string, no tensor conversion needed
         atomic_numbers = atoms.get_atomic_numbers()  # Shape: (N_atoms,)
         positions = atoms.get_positions()  # Shape: (N_atoms, 3)
 
-        # Convert to tensors (except symbols which stays as string)
+        # Convert to tensors
         atomic_numbers = torch.tensor(atomic_numbers, dtype=torch.long)
         positions = torch.tensor(positions, dtype=torch.float)
 
@@ -164,21 +176,35 @@ class OMat24Dataset(Dataset):
             positions
         )  # Shape: [N_atoms, N_atoms]
 
-        factorized_matrix = factorize_matrix(
-            distance_matrix
-        )  # Left matrix: U * sqrt(Sigma) - Shape: [N_atoms, k=5]
+        if self.graph:
+            # Generate graph connectivity (edge_index) and edge attributes (edge_attr)
+            edge_index, edge_attr = generate_graph(positions, distance_matrix)
 
-        # Package the input and labels into a dictionary for model processing
-        sample = {
-            "idx": idx,
-            "symbols": symbols,
-            "atomic_numbers": atomic_numbers,  # Element types
-            "positions": positions,  # 3D atomic coordinates
-            "distance_matrix": distance_matrix,  # [N_atoms, N_atoms]
-            "factorized_matrix": factorized_matrix,  # [N_atoms, k=5]
-            "energy": energy,  # Target energy
-            "forces": forces,  # Target forces on each atom
-            "stress": stress,  # Target stress tensor
-        }
+            # Create PyG Data object
+            sample = Data(
+                pos=positions,
+                atomic_numbers=atomic_numbers,
+                edge_index=edge_index,
+                edge_attr=edge_attr,
+                energy=energy,
+                forces=forces,
+                stress=stress,
+            )
+            sample.natoms = torch.tensor(len(atoms))
+            return sample
+        else:
+            factorized_matrix = factorize_matrix(
+                distance_matrix
+            )  # Left matrix: U * sqrt(Sigma) - Shape: [N_atoms, k=5]
 
-        return sample
+            # Package the input and labels into a dictionary
+            sample = {
+                "atomic_numbers": atomic_numbers,  # Element types
+                "positions": positions,  # 3D atomic coordinates
+                "distance_matrix": distance_matrix,  # [N_atoms, N_atoms]
+                "factorized_matrix": factorized_matrix,  # [N_atoms, k=5]
+                "energy": energy,  # Target energy
+                "forces": forces,  # Target forces on each atom
+                "stress": stress,  # Target stress tensor
+            }
+            return sample
