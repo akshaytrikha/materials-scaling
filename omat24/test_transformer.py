@@ -118,8 +118,6 @@ class TestTransformer(unittest.TestCase):
                 last_val_loss = result_json["1"][i]["losses"]["500"]["val_loss"]
                 last_train_loss = result_json["1"][i]["losses"]["500"]["train_loss"]
 
-                breakpoint()
-
                 # For the Transformer, the first configuration (from MetaTransformerModels) is expected to be:
                 self.assertEqual(config["embedding_dim"], DIMS[i]["embedding_dim"])
                 self.assertEqual(config["depth"], DIMS[i]["depth"])
