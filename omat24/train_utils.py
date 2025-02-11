@@ -3,6 +3,7 @@ import torch
 import json
 import math
 import wandb
+from torch.profiler import profile, record_function, ProfilerActivity
 
 # Internal
 from loss import compute_loss
@@ -355,10 +356,15 @@ def train(
 ):
     """Train model with validation at epoch 0 and every 10 epochs."""
     model.to(device)
+    torch.backends.cudnn.benchmark = True  # Enable CUDA optimization
     can_write_partial = all(
         [results_path, experiment_results, data_size_key, run_entry]
     )
     losses = {}
+
+    # Move model to GPU and use torch.compile if available (PyTorch 2.0+)
+    if hasattr(torch, "compile"):
+        model = torch.compile(model)
 
     # Initial validation at epoch 0
     val_loss = run_validation(model, val_loader, device)
@@ -380,103 +386,121 @@ def train(
     last_val_loss = val_loss
     samples = None  # For visualization
 
-    # Training loop starting from epoch 1
-    for epoch in range(1, len(pbar) + 1):
-        model.train()
-        train_loss_sum = 0.0
-        n_train_batches = len(train_loader)
+    # Add profiling for a few iterations
+    with profile(
+        activities=[ProfilerActivity.CPU, ProfilerActivity.CUDA],
+        record_shapes=True,
+        profile_memory=True,
+        with_stack=True,
+    ) as prof:
+        for epoch in range(1, len(pbar) + 1):
+            model.train()
+            train_loss_sum = 0.0
+            n_train_batches = len(train_loader)
 
-        for batch_idx, batch in enumerate(train_loader):
-            atomic_numbers = batch["atomic_numbers"].to(device)
-            positions = batch["positions"].to(device)
-            factorized_distances = batch["factorized_matrix"].to(device)
-            true_forces = batch["forces"].to(device)
-            true_energy = batch["energy"].to(device)
-            true_stress = batch["stress"].to(device)
+            for batch_idx, batch in enumerate(train_loader):
+                # Move entire batch to GPU at once
+                batch = {
+                    k: v.to(device) if isinstance(v, torch.Tensor) else v
+                    for k, v in batch.items()
+                }
 
-            mask = atomic_numbers != 0
+                atomic_numbers = batch["atomic_numbers"]
+                positions = batch["positions"]
+                factorized_distances = batch["factorized_matrix"]
+                true_forces = batch["forces"]
+                true_energy = batch["energy"]
+                true_stress = batch["stress"]
 
-            optimizer.zero_grad()
-            pred_forces, pred_energy, pred_stress = model(
-                atomic_numbers, positions, factorized_distances, mask
+                mask = atomic_numbers != 0
+
+                optimizer.zero_grad(set_to_none=True)  # More efficient than zero_grad()
+
+                pred_forces, pred_energy, pred_stress = model(
+                    atomic_numbers, positions, factorized_distances, mask
+                )
+
+                natoms = mask.sum(dim=1)
+                train_loss = compute_loss(
+                    pred_forces,
+                    pred_energy,
+                    pred_stress,
+                    true_forces,
+                    true_energy,
+                    true_stress,
+                    mask,
+                    device,
+                    natoms=natoms,
+                )
+                train_loss.backward()
+                optimizer.step()
+
+                train_loss_sum += train_loss.item()
+                current_avg_loss = train_loss_sum / (batch_idx + 1)
+                pbar.set_description(
+                    f"train_loss={current_avg_loss:.2f} val_loss={last_val_loss:.2f}"
+                )
+
+                if batch_idx >= 10:  # Profile only first 10 batches
+                    break
+
+            if scheduler is not None:
+                scheduler.step()
+
+            avg_epoch_train_loss = train_loss_sum / n_train_batches
+            losses[epoch] = {"train_loss": float(avg_epoch_train_loss)}
+
+            validate_every = 1000
+            visualize_every = 500
+
+            # Run validation every 10 epochs
+            if epoch % validate_every == 0:
+                val_loss = run_validation(model, val_loader, device)
+                last_val_loss = val_loss
+                losses[epoch]["val_loss"] = float(val_loss)
+
+                # Early stopping check
+                if val_loss < best_val_loss:
+                    best_val_loss = val_loss
+                    epochs_since_improvement = 0
+                else:
+                    epochs_since_improvement += 1
+                    if epochs_since_improvement >= patience:
+                        print(f"Early stopping triggered at epoch {epoch}")
+                        return model, losses
+
+            if epoch % visualize_every == 0:
+                samples = collect_train_val_samples(
+                    model,
+                    train_loader,
+                    val_loader,
+                    device,
+                    num_visualization_samples,
+                )
+
+            # Log metrics
+            wandb.log(
+                {
+                    "epoch": epoch,
+                    "train_loss": avg_epoch_train_loss,
+                    "val_loss": val_loss if epoch % validate_every == 0 else None,
+                }
             )
 
-            natoms = mask.sum(dim=1)
-            train_loss = compute_loss(
-                pred_forces,
-                pred_energy,
-                pred_stress,
-                true_forces,
-                true_energy,
-                true_stress,
-                mask,
-                device,
-                natoms=natoms,
-            )
-            train_loss.backward()
-            optimizer.step()
+            if can_write_partial:
+                partial_json_log(
+                    experiment_results,
+                    data_size_key,
+                    run_entry,
+                    epoch,
+                    avg_epoch_train_loss,
+                    val_loss if epoch % validate_every == 0 else float("nan"),
+                    results_path,
+                    samples if epoch % visualize_every == 0 else None,
+                )
 
-            train_loss_sum += train_loss.item()
-            current_avg_loss = train_loss_sum / (batch_idx + 1)
-            pbar.set_description(
-                f"train_loss={current_avg_loss:.2f} val_loss={last_val_loss:.2f}"
-            )
+            pbar.update(1)
 
-        if scheduler is not None:
-            scheduler.step()
-
-        avg_epoch_train_loss = train_loss_sum / n_train_batches
-        losses[epoch] = {"train_loss": float(avg_epoch_train_loss)}
-
-        validate_every = 1000
-        visualize_every = 500
-
-        # Run validation every 10 epochs
-        if epoch % validate_every == 0:
-            val_loss = run_validation(model, val_loader, device)
-            last_val_loss = val_loss
-            losses[epoch]["val_loss"] = float(val_loss)
-
-            # Early stopping check
-            if val_loss < best_val_loss:
-                best_val_loss = val_loss
-                epochs_since_improvement = 0
-            else:
-                epochs_since_improvement += 1
-                if epochs_since_improvement >= patience:
-                    print(f"Early stopping triggered at epoch {epoch}")
-                    return model, losses
-
-        if epoch % visualize_every == 0:
-            samples = collect_train_val_samples(
-                model,
-                train_loader,
-                val_loader,
-                device,
-                num_visualization_samples,
-            )
-
-        # Log metrics
-        wandb.log(
-            {
-                "epoch": epoch,
-                "train_loss": avg_epoch_train_loss,
-                "val_loss": val_loss if epoch % validate_every == 0 else None,
-            }
-        )
-
-        if can_write_partial:
-            partial_json_log(
-                experiment_results,
-                data_size_key,
-                run_entry,
-                epoch,
-                avg_epoch_train_loss,
-                val_loss if epoch % validate_every == 0 else float("nan"),
-                results_path,
-                samples if epoch % visualize_every == 0 else None,
-            )
-
-        pbar.update(1)
+            print(prof.key_averages().table(sort_by="cuda_time_total", row_limit=10))
 
     return model, losses
