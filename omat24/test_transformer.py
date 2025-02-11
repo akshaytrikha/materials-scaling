@@ -95,14 +95,14 @@ class TestTransformer(unittest.TestCase):
             {
                 "first_train_loss": 8.382429122924805,
                 "first_val_loss": 21.924051897866384,
-                "last_train_loss": 0.15662512183189392,
-                "last_val_loss": 15.45500339099339,
+                "last_train_loss": 0.027594711631536484,
+                "last_val_loss": 14.812024521827698,
             },
             {
                 "first_train_loss": 8.800992965698242,
                 "first_val_loss": 21.239415659223283,
-                "last_train_loss": 0.15662512183189392,
-                "last_val_loss": 15.45500339099339,
+                "last_train_loss": 0.6234482526779175,
+                "last_val_loss": 14.360544357981,
             },
         ]
 
@@ -115,8 +115,10 @@ class TestTransformer(unittest.TestCase):
                 config = result_json["1"][i]["config"]
                 first_val_loss = result_json["1"][i]["losses"]["0"]["val_loss"]
                 first_train_loss = result_json["1"][i]["losses"]["1"]["train_loss"]
-                last_val_loss = result_json["1"][0]["losses"]["500"]["val_loss"]
-                last_train_loss = result_json["1"][0]["losses"]["500"]["train_loss"]
+                last_val_loss = result_json["1"][i]["losses"]["500"]["val_loss"]
+                last_train_loss = result_json["1"][i]["losses"]["500"]["train_loss"]
+
+                breakpoint()
 
                 # For the Transformer, the first configuration (from MetaTransformerModels) is expected to be:
                 self.assertEqual(config["embedding_dim"], DIMS[i]["embedding_dim"])
