@@ -63,6 +63,12 @@ class TestFCN(unittest.TestCase):
             text=True,
         )
 
+        # Print stdout and stderr for debugging
+        print("------------ stdout ------------")
+        print(result.stdout)
+        print("------------ stderr ------------")
+        print(result.stderr)
+
         # Extract results path from stdout
         match = re.search(
             r"Results will be saved to (?P<results_path>.+)", result.stdout
