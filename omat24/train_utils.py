@@ -163,8 +163,7 @@ def train(
     losses = {}
 
     # Initial validation at epoch 0
-    # val_loss = run_validation(model, val_loader, device)
-    val_loss = -1
+    val_loss = run_validation(model, val_loader, architecture, device)
     losses[0] = {"val_loss": float(val_loss)}
     if writer is not None:
         tensorboard_log(
