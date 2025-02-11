@@ -30,3 +30,4 @@ jobs:
           cd omat24
           pytest test_dataloader.py
           pytest test_fcn.py
+          pytest test_transformer.py
