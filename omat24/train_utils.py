@@ -359,24 +359,24 @@ def train(
     
     # Enable performance optimizations
     torch.backends.cudnn.benchmark = True
-    torch.set_float32_matmul_precision('high')  # Enable TF32
+    # torch.set_float32_matmul_precision('high')  # Enable TF32
     
     can_write_partial = all(
         [results_path, experiment_results, data_size_key, run_entry]
     )
     losses = {}
 
-    # Try to compile model with error handling
-    if hasattr(torch, "compile"):
-        try:
-            model = torch.compile(
-                model,
-                mode="reduce-overhead",  # Try a different compilation mode
-                fullgraph=False  # Disable full graph optimization
-            )
-        except Exception as e:
-            print(f"Warning: Could not compile model: {e}")
-            print("Continuing without compilation...")
+    # # Try to compile model with error handling
+    # if hasattr(torch, "compile"):
+    #     try:
+    #         model = torch.compile(
+    #             model,
+    #             mode="reduce-overhead",  # Try a different compilation mode
+    #             fullgraph=False  # Disable full graph optimization
+    #         )
+    #     except Exception as e:
+    #         print(f"Warning: Could not compile model: {e}")
+    #         print("Continuing without compilation...")
 
     # Initial validation at epoch 0
     val_loss = run_validation(model, val_loader, device)
