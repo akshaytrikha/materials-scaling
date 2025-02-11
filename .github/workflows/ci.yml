@@ -26,5 +26,7 @@ jobs:
           pip install torch-scatter -f https://data.pyg.org/whl/torch-2.4.0+cpu.html
           pip install torch-cluster -f https://data.pyg.org/whl/torch-2.4.0+cpu.html
       - name: Run tests
-        run: 
-          pytest omat24/test_dataloader.py
+        run: |
+          cd omat24
+          pytest test_dataloader.py
+          pytest test_fcn.py
