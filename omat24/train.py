@@ -1,4 +1,3 @@
-# train.py
 # External
 import torch
 import torch.optim as optim
@@ -19,7 +18,7 @@ from data_utils import download_dataset
 from arg_parser import get_args
 from models.fcn import MetaFCNModels
 from models.transformer_models import MetaTransformerModels
-from train_utils import train, partial_json_log, run_validation
+from train_utils import train
 
 # Set seed & device
 SEED = 1024
@@ -163,7 +162,7 @@ if __name__ == "__main__":
                 tensorboard_prefix=model_name,
                 num_visualization_samples=args.num_visualization_samples,
                 validate_every=args.val_every,
-                visualize_every=args.vis_every
+                visualize_every=args.vis_every,
             )
 
             # --- Save checkpoint ---

@@ -1,7 +1,5 @@
 # External
 import torch
-import torch.nn as nn
-from torch.utils.tensorboard import SummaryWriter
 
 # Internal
 from loss import compute_loss
