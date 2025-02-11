@@ -30,9 +30,8 @@ class TestTransformer(unittest.TestCase):
         # Mask for valid (nonzero) atoms
         self.mask = self.atomic_numbers != 0
 
-    def test_train_job(self):
-        """
-        Test that a minimal training job with the Transformer architecture
+    def test_overfit_one_sample(self):
+        """Test that a minimal training job with the Transformer architecture
         executes successfully and produces a valid configuration and finite loss values.
         """
         result = subprocess.run(
@@ -42,7 +41,7 @@ class TestTransformer(unittest.TestCase):
                 "--architecture",
                 "Transformer",
                 "--epochs",
-                "1",
+                "500",
                 "--data_fraction",
                 "0.00001",
                 "--val_data_fraction",
@@ -50,9 +49,11 @@ class TestTransformer(unittest.TestCase):
                 "--batch_size",
                 "1",
                 "--lr",
-                "0.001",
+                "0.05",
+                "--val_every",
+                "500",
                 "--vis_every",
-                "1",
+                "500",
             ],
             capture_output=True,
             text=True,
@@ -65,21 +66,76 @@ class TestTransformer(unittest.TestCase):
         self.assertIsNotNone(match, "Results path not found in output")
         results_path = match.group("results_path")
 
+        # Ground truth dimensions
+        DIMS = [
+            {
+                "embedding_dim": 1,
+                "depth": 1,
+                "num_params": 1729,
+            },
+            {
+                "embedding_dim": 4,
+                "depth": 2,
+                "num_params": 9061,
+            },
+            {
+                "embedding_dim": 8,
+                "depth": 8,
+                "num_params": 109059,
+            },
+        ]
+
+        # Ground truth loss values
+        EXPECTED_LOSSES = [
+            {
+                "first_train_loss": 11.630836486816406,
+                "first_val_loss": 25.706957708086286,
+                "last_train_loss": 0.15662512183189392,
+                "last_val_loss": 15.45500339099339,
+            },
+            {
+                "first_train_loss": 8.382429122924805,
+                "first_val_loss": 21.924051897866384,
+                "last_train_loss": 0.15662512183189392,
+                "last_val_loss": 15.45500339099339,
+            },
+            {
+                "first_train_loss": 8.800992965698242,
+                "first_val_loss": 21.239415659223283,
+                "last_train_loss": 0.15662512183189392,
+                "last_val_loss": 15.45500339099339,
+            },
+        ]
+
         try:
             with open(results_path, "r") as f:
                 result_json = json.load(f)
-            # Get the config and loss information from the first run entry
-            config = result_json["1"][0]["config"]
-            first_val_loss = result_json["1"][0]["losses"]["0"]["val_loss"]
-            first_train_loss = result_json["1"][0]["losses"]["1"]["train_loss"]
 
-            # For the Transformer, the first configuration (from MetaTransformerModels) is expected to be:
-            self.assertEqual(config["embedding_dim"], 1)
-            self.assertEqual(config["depth"], 1)
-            self.assertEqual(config["num_params"], 1729)
+            for i in range(3):
+                # Get the config and loss information
+                config = result_json["1"][i]["config"]
+                first_val_loss = result_json["1"][i]["losses"]["0"]["val_loss"]
+                first_train_loss = result_json["1"][i]["losses"]["1"]["train_loss"]
+                last_val_loss = result_json["1"][0]["losses"]["500"]["val_loss"]
+                last_train_loss = result_json["1"][0]["losses"]["500"]["train_loss"]
 
-            np.testing.assert_allclose(first_train_loss, 11.630836486816406, rtol=0.1)
-            np.testing.assert_allclose(first_val_loss, 25.706957708086286, rtol=0.1)
+                # For the Transformer, the first configuration (from MetaTransformerModels) is expected to be:
+                self.assertEqual(config["embedding_dim"], DIMS[i]["embedding_dim"])
+                self.assertEqual(config["depth"], DIMS[i]["depth"])
+                self.assertEqual(config["num_params"], DIMS[i]["num_params"])
+
+                np.testing.assert_allclose(
+                    first_train_loss, EXPECTED_LOSSES[i]["first_train_loss"], rtol=0.1
+                )
+                np.testing.assert_allclose(
+                    first_val_loss, EXPECTED_LOSSES[i]["first_val_loss"], rtol=0.1
+                )
+                np.testing.assert_allclose(
+                    last_train_loss, EXPECTED_LOSSES[i]["last_train_loss"], rtol=0.1
+                )
+                np.testing.assert_allclose(
+                    last_val_loss, EXPECTED_LOSSES[i]["last_val_loss"], rtol=0.1
+                )
         finally:
             if os.path.exists(results_path):
                 os.remove(results_path)

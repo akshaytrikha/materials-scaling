@@ -83,13 +83,13 @@ def get_args():
         "--val_every",
         type=int,
         default=500,
-        help="Number of epochs to run in between validations"
+        help="Number of epochs to run in between validations",
     )
     parser.add_argument(
         "--vis_every",
         type=int,
         default=500,
-        help="Number of epochs to run in between visualizations"
+        help="Number of epochs to run in between visualizations",
     )
 
     return parser.parse_args()
