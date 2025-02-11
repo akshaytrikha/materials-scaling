@@ -172,6 +172,7 @@ def run_validation(model, val_loader, device):
     """Compute and return the average validation loss."""
     model.to(device)
     model.eval()
+    print("Running validation...")
     total_val_loss = 0.0
     num_val_batches = len(val_loader)
 
@@ -205,6 +206,7 @@ def run_validation(model, val_loader, device):
             )
             total_val_loss += val_loss.item()
 
+    print("Validation complete")
     if num_val_batches == 0:
         return float("inf")
     return total_val_loss / num_val_batches
@@ -470,8 +472,8 @@ def train(
         avg_epoch_train_loss = train_loss_sum / n_train_batches
         losses[epoch] = {"train_loss": float(avg_epoch_train_loss)}
 
-        validate_every = 1000
-        visualize_every = 500
+        validate_every = 10
+        visualize_every = 10000
 
         # Run validation every 10 epochs
         if epoch % validate_every == 0:
