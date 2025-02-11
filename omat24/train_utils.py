@@ -304,7 +304,7 @@ def train(
 
         # Validate every 'validate_every' epochs
         if epoch % validate_every == 0:
-            val_loss = run_validation(model, val_loader, device)
+            val_loss = run_validation(model, val_loader, architecture, device)
             last_val_loss = val_loss
             losses[epoch]["val_loss"] = float(val_loss)
 
