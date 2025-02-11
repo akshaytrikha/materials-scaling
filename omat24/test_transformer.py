@@ -4,7 +4,6 @@ import re
 import numpy as np
 import os
 import torch
-import torch.nn as nn
 import unittest
 from models.transformer_models import XTransformerModel, MetaTransformerModels
 
