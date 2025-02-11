@@ -149,9 +149,10 @@ class OMat24Dataset(Dataset):
         # Retrieve atoms object for the given index
         atoms: ase.atoms.Atoms = self.dataset.get_atoms(idx)
 
-        # Extract atomic numbers and positions
+        # Extract atomic numbers, positions, and symbols
         atomic_numbers = atoms.get_atomic_numbers()  # Shape: (N_atoms,)
         positions = atoms.get_positions()  # Shape: (N_atoms, 3)
+        symbols = atoms.symbols.get_chemical_formula()  # Keep as string, no tensor conversion needed
 
         # Convert to tensors
         atomic_numbers = torch.tensor(atomic_numbers, dtype=torch.long)
@@ -200,6 +201,8 @@ class OMat24Dataset(Dataset):
 
             # Package the input and labels into a dictionary
             sample = {
+                "idx": idx,
+                "symbols": symbols,
                 "atomic_numbers": atomic_numbers,  # Element types
                 "positions": positions,  # 3D atomic coordinates
                 "distance_matrix": distance_matrix,  # [N_atoms, N_atoms]
