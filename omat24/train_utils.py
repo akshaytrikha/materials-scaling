@@ -1,11 +1,9 @@
 # External
 import torch
-import torch.nn as nn
-from torch.utils.tensorboard import SummaryWriter
 
 # Internal
 from loss import compute_loss
-from log_utils import partial_json_log, collect_train_val_samples
+from log_utils import partial_json_log, collect_train_val_samples, tensorboard_log
 
 
 def forward_pass(model, batch, architecture, device):
@@ -42,26 +40,6 @@ def forward_pass(model, batch, architecture, device):
         mask,
         natoms,
     )
-
-
-def tensorboard_log(loss_value, loss_type, train, writer, epoch, tensorboard_prefix):
-    """
-    Log a loss value to TensorBoard.
-
-    Args:
-        loss_value (float): The loss value to log.
-        train (bool): Whether this is training (True) or validation (False) loss.
-        writer (SummaryWriter): TensorBoard writer object.
-        epoch (int): Current training epoch.
-        tensorboard_prefix (str): Prefix for naming the logs.
-
-    Returns:
-        None
-    """
-    if writer is None:
-        return
-    tag = f"{tensorboard_prefix}/{'train' if train else 'val'}_{loss_type}_loss"
-    writer.add_scalar(tag, loss_value, global_step=epoch)
 
 
 def run_validation(model, val_loader, architecture, device):

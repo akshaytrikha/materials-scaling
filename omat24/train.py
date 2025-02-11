@@ -1,4 +1,3 @@
-# train.py
 # External
 import torch
 import torch.optim as optim
@@ -20,7 +19,7 @@ from arg_parser import get_args
 from models.fcn import MetaFCNModels
 from models.transformer_models import MetaTransformerModels
 from models.schnet import MetaSchNetModels
-from train_utils import train, partial_json_log, run_validation
+from train_utils import train
 
 # Set seed & device
 SEED = 1024

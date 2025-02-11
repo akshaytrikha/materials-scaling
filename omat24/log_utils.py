@@ -299,3 +299,23 @@ def collect_train_val_samples(
             )
 
     return samples
+
+
+def tensorboard_log(loss_value, loss_type, train, writer, epoch, tensorboard_prefix):
+    """
+    Log a loss value to TensorBoard.
+
+    Args:
+        loss_value (float): The loss value to log.
+        train (bool): Whether this is training (True) or validation (False) loss.
+        writer (SummaryWriter): TensorBoard writer object.
+        epoch (int): Current training epoch.
+        tensorboard_prefix (str): Prefix for naming the logs.
+
+    Returns:
+        None
+    """
+    if writer is None:
+        return
+    tag = f"{tensorboard_prefix}/{'train' if train else 'val'}_{loss_type}_loss"
+    writer.add_scalar(tag, loss_value, global_step=epoch)
