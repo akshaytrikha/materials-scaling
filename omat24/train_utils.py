@@ -3,32 +3,41 @@ import torch
 
 # Internal
 from loss import compute_loss
-from log_utils import partial_json_log, collect_train_val_samples, tensorboard_log
+from log_utils import partial_json_log, tensorboard_log
+from torch_geometric.data import Batch
 
 
-def forward_pass(model, batch, architecture, device):
+def forward_pass(model, batch, graph: bool, forward: bool, device):
     """"""
-    if architecture in ["FCN", "Transformer"]:
-        atomic_numbers = batch["atomic_numbers"].to(device)
-        positions = batch["positions"].to(device)
-        factorized_distances = batch["factorized_matrix"].to(device)
-        true_forces = batch["forces"].to(device)
-        true_energy = batch["energy"].to(device)
-        true_stress = batch["stress"].to(device)
-        mask = atomic_numbers != 0
-        natoms = mask.sum(dim=1)
+    if forward or graph:
+        context_manager = torch.enable_grad()
+    else:
+        context_manager = torch.no_grad()
 
-        pred_forces, pred_energy, pred_stress = model(
-            atomic_numbers, positions, factorized_distances, mask
-        )
-    elif architecture == "SchNet":
-        true_forces = batch.forces.to(device)
-        true_energy = batch.energy.to(device)
-        true_stress = batch.stress.to(device)
-        mask = None
-        natoms = batch.natoms
+    with context_manager:
+        if type(batch) == dict:
+            atomic_numbers = batch["atomic_numbers"].to(device)
+            positions = batch["positions"].to(device)
+            factorized_distances = batch["factorized_matrix"].to(device)
+            true_forces = batch["forces"].to(device)
+            true_energy = batch["energy"].to(device)
+            true_stress = batch["stress"].to(device)
+            mask = atomic_numbers != 0
+            natoms = mask.sum(dim=1)
 
-        pred_forces, pred_energy, pred_stress = model(batch)
+            pred_forces, pred_energy, pred_stress = model(
+                atomic_numbers, positions, factorized_distances, mask
+            )
+
+        elif isinstance(batch, Batch):
+            # PyG Batch
+            true_forces = batch.forces.to(device)
+            true_energy = batch.energy.to(device)
+            true_stress = batch.stress.to(device)
+            mask = None
+            natoms = batch.natoms
+
+            pred_forces, pred_energy, pred_stress = model(batch)
 
     return (
         pred_forces,
@@ -42,7 +51,101 @@ def forward_pass(model, batch, architecture, device):
     )
 
 
-def run_validation(model, val_loader, architecture, device):
+def collect_samples_helper(num_visualization_samples, dataset, model, graph, device):
+    samples = []
+    for i in range(min(num_visualization_samples, len(dataset))):
+        if graph:
+            batch = Batch.from_data_list([dataset[i]])
+            positions = batch["pos"]
+            atomic_numbers = batch["atomic_numbers"]
+            sample_length = len(atomic_numbers)
+            idx = batch["idx"].cpu().tolist()[0]
+        else:
+            batch = {
+                k: torch.unsqueeze(v, 0) if isinstance(v, torch.Tensor) else v
+                for k, v in dataset[i].items()
+            }
+            # Extract data from batch and sqeeuze batch dimension
+            positions = batch["positions"].squeeze(0)
+            atomic_numbers = batch["atomic_numbers"].squeeze(0)
+            sample_length = (batch["atomic_numbers"] != 0).sum(dim=1)[0].item()
+            idx = batch["idx"]
+
+        symbols = batch["symbols"]
+
+        (
+            pred_forces,
+            pred_energy,
+            pred_stress,
+            true_forces,
+            true_energy,
+            true_stress,
+            _,
+            _,
+        ) = forward_pass(model, batch, graph, False, device)
+
+        if not graph:
+            pred_forces = pred_forces.squeeze(0)
+            true_forces = true_forces.squeeze(0)
+            # pred_energy = pred_energy.squeeze(0)
+            # true_energy = true_energy.squeeze(0)
+            pred_stress = pred_stress.squeeze(0)
+            true_stress = true_stress.squeeze(0)
+
+        samples.append(
+            {
+                "idx": idx,
+                "symbols": symbols,
+                "atomic_numbers": atomic_numbers[:sample_length].cpu().tolist(),
+                "positions": positions[:sample_length].cpu().tolist(),
+                "true": {
+                    "forces": true_forces[:, :sample_length].cpu().tolist(),
+                    "energy": true_energy.cpu().tolist()[0],
+                    "stress": true_stress.cpu().tolist(),
+                },
+                "pred": {
+                    "forces": pred_forces[:, :sample_length].cpu().tolist(),
+                    "energy": pred_energy.cpu().tolist()[0],
+                    "stress": pred_stress.cpu().tolist(),
+                },
+            }
+        )
+    return samples
+
+
+def collect_train_val_samples(
+    model, graph, train_loader, val_loader, device, num_visualization_samples
+):
+    """Collect samples and predictions from both training and validation sets.
+    Uses fixed indices for consistent visualization.
+
+    Args:
+        model (torch.nn.Module): Trained model.
+        train_loader (DataLoader): Training DataLoader.
+        val_loader (DataLoader): Validation DataLoader.
+        device (torch.device): Device to run model on.
+        num_visualization_samples (int): Number of samples to visualize.
+
+    Returns:
+        dict: Dictionary containing samples and predictions for training and validation sets.
+    """
+    model.eval()  # Set model to evaluation mode
+
+    # Get the underlying dataset from the DataLoader
+    train_dataset = train_loader.dataset
+    val_dataset = val_loader.dataset
+
+    return {
+        "train": collect_samples_helper(
+            num_visualization_samples, train_dataset, model, graph, device
+        ),
+        "val": collect_samples_helper(
+            num_visualization_samples, val_dataset, model, graph, device
+        ),
+    }
+
+
+def run_validation(model, val_loader, graph, device):
     """
     Compute and return the average validation loss.
 
@@ -58,11 +161,7 @@ def run_validation(model, val_loader, architecture, device):
     model.eval()
     total_val_loss = 0.0
     num_val_batches = len(val_loader)
-    context_manager = (
-        torch.no_grad()
-        if architecture in ["FCN", "Transformer"]
-        else torch.enable_grad()
-    )
+    context_manager = torch.enable_grad() if graph else torch.no_grad()
 
     with context_manager:
         for batch in val_loader:
@@ -75,7 +174,7 @@ def run_validation(model, val_loader, architecture, device):
                 true_stress,
                 mask,
                 natoms,
-            ) = forward_pass(model, batch, architecture, device)
+            ) = forward_pass(model, batch, graph, False, device)
 
             val_loss_dict = compute_loss(
                 pred_forces,
@@ -102,7 +201,7 @@ def train(
     optimizer,
     scheduler,
     pbar,
-    architecture,
+    graph,
     device,
     patience=50,
     results_path=None,
@@ -146,7 +245,7 @@ def train(
     losses = {}
 
     # Initial validation at epoch 0
-    val_loss = run_validation(model, val_loader, architecture, device)
+    val_loss = run_validation(model, val_loader, graph, device)
     losses[0] = {"val_loss": float(val_loss)}
     if writer is not None:
         tensorboard_log(
@@ -198,7 +297,7 @@ def train(
                 true_stress,
                 mask,
                 natoms,
-            ) = forward_pass(model, batch, architecture, device)
+            ) = forward_pass(model, batch, graph, True, device)
 
             train_loss_dict = compute_loss(
                 pred_forces,
@@ -309,7 +408,7 @@ def train(
 
         # Validate every 'validate_every' epochs
         if epoch % validate_every == 0:
-            val_loss = run_validation(model, val_loader, architecture, device)
+            val_loss = run_validation(model, val_loader, graph, device)
             last_val_loss = val_loss
             losses[epoch]["val_loss"] = float(val_loss)
 
@@ -338,6 +437,7 @@ def train(
         if epoch % visualize_every == 0:
             samples = collect_train_val_samples(
                 model,
+                graph,
                 train_loader,
                 val_loader,
                 device,
