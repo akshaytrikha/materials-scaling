@@ -95,7 +95,7 @@ def compute_loss(
     Returns:
         dict: A dictionary containing the computed MAE losses for forces, energy, and stress.
     """
-    # Mask out padded atoms
+        # Mask out padded atoms
     if natoms is None:
         natoms = torch.tensor(
             data=[len(pred_forces[i]) for i in range(len(pred_forces))], device=device
@@ -108,27 +108,28 @@ def compute_loss(
     # Compute losses
     energy_loss_fn = PerAtomMAELoss()
     energy_loss = energy_loss_fn(pred=pred_energy, target=true_energy, natoms=natoms)
+    energy_loss = torch.mean(energy_loss)  # Take mean over batch
 
     # Use reduction="none" to compute the loss per atom
     force_loss_fn = nn.MSELoss(reduction="none")
     force_loss = force_loss_fn(pred_forces, true_forces)
     force_loss = force_loss.sum(dim=(2, 1)) / (3 * natoms)  # [B, N, 3] -> [B] / natoms
-    # # Then take the mean over the directions and then atoms [B, N, 3] -> [B]
-    # force_loss = force_loss.mean(dim=(2, 1))
+    force_loss = torch.mean(force_loss)  # Take mean over batch
 
     true_isotropic_stress, true_anisotropic_stress = unvoigt_stress(true_stress)
     pred_isotropic_stress, pred_anisotropic_stress = unvoigt_stress(pred_stress)
     stress_loss_fn = MAELoss()
     stress_isotropic_loss = stress_loss_fn(
         pred=pred_isotropic_stress, target=true_isotropic_stress
-    ).mean(dim=-1)
+    ).mean(dim=-1)  # Mean over components
+    stress_isotropic_loss = torch.mean(stress_isotropic_loss)  # Mean over batch
+    
     stress_anisotropic_loss = stress_loss_fn(
         pred=pred_anisotropic_stress, target=true_anisotropic_stress
-    ).mean(dim=-1)
+    ).mean(dim=-1)  # Mean over components
+    stress_anisotropic_loss = torch.mean(stress_anisotropic_loss)  # Mean over batch
 
-    total_loss = torch.mean(
-        energy_loss + force_loss + stress_isotropic_loss + stress_anisotropic_loss
-    )
+    total_loss = energy_loss + force_loss + stress_isotropic_loss + stress_anisotropic_loss
 
     loss_dict = {
         "total_loss": total_loss,

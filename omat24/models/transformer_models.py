@@ -61,7 +61,7 @@ class MetaTransformerModels:
             max_seq_len (int): Maximum sequence length for the transformer.
         """
         self.configurations = [
-            # 1848 params
+            # 1729 params
             {
                 "d_model": 1,
                 "depth": 1,
@@ -69,7 +69,7 @@ class MetaTransformerModels:
                 "d_ff_mult": 1,
                 "concatenated": concatenated,
             },
-            # 9537 params
+            # 9061 params
             {
                 "d_model": 4,
                 "depth": 2,
@@ -77,7 +77,7 @@ class MetaTransformerModels:
                 "d_ff_mult": 2,
                 "concatenated": concatenated,
             },
-            # 110011 params
+            # 109059 params
             {
                 "d_model": 8,
                 "depth": 8,
@@ -193,9 +193,9 @@ class XTransformerModel(TransformerWrapper):
         )
 
         if concatenated:
-            self.emb = ConcatenatedEmbedding(num_tokens, d_model)
+            self.token_emb = ConcatenatedEmbedding(num_tokens, d_model)
         else:
-            self.emb = CombinedEmbedding(num_tokens, d_model, self.additional_dim)
+            self.token_emb = CombinedEmbedding(num_tokens, d_model, self.additional_dim)
 
         # Predictors for Energy, Forces, and Stresses
         self.energy_1 = nn.Linear(
@@ -236,9 +236,9 @@ class XTransformerModel(TransformerWrapper):
         """
         # Obtain combined embeddings
         if self.use_factorized:
-            combined_emb = self.emb(x, distance_matrix)  # [M, A, d_model]
+            combined_emb = self.token_emb(x, distance_matrix)  # [M, A, d_model]
         else:
-            combined_emb = self.emb(x, positions)  # [M, A, d_model]
+            combined_emb = self.token_emb(x, positions)  # [M, A, d_model]
 
         # Pass combined embeddings to the transformer
         output = self.attn_layers(x=combined_emb, mask=mask)  # [M, A, d_model]
