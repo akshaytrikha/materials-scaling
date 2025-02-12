@@ -58,8 +58,13 @@ def run_validation(model, val_loader, architecture, device):
     model.eval()
     total_val_loss = 0.0
     num_val_batches = len(val_loader)
+    context_manager = (
+        torch.no_grad()
+        if architecture in ["FCN", "Transformer"]
+        else torch.enable_grad()
+    )
 
-    with torch.no_grad():
+    with context_manager:
         for batch in val_loader:
             (
                 pred_forces,
