@@ -102,6 +102,8 @@ def get_dataloaders(
             shuffle=True,
             collate_fn=collate_fn,
             num_workers=train_workers,
+            persistent_workers=train_workers > 0,
+            pin_memory=torch.cuda.is_available(),
         )
 
         val_loader = DataLoader(
@@ -110,6 +112,8 @@ def get_dataloaders(
             shuffle=False,  # Typically, shuffle=False for validation
             collate_fn=collate_fn,
             num_workers=val_workers,
+            persistent_workers=val_workers > 0,
+            pin_memory=torch.cuda.is_available(),
         )
 
     if return_indices:
@@ -152,7 +156,9 @@ class OMat24Dataset(Dataset):
         # Extract atomic numbers, positions, and symbols
         atomic_numbers = atoms.get_atomic_numbers()  # Shape: (N_atoms,)
         positions = atoms.get_positions()  # Shape: (N_atoms, 3)
-        symbols = atoms.symbols.get_chemical_formula()  # Keep as string, no tensor conversion needed
+        symbols = (
+            atoms.symbols.get_chemical_formula()
+        )  # Keep as string, no tensor conversion needed
 
         # Convert to tensors
         atomic_numbers = torch.tensor(atomic_numbers, dtype=torch.long)

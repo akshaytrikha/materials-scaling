@@ -65,8 +65,12 @@ def run_validation(model, val_loader, graph, device):
     """
     model.to(device)
     model.eval()
-    total_val_loss = 0.0
-    num_val_batches = len(val_loader)
+    val_loss_sum = 0.0
+    energy_loss_sum = 0.0
+    force_loss_sum = 0.0
+    stress_iso_loss_sum = 0.0
+    stress_aniso_loss_sum = 0.0
+    n = len(val_loader)
 
     for batch in val_loader:
         (
@@ -78,7 +82,9 @@ def run_validation(model, val_loader, graph, device):
             true_stress,
             mask,
             natoms,
-        ) = forward_pass(model, batch, graph, False, device)
+        ) = forward_pass(
+            model=model, batch=batch, graph=graph, training=False, device=device
+        )
 
         val_loss_dict = compute_loss(
             pred_forces,
@@ -91,11 +97,21 @@ def run_validation(model, val_loader, graph, device):
             device,
             natoms,
         )
-        total_val_loss += val_loss_dict["total_loss"].item()
+        val_loss_sum += val_loss_dict["total_loss"].item()
+        energy_loss_sum += val_loss_dict["energy_loss"].item()
+        force_loss_sum += val_loss_dict["force_loss"].item()
+        stress_iso_loss_sum += val_loss_dict["stress_iso_loss"].item()
+        stress_aniso_loss_sum += val_loss_dict["stress_aniso_loss"].item()
 
-    if num_val_batches == 0:
+    if n == 0:
         return float("inf")
-    return total_val_loss / num_val_batches
+    return (
+        val_loss_sum / n,
+        energy_loss_sum / n,
+        force_loss_sum / n,
+        stress_iso_loss_sum / n,
+        stress_aniso_loss_sum / n,
+    )
 
 
 def train(
@@ -149,12 +165,50 @@ def train(
     losses = {}
 
     # Initial validation at epoch 0
-    val_loss = run_validation(model, val_loader, graph, device)
+    (
+        val_loss,
+        val_energy_loss,
+        val_force_loss,
+        val_stress_iso_loss,
+        val_stress_aniso_loss,
+    ) = run_validation(model, val_loader, graph, device)
     losses[0] = {"val_loss": float(val_loss)}
     if writer is not None:
         tensorboard_log(
             val_loss,
             "",
+            train=False,
+            writer=writer,
+            epoch=0,
+            tensorboard_prefix=tensorboard_prefix,
+        )
+        tensorboard_log(
+            val_energy_loss,
+            "energy",
+            train=False,
+            writer=writer,
+            epoch=0,
+            tensorboard_prefix=tensorboard_prefix,
+        )
+        tensorboard_log(
+            val_force_loss,
+            "force",
+            train=False,
+            writer=writer,
+            epoch=0,
+            tensorboard_prefix=tensorboard_prefix,
+        )
+        tensorboard_log(
+            val_stress_iso_loss,
+            "stress_iso",
+            train=False,
+            writer=writer,
+            epoch=0,
+            tensorboard_prefix=tensorboard_prefix,
+        )
+        tensorboard_log(
+            val_stress_aniso_loss,
+            "stress_aniso",
             train=False,
             writer=writer,
             epoch=0,
@@ -191,6 +245,17 @@ def train(
         n_train_batches = len(train_loader)
 
         for batch_idx, batch in enumerate(train_loader):
+            atomic_numbers = batch["atomic_numbers"].to(device, non_blocking=True)
+            positions = batch["positions"].to(device, non_blocking=True)
+            factorized_distances = batch["factorized_matrix"].to(
+                device, non_blocking=True
+            )
+            true_forces = batch["forces"].to(device, non_blocking=True)
+            true_energy = batch["energy"].to(device, non_blocking=True)
+            true_stress = batch["stress"].to(device, non_blocking=True)
+
+            mask = atomic_numbers != 0
+
             optimizer.zero_grad()
             (
                 pred_forces,
@@ -201,7 +266,9 @@ def train(
                 true_stress,
                 mask,
                 natoms,
-            ) = forward_pass(model, batch, graph, True, device)
+            ) = forward_pass(
+                model=model, batch=batch, graph=graph, training=True, device=device
+            )
 
             train_loss_dict = compute_loss(
                 pred_forces,
@@ -317,6 +384,13 @@ def train(
             losses[epoch]["val_loss"] = float(val_loss)
 
             # Also log validation loss to TensorBoard
+            (
+                val_loss,
+                val_energy_loss,
+                val_force_loss,
+                val_stress_iso_loss,
+                val_stress_aniso_loss,
+            ) = run_validation(model, val_loader, graph, device)
             if writer is not None:
                 tensorboard_log(
                     val_loss,
@@ -326,6 +400,40 @@ def train(
                     epoch=epoch,
                     tensorboard_prefix=tensorboard_prefix,
                 )
+                tensorboard_log(
+                    val_energy_loss,
+                    "energy",
+                    train=False,
+                    writer=writer,
+                    epoch=epoch,
+                    tensorboard_prefix=tensorboard_prefix,
+                )
+                tensorboard_log(
+                    val_force_loss,
+                    "force",
+                    train=False,
+                    writer=writer,
+                    epoch=epoch,
+                    tensorboard_prefix=tensorboard_prefix,
+                )
+                tensorboard_log(
+                    val_stress_iso_loss,
+                    "stress_iso",
+                    train=False,
+                    writer=writer,
+                    epoch=epoch,
+                    tensorboard_prefix=tensorboard_prefix,
+                )
+                tensorboard_log(
+                    val_stress_aniso_loss,
+                    "stress_aniso",
+                    train=False,
+                    writer=writer,
+                    epoch=epoch,
+                    tensorboard_prefix=tensorboard_prefix,
+                )
+            last_val_loss = val_loss
+            losses[epoch]["val_loss"] = float(val_loss)
 
             # Early stopping check
             if val_loss < best_val_loss:
