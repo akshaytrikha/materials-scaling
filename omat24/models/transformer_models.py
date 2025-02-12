@@ -217,6 +217,28 @@ class XTransformerModel(TransformerWrapper):
             d_model + self.additional_dim, 6
         )  # Stresses: [M, 6]
 
+        # Initialize weights in the __init__ method
+        # Initialize Linear 1 with Xavier initialization (normal distribution)
+        nn.init.xavier_normal_(self.energy_1.weight)
+        if self.energy_1.bias is not None:
+            nn.init.zeros_(self.energy_1.bias)
+        nn.init.xavier_normal_(self.force_1.weight)
+        if self.force_1.bias is not None:
+            nn.init.zeros_(self.force_1.bias)
+        nn.init.xavier_normal_(self.stress_1.weight)
+        if self.stress_1.bias is not None:
+            nn.init.zeros_(self.stress_1.bias)
+        # Initialize Linear 2 with Xavier initialization (normal distribution)
+        nn.init.xavier_normal_(self.energy_2.weight)
+        if self.energy_2.bias is not None:
+            nn.init.zeros_(self.energy_2.bias)
+        nn.init.xavier_normal_(self.force_2.weight)
+        if self.force_2.bias is not None:
+            nn.init.zeros_(self.force_2.bias)
+        nn.init.xavier_normal_(self.stress_2.weight)
+        if self.stress_2.bias is not None:
+            nn.init.zeros_(self.stress_2.bias)
+
         # Count parameters
         self.num_params = sum(p.numel() for p in self.parameters())
 
@@ -244,17 +266,17 @@ class XTransformerModel(TransformerWrapper):
         output = self.attn_layers(x=combined_emb, mask=mask)  # [M, A, d_model]
 
         # Predict forces
-        forces = self.force_2(self.force_1(output))  # [M, A, 3]
+        forces = self.force_2(torch.nn.tanh(self.force_1(output)))  # [M, A, 3]
         expanded_mask = mask.unsqueeze(-1).expand(-1, -1, 3)
         forces = forces * expanded_mask.float()  # Mask padded atoms
 
         # Predict per-atom energy contributions and sum
-        energy_contrib = self.energy_2(self.energy_1(output)).squeeze(-1)  # [M, A]
+        energy_contrib = self.energy_2(torch.nn.tanh(self.energy_1(output))).squeeze(-1)  # [M, A]
         energy_contrib = energy_contrib * mask.squeeze(-1).float()
         energy = energy_contrib.sum(dim=1)  # [batch_size]
 
         # Predict per-atom stress contributions and sum
-        stress_contrib = self.stress_2(self.stress_1(output))  # [M, A, 6]
+        stress_contrib = self.stress_2(torch.nn.tanh(self.stress_1(output)))  # [M, A, 6]
         expanded_mask = mask.unsqueeze(-1).expand(-1, -1, 6)
         stress_contrib = stress_contrib * expanded_mask.float()
         stress = stress_contrib.sum(dim=1)  # [batch_size, 6]
