@@ -16,12 +16,13 @@ def forward_pass(model, batch, graph: bool, training: bool, device):
 
     with context_manager:
         if type(batch) == dict:
-            atomic_numbers = batch["atomic_numbers"].to(device)
-            positions = batch["positions"].to(device)
-            factorized_distances = batch["factorized_matrix"].to(device)
-            true_forces = batch["forces"].to(device)
-            true_energy = batch["energy"].to(device)
-            true_stress = batch["stress"].to(device)
+            
+            atomic_numbers = batch["atomic_numbers"].to(device, non_blocking=True)
+            positions = batch["positions"].to(device, non_blocking=True)
+            factorized_distances = batch["factorized_matrix"].to(device, non_blocking=True)
+            true_forces = batch["forces"].to(device, non_blocking=True)
+            true_energy = batch["energy"].to(device, non_blocking=True)
+            true_stress = batch["stress"].to(device, non_blocking=True)
             mask = atomic_numbers != 0
             natoms = mask.sum(dim=1)
 
@@ -31,9 +32,9 @@ def forward_pass(model, batch, graph: bool, training: bool, device):
 
         elif isinstance(batch, Batch):
             # PyG Batch
-            true_forces = batch.forces.to(device)
-            true_energy = batch.energy.to(device)
-            true_stress = batch.stress.to(device)
+            true_forces = batch.forces.to(device, non_blocking=True)
+            true_energy = batch.energy.to(device, non_blocking=True)
+            true_stress = batch.stress.to(device, non_blocking=True)
             mask = None
             natoms = batch.natoms
 
@@ -171,7 +172,7 @@ def train(
         val_force_loss,
         val_stress_iso_loss,
         val_stress_aniso_loss,
-    ) = run_validation(model, val_loader, graph, device)
+    ) = run_validation(model, val_loader, device)
     losses[0] = {"val_loss": float(val_loss)}
     if writer is not None:
         tensorboard_log(
@@ -245,17 +246,6 @@ def train(
         n_train_batches = len(train_loader)
 
         for batch_idx, batch in enumerate(train_loader):
-            atomic_numbers = batch["atomic_numbers"].to(device, non_blocking=True)
-            positions = batch["positions"].to(device, non_blocking=True)
-            factorized_distances = batch["factorized_matrix"].to(
-                device, non_blocking=True
-            )
-            true_forces = batch["forces"].to(device, non_blocking=True)
-            true_energy = batch["energy"].to(device, non_blocking=True)
-            true_stress = batch["stress"].to(device, non_blocking=True)
-
-            mask = atomic_numbers != 0
-
             optimizer.zero_grad()
             (
                 pred_forces,
@@ -267,9 +257,10 @@ def train(
                 mask,
                 natoms,
             ) = forward_pass(
-                model=model, batch=batch, graph=graph, training=True, device=device
+                model=model, batch=batch, graph=graph, training=False, device=device
             )
 
+            natoms = mask.sum(dim=1)
             train_loss_dict = compute_loss(
                 pred_forces,
                 pred_energy,
@@ -279,7 +270,7 @@ def train(
                 true_stress,
                 mask,
                 device,
-                natoms,
+                natoms=natoms,
             )
             total_train_loss = train_loss_dict["total_loss"]
             total_train_loss.backward()
@@ -379,18 +370,13 @@ def train(
 
         # Validate every 'validate_every' epochs
         if epoch % validate_every == 0:
-            val_loss = run_validation(model, val_loader, graph, device)
-            last_val_loss = val_loss
-            losses[epoch]["val_loss"] = float(val_loss)
-
-            # Also log validation loss to TensorBoard
             (
                 val_loss,
                 val_energy_loss,
                 val_force_loss,
                 val_stress_iso_loss,
                 val_stress_aniso_loss,
-            ) = run_validation(model, val_loader, graph, device)
+            ) = run_validation(model, val_loader, device)
             if writer is not None:
                 tensorboard_log(
                     val_loss,
