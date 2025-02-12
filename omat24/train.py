@@ -160,7 +160,7 @@ if __name__ == "__main__":
                 optimizer=optimizer,
                 scheduler=scheduler,
                 pbar=pbar,
-                architecture=args.architecture,
+                graph=graph,
                 device=DEVICE,
                 patience=50,
                 results_path=results_path if log else None,

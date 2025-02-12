@@ -152,7 +152,9 @@ class OMat24Dataset(Dataset):
         # Extract atomic numbers, positions, and symbols
         atomic_numbers = atoms.get_atomic_numbers()  # Shape: (N_atoms,)
         positions = atoms.get_positions()  # Shape: (N_atoms, 3)
-        symbols = atoms.symbols.get_chemical_formula()  # Keep as string, no tensor conversion needed
+        symbols = (
+            atoms.symbols.get_chemical_formula()
+        )  # Keep as string, no tensor conversion needed
 
         # Convert to tensors
         atomic_numbers = torch.tensor(atomic_numbers, dtype=torch.long)
@@ -193,6 +195,8 @@ class OMat24Dataset(Dataset):
             )
             sample.natoms = torch.tensor(len(atoms))
             sample.postiions = positions
+            sample.idx = idx
+            sample.symbols = symbols
             return sample
         else:
             factorized_matrix = factorize_matrix(
