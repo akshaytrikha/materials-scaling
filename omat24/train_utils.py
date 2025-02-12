@@ -1,12 +1,76 @@
 # External
 import torch
+import torch.nn as nn
+from typing import Union, Dict
 
 # Internal
 from loss import compute_loss
 from log_utils import partial_json_log, collect_train_val_samples, tensorboard_log
+from torch_geometric.data import Batch
 
 
-def run_validation(model, val_loader, device):
+def forward_pass(
+    model: nn.Module,
+    batch: Union[Dict, Batch],
+    graph: bool,
+    training: bool,
+    device: torch.device,
+):
+    """A common forward pass function for inference across different architectures & dataloaders.
+
+    Args:
+        model (nn.Module): PyTorch model to use.
+        batch (Union[Dict, Batch]): The batch of data to forward pass.
+        graph (bool): Whether the model is a graph-based model.
+        training (bool): Whether the model is in training mode.
+        device (torch.device): The device to run the model on.
+    """
+    if training or graph:
+        context_manager = torch.enable_grad()
+    else:
+        context_manager = torch.no_grad()
+
+    with context_manager:
+        if type(batch) == dict:
+
+            atomic_numbers = batch["atomic_numbers"].to(device, non_blocking=True)
+            positions = batch["positions"].to(device, non_blocking=True)
+            factorized_distances = batch["factorized_matrix"].to(
+                device, non_blocking=True
+            )
+            true_forces = batch["forces"].to(device, non_blocking=True)
+            true_energy = batch["energy"].to(device, non_blocking=True)
+            true_stress = batch["stress"].to(device, non_blocking=True)
+            mask = atomic_numbers != 0
+            natoms = mask.sum(dim=1)
+
+            pred_forces, pred_energy, pred_stress = model(
+                atomic_numbers, positions, factorized_distances, mask
+            )
+
+        elif isinstance(batch, Batch):
+            # PyG Batch
+            true_forces = batch.forces.to(device, non_blocking=True)
+            true_energy = batch.energy.to(device, non_blocking=True)
+            true_stress = batch.stress.to(device, non_blocking=True)
+            mask = None
+            natoms = batch.natoms
+
+            pred_forces, pred_energy, pred_stress = model(batch)
+
+    return (
+        pred_forces,
+        pred_energy,
+        pred_stress,
+        true_forces,
+        true_energy,
+        true_stress,
+        mask,
+        natoms,
+    )
+
+
+def run_validation(model, val_loader, graph, device):
     """
     Compute and return the average validation loss.
 
@@ -27,38 +91,36 @@ def run_validation(model, val_loader, device):
     stress_aniso_loss_sum = 0.0
     n = len(val_loader)
 
-    with torch.no_grad():
-        for batch in val_loader:
-            atomic_numbers = batch["atomic_numbers"].to(device)
-            positions = batch["positions"].to(device)
-            factorized_distances = batch["factorized_matrix"].to(device)
-            true_forces = batch["forces"].to(device)
-            true_energy = batch["energy"].to(device)
-            true_stress = batch["stress"].to(device)
+    for batch in val_loader:
+        (
+            pred_forces,
+            pred_energy,
+            pred_stress,
+            true_forces,
+            true_energy,
+            true_stress,
+            mask,
+            natoms,
+        ) = forward_pass(
+            model=model, batch=batch, graph=graph, training=False, device=device
+        )
 
-            mask = atomic_numbers != 0
-
-            pred_forces, pred_energy, pred_stress = model(
-                atomic_numbers, positions, factorized_distances, mask
-            )
-
-            natoms = mask.sum(dim=1)
-            val_loss_dict = compute_loss(
-                pred_forces,
-                pred_energy,
-                pred_stress,
-                true_forces,
-                true_energy,
-                true_stress,
-                mask,
-                device,
-                natoms=natoms,
-            )
-            val_loss_sum += val_loss_dict["total_loss"].item()
-            energy_loss_sum += val_loss_dict["energy_loss"].item()
-            force_loss_sum += val_loss_dict["force_loss"].item()
-            stress_iso_loss_sum += val_loss_dict["stress_iso_loss"].item()
-            stress_aniso_loss_sum += val_loss_dict["stress_aniso_loss"].item()
+        val_loss_dict = compute_loss(
+            pred_forces,
+            pred_energy,
+            pred_stress,
+            true_forces,
+            true_energy,
+            true_stress,
+            mask,
+            device,
+            natoms,
+        )
+        val_loss_sum += val_loss_dict["total_loss"].item()
+        energy_loss_sum += val_loss_dict["energy_loss"].item()
+        force_loss_sum += val_loss_dict["force_loss"].item()
+        stress_iso_loss_sum += val_loss_dict["stress_iso_loss"].item()
+        stress_aniso_loss_sum += val_loss_dict["stress_aniso_loss"].item()
 
     if n == 0:
         return float("inf")
@@ -78,6 +140,7 @@ def train(
     optimizer,
     scheduler,
     pbar,
+    graph,
     device,
     patience=50,
     results_path=None,
@@ -127,7 +190,7 @@ def train(
         val_force_loss,
         val_stress_iso_loss,
         val_stress_aniso_loss,
-    ) = run_validation(model, val_loader, device)
+    ) = run_validation(model, val_loader, graph, device)
     losses[0] = {"val_loss": float(val_loss)}
     if writer is not None:
         tensorboard_log(
@@ -201,20 +264,18 @@ def train(
         n_train_batches = len(train_loader)
 
         for batch_idx, batch in enumerate(train_loader):
-            atomic_numbers = batch["atomic_numbers"].to(device, non_blocking=True)
-            positions = batch["positions"].to(device, non_blocking=True)
-            factorized_distances = batch["factorized_matrix"].to(
-                device, non_blocking=True
-            )
-            true_forces = batch["forces"].to(device, non_blocking=True)
-            true_energy = batch["energy"].to(device, non_blocking=True)
-            true_stress = batch["stress"].to(device, non_blocking=True)
-
-            mask = atomic_numbers != 0
-
             optimizer.zero_grad()
-            pred_forces, pred_energy, pred_stress = model(
-                atomic_numbers, positions, factorized_distances, mask
+            (
+                pred_forces,
+                pred_energy,
+                pred_stress,
+                true_forces,
+                true_energy,
+                true_stress,
+                mask,
+                natoms,
+            ) = forward_pass(
+                model=model, batch=batch, graph=graph, training=True, device=device
             )
 
             natoms = mask.sum(dim=1)
@@ -333,7 +394,7 @@ def train(
                 val_force_loss,
                 val_stress_iso_loss,
                 val_stress_aniso_loss,
-            ) = run_validation(model, val_loader, device)
+            ) = run_validation(model, val_loader, graph, device)
             if writer is not None:
                 tensorboard_log(
                     val_loss,
