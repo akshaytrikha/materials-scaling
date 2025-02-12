@@ -1,5 +1,7 @@
 # External
 import torch
+import torch.nn as nn
+from typing import Union, Dict
 
 # Internal
 from loss import compute_loss
@@ -7,8 +9,22 @@ from log_utils import partial_json_log, collect_train_val_samples, tensorboard_l
 from torch_geometric.data import Batch
 
 
-def forward_pass(model, batch, graph: bool, training: bool, device):
-    """"""
+def forward_pass(
+    model: nn.Module,
+    batch: Union[Dict, Batch],
+    graph: bool,
+    training: bool,
+    device: torch.device,
+):
+    """A common forward pass function for inference across different architectures & dataloaders.
+
+    Args:
+        model (nn.Module): PyTorch model to use.
+        batch (Union[Dict, Batch]): The batch of data to forward pass.
+        graph (bool): Whether the model is a graph-based model.
+        training (bool): Whether the model is in training mode.
+        device (torch.device): The device to run the model on.
+    """
     if training or graph:
         context_manager = torch.enable_grad()
     else:
