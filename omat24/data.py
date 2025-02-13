@@ -5,7 +5,6 @@ import torch
 from fairchem.core.datasets import AseDBDataset
 import ase
 import random
-from typing import Tuple
 from torch_geometric.data import Data
 from torch_geometric.data import DataLoader as PyGDataLoader
 
