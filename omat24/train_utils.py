@@ -132,7 +132,7 @@ def collect_samples_helper(num_visualization_samples, dataset, model, graph, dev
     return samples
 
 
-def collect_train_val_samples(
+def collect_samples_for_visualizing(
     model, graph, train_loader, val_loader, device, num_visualization_samples
 ):
     """Collect samples and predictions from both training and validation sets.
@@ -544,7 +544,7 @@ def train(
 
         # Visualization samples every 'visualize_every' epochs
         if epoch % visualize_every == 0:
-            samples = collect_train_val_samples(
+            samples = collect_samples_for_visualizing(
                 model,
                 graph,
                 train_loader,
