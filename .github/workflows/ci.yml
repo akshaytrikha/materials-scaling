@@ -25,10 +25,11 @@ jobs:
           pip install -r requirements.txt
           pip install torch-scatter -f https://data.pyg.org/whl/torch-2.4.0+cpu.html
           pip install torch-cluster -f https://data.pyg.org/whl/torch-2.4.0+cpu.html
+          pip install black==22.3.0
       - name: Check code formatting with Black
         run: |
           black --check .
-      - name: Run tests
+      - name: Run unit tests
         run: |
           cd omat24
           pytest test_dataloader.py
