@@ -205,6 +205,8 @@ def run_validation(model, val_loader, graph, device):
             mask,
             device,
             natoms,
+            graph,
+            batch.batch,
         )
         val_loss_sum += val_loss_dict["total_loss"].item()
         energy_loss_sum += val_loss_dict["energy_loss"].item()
@@ -378,6 +380,8 @@ def train(
                 mask,
                 device,
                 natoms,
+                graph,
+                batch.batch,
             )
             total_train_loss = train_loss_dict["total_loss"]
             total_train_loss.backward()

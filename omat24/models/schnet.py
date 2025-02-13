@@ -18,18 +18,21 @@ class MetaSchNetModels:
         # Define a list of configurations with varying hyperparameters.
         # You can add or remove configurations as needed.
         self.configurations = [
+            # 68,423 params
             {
                 "hidden_channels": 64,
                 "num_filters": 64,
                 "num_interactions": 3,
                 "num_gaussians": 50,
             },
+            # 456,583 params
             {
                 "hidden_channels": 128,
                 "num_filters": 128,
                 "num_interactions": 6,
                 "num_gaussians": 50,
             },
+            # 2,267,911
             {
                 "hidden_channels": 256,
                 "num_filters": 256,
@@ -290,9 +293,10 @@ class SchNet(nn.Module):
         )
 
         # Atom-wise readout layers
-        self.lin1 = Linear(hidden_channels, hidden_channels // 2)
-        self.act = ShiftedSoftplus(device=device)
-        self.lin2 = Linear(hidden_channels // 2, 1)
+        self.energy_fc1 = Linear(hidden_channels, hidden_channels // 2)
+        self.energy_act = ShiftedSoftplus(device=device)
+        self.energy_fc2 = Linear(hidden_channels // 2, 1)
+        self.stress_output = nn.Linear(hidden_channels, 6)
         self.reset_parameters()
 
         # Calculate number of parameters
@@ -302,90 +306,58 @@ class SchNet(nn.Module):
         self.embedding.reset_parameters()
         for interaction in self.interactions:
             interaction.reset_parameters()
-        nn.init.xavier_uniform_(self.lin1.weight)
-        self.lin1.bias.data.fill_(0)
-        nn.init.xavier_uniform_(self.lin2.weight)
-        self.lin2.bias.data.fill_(0)
+        nn.init.xavier_uniform_(self.energy_fc1.weight)
+        self.energy_fc1.bias.data.fill_(0)
+        nn.init.xavier_uniform_(self.energy_fc2.weight)
+        self.energy_fc2.bias.data.fill_(0)
+        nn.init.xavier_uniform_(self.stress_output.weight)
+        self.stress_output.bias.data.fill_(0)
 
     def forward(self, data):
         """
         Forward pass for SchNet.
 
         Args:
-            data: Either a dictionary with keys "atomic_numbers" and "positions" or a PyG Data object.
-                  For dict, keys should be:
-                      "atomic_numbers": LongTensor of shape [N_atoms]
-                      "positions": FloatTensor of shape [N_atoms, 3]
-                  For PyG Data, attributes are assumed to be:
+            data: For PyG Data, attributes are assumed to be:
                       atomic_numbers, pos, (optionally edge_index and batch)
 
         Returns:
             energy: Tensor of shape [num_molecules] representing the predicted energy.
             forces: Tensor of shape [N_atoms, 3] representing the negative gradient of energy.
         """
-        # Extract atomic numbers and positions
-        if isinstance(data, dict):
-            z = data["atomic_numbers"]
-            pos = data["positions"]
-            # When using dicts, assume a single molecule (or no batch)
-            batch = torch.zeros(z.shape[0], dtype=torch.long, device=self.device)
-        else:
-            # Assume PyG Data (or Batch) object
-            z = data.atomic_numbers
-            pos = data.pos
-            batch = (
-                data.batch
-                if hasattr(data, "batch")
-                else torch.zeros(z.shape[0], dtype=torch.long, device=self.device)
-            )
+        # data is a single PyG Batch, with data.pos, data.atomic_numbers, data.batch, etc.
+        z = data.atomic_numbers
+        pos = data.pos
+        structure_index = data.batch  # e.g. shape [N], each atom's structure index
 
-        # Ensure positions require gradients for force computation
+        # --- Standard SchNet embedding & interactions ---
         pos.requires_grad = True
-
-        # Embed atomic numbers to get initial atom-wise features
         h = self.embedding(z)
-
-        # Use precomputed edge_index if available; otherwise, compute it using radius_graph.
-        if hasattr(data, "edge_index"):
-            edge_index = data.edge_index
-        else:
-            if self.device != "cpu":
-                edge_index = radius_graph(
-                    pos.to("cpu"),
-                    r=self.cutoff,
-                    batch=batch,
-                    max_num_neighbors=self.max_num_neighbors,
-                ).to(self.device)
-            else:
-                edge_index = radius_graph(
-                    pos,
-                    r=self.cutoff,
-                    batch=batch,
-                    max_num_neighbors=self.max_num_neighbors,
-                )
-
-        # Compute pairwise distances for edges
+        edge_index = data.edge_index
         row, col = edge_index
         edge_weight = (pos[row] - pos[col]).norm(dim=1)
-        # Expand the distances into a radial basis using Gaussian smearing
         edge_attr = self.distance_expansion(edge_weight)
-
-        # Pass through a series of interaction blocks
         for interaction in self.interactions:
             h = interaction(h, edge_index, edge_weight, edge_attr)
 
-        # Atom-wise energy contributions
-        h = self.lin1(h)
-        h = self.act(h)
-        h = self.lin2(h)
+        # --- Now we do separate readouts for E, stress, etc. ---
+        # (1) Energy
+        h_energy = self.energy_fc1(h)
+        h_energy = self.energy_act(h_energy)
+        e_per_atom = self.energy_fc2(h_energy)  # [N, 1]
+        # scatter by structure_index to get per‐structure energies
+        energy = scatter(e_per_atom, structure_index, dim=0, reduce="add").squeeze(
+            -1
+        )  # [B]
 
-        # Aggregate per-atom energies into a global energy using scatter
-        energy = scatter(h, batch, dim=0, reduce=self.readout).squeeze()
-
-        # Compute forces as the negative gradient of energy with respect to positions
+        # (2) Forces from autograd
+        # Forces are a gradient w.r.t. position, so it's one vector per atom (total = N).
+        # shape ends up [N, 3]
         forces = -torch.autograd.grad(energy.sum(), pos, create_graph=True)[0]
 
-        # Dummy stress tensor
-        stress = torch.zeros((6), device=self.device)
+        # (3) Stress. Output 6 components per atom, then sum across each structure.
+        # That yields [batch_size, 6].
+        stress_contrib = self.stress_output(h)  # e.g. [N, 6]
+        stress = scatter(stress_contrib, structure_index, dim=0, reduce="add")  # [B, 6]
 
-        return forces, energy.unsqueeze(0), stress
+        return forces, energy, stress
