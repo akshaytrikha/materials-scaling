@@ -5,7 +5,6 @@ import torch
 from fairchem.core.datasets import AseDBDataset
 import ase
 import random
-from typing import Tuple
 from torch_geometric.data import Data
 from torch_geometric.data import DataLoader as PyGDataLoader
 
@@ -198,6 +197,9 @@ class OMat24Dataset(Dataset):
                 stress=stress,
             )
             sample.natoms = torch.tensor(len(atoms))
+            sample.postiions = positions
+            sample.idx = idx
+            sample.symbols = symbols
             return sample
         else:
             factorized_matrix = factorize_matrix(
