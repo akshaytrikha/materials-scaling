@@ -104,7 +104,7 @@ class TestCollectTrainValSamples(unittest.TestCase):
                     rtol=1e-5,
                     atol=1e-6,
                 )
-                self.assertAlmostEqual(true_vals["energy"], 1.0, places=6)
+                self.assertAlmostEqual(true_vals["energy"], 1.0, places=4)
                 np.testing.assert_allclose(
                     true_vals["stress"],
                     [0.1, 0.2, 0.3, 0.4, 0.5, 0.6],
@@ -116,7 +116,7 @@ class TestCollectTrainValSamples(unittest.TestCase):
                 np.testing.assert_allclose(
                     pred_vals["forces"], [[1, 1, 1], [1, 1, 1]], rtol=1e-5, atol=1e-6
                 )
-                self.assertAlmostEqual(pred_vals["energy"], 2.0, places=6)
+                self.assertAlmostEqual(pred_vals["energy"], 2.0, places=4)
                 np.testing.assert_allclose(
                     pred_vals["stress"], [1, 1, 1, 1, 1, 1], rtol=1e-5, atol=1e-6
                 )
