@@ -163,7 +163,7 @@ def partial_json_log(
         json.dump(experiment_results, f)
 
 
-def collect_train_val_samples(
+def collect_samples_for_visualizing(
     model, train_loader, val_loader, device, num_visualization_samples
 ):
     """Collect samples and predictions from both training and validation sets.
