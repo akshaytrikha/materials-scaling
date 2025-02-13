@@ -5,7 +5,7 @@ from typing import Union, Dict
 
 # Internal
 from loss import compute_loss
-from log_utils import partial_json_log, collect_train_val_samples, tensorboard_log
+from log_utils import partial_json_log, collect_samples_for_visualizing, tensorboard_log
 from torch_geometric.data import Batch
 
 
@@ -451,7 +451,7 @@ def train(
 
         # Visualization samples every 'visualize_every' epochs
         if epoch % visualize_every == 0:
-            samples = collect_train_val_samples(
+            samples = collect_samples_for_visualizing(
                 model,
                 train_loader,
                 val_loader,

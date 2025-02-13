@@ -1,3 +1,4 @@
+# External
 import subprocess
 import json
 import re
@@ -6,6 +7,8 @@ import os
 import torch
 import torch.nn as nn
 import unittest
+
+# Internal
 from models.fcn import FCNModel, MetaFCNModels
 
 
