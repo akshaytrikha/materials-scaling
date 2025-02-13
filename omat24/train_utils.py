@@ -106,8 +106,6 @@ def collect_samples_helper(num_visualization_samples, dataset, model, graph, dev
         if not graph:
             pred_forces = pred_forces.squeeze(0)
             true_forces = true_forces.squeeze(0)
-            # pred_energy = pred_energy.squeeze(0)
-            # true_energy = true_energy.squeeze(0)
             pred_stress = pred_stress.squeeze(0)
             true_stress = true_stress.squeeze(0)
 
@@ -148,8 +146,6 @@ def collect_samples_for_visualizing(
     Returns:
         dict: Dictionary containing samples and predictions for training and validation sets.
     """
-    model.eval()  # Set model to evaluation mode
-
     # Get the underlying dataset from the DataLoader
     train_dataset = train_loader.dataset
     val_dataset = val_loader.dataset
