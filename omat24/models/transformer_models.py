@@ -68,7 +68,7 @@ class MetaTransformerModels:
                 "d_ff_mult": 8,
                 "concatenated": concatenated,
             }
-            # 1729 params
+            # # 1729 params
             # {
             #     "d_model": 1,
             #     "depth": 1,
