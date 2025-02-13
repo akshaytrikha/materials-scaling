@@ -18,6 +18,7 @@ from data_utils import download_dataset
 from arg_parser import get_args
 from models.fcn import MetaFCNModels
 from models.transformer_models import MetaTransformerModels
+from models.schnet import MetaSchNetModels
 from train_utils import train
 
 # Set seed & device
@@ -47,10 +48,14 @@ if __name__ == "__main__":
     # Load dataset
     split_name = "val"
     dataset_name = "rattled-300-subsampled"
+    graph = args.architecture == "SchNet"
+
     dataset_path = Path(f"datasets/{split_name}/{dataset_name}")
     if not dataset_path.exists():
         download_dataset(dataset_name, split_name)
-    dataset = OMat24Dataset(dataset_path=dataset_path, augment=args.augment)
+    dataset = OMat24Dataset(
+        dataset_path=dataset_path, augment=args.augment, graph=graph
+    )
 
     # User Hyperparam Feedback
     params = vars(args) | {
@@ -62,8 +67,8 @@ if __name__ == "__main__":
 
     batch_size = args.batch_size[0]
     lr = args.lr[0]
-    use_factorize = args.factorize
     num_epochs = args.epochs
+    use_factorize = args.factorize
 
     # Initialize meta model class based on architecture choice
     if args.architecture == "FCN":
@@ -77,6 +82,8 @@ if __name__ == "__main__":
             concatenated=True,
             use_factorized=use_factorize,
         )
+    elif args.architecture == "SchNet":
+        meta_models = MetaSchNetModels(device=DEVICE)
 
     # Create results path and initialize file if logging is enabled
     experiment_results = {}
@@ -108,6 +115,7 @@ if __name__ == "__main__":
                 val_data_fraction=args.val_data_fraction,
                 train_workers=args.train_workers,
                 val_workers=args.val_workers,
+                graph=graph,
             )
             dataset_size = len(train_loader.dataset)
             optimizer = optim.AdamW(model.parameters(), lr=lr)
@@ -152,6 +160,7 @@ if __name__ == "__main__":
                 optimizer=optimizer,
                 scheduler=scheduler,
                 pbar=pbar,
+                graph=graph,
                 device=DEVICE,
                 patience=50,
                 results_path=results_path if log else None,

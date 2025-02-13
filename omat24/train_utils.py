@@ -1,12 +1,166 @@
 # External
 import torch
+import torch.nn as nn
+from typing import Union, Dict
 
 # Internal
 from loss import compute_loss
-from log_utils import partial_json_log, collect_train_val_samples, tensorboard_log
+from log_utils import partial_json_log, tensorboard_log
+from torch_geometric.data import Batch
 
 
-def run_validation(model, val_loader, device):
+def forward_pass(
+    model: nn.Module,
+    batch: Union[Dict, Batch],
+    graph: bool,
+    training: bool,
+    device: torch.device,
+):
+    """A common forward pass function for inference across different architectures & dataloaders.
+
+    Args:
+        model (nn.Module): PyTorch model to use.
+        batch (Union[Dict, Batch]): The batch of data to forward pass.
+        graph (bool): Whether the model is a graph-based model.
+        training (bool): Whether the model is in training mode.
+        device (torch.device): The device to run the model on.
+    """
+    if training or graph:
+        context_manager = torch.enable_grad()
+    else:
+        context_manager = torch.no_grad()
+
+    with context_manager:
+        if type(batch) == dict:
+
+            atomic_numbers = batch["atomic_numbers"].to(device, non_blocking=True)
+            positions = batch["positions"].to(device, non_blocking=True)
+            factorized_distances = batch["factorized_matrix"].to(
+                device, non_blocking=True
+            )
+            true_forces = batch["forces"].to(device, non_blocking=True)
+            true_energy = batch["energy"].to(device, non_blocking=True)
+            true_stress = batch["stress"].to(device, non_blocking=True)
+            mask = atomic_numbers != 0
+            natoms = mask.sum(dim=1)
+
+            pred_forces, pred_energy, pred_stress = model(
+                atomic_numbers, positions, factorized_distances, mask
+            )
+
+        elif isinstance(batch, Batch):
+            # PyG Batch
+            true_forces = batch.forces.to(device, non_blocking=True)
+            true_energy = batch.energy.to(device, non_blocking=True)
+            true_stress = batch.stress.to(device, non_blocking=True)
+            mask = None
+            natoms = batch.natoms
+
+            pred_forces, pred_energy, pred_stress = model(batch)
+
+    return (
+        pred_forces,
+        pred_energy,
+        pred_stress,
+        true_forces,
+        true_energy,
+        true_stress,
+        mask,
+        natoms,
+    )
+
+
+def collect_samples_helper(num_visualization_samples, dataset, model, graph, device):
+    samples = []
+    for i in range(min(num_visualization_samples, len(dataset))):
+        if graph:
+            batch = Batch.from_data_list([dataset[i]])
+            positions = batch["pos"]
+            atomic_numbers = batch["atomic_numbers"]
+            sample_length = len(atomic_numbers)
+            idx = batch["idx"].cpu().tolist()[0]
+        else:
+            batch = {
+                k: torch.unsqueeze(v, 0) if isinstance(v, torch.Tensor) else v
+                for k, v in dataset[i].items()
+            }
+            # Extract data from batch and sqeeuze batch dimension
+            positions = batch["positions"].squeeze(0)
+            atomic_numbers = batch["atomic_numbers"].squeeze(0)
+            sample_length = (batch["atomic_numbers"] != 0).sum(dim=1)[0].item()
+            idx = batch["idx"]
+
+        symbols = batch["symbols"]
+
+        (
+            pred_forces,
+            pred_energy,
+            pred_stress,
+            true_forces,
+            true_energy,
+            true_stress,
+            _,
+            _,
+        ) = forward_pass(model, batch, graph, False, device)
+
+        if not graph:
+            pred_forces = pred_forces.squeeze(0)
+            true_forces = true_forces.squeeze(0)
+            pred_stress = pred_stress.squeeze(0)
+            true_stress = true_stress.squeeze(0)
+
+        samples.append(
+            {
+                "idx": idx,
+                "symbols": symbols,
+                "atomic_numbers": atomic_numbers[:sample_length].cpu().tolist(),
+                "positions": positions[:sample_length].cpu().tolist(),
+                "true": {
+                    "forces": true_forces[:, :sample_length].cpu().tolist(),
+                    "energy": true_energy.cpu().tolist()[0],
+                    "stress": true_stress.cpu().tolist(),
+                },
+                "pred": {
+                    "forces": pred_forces[:, :sample_length].cpu().tolist(),
+                    "energy": pred_energy.cpu().tolist()[0],
+                    "stress": pred_stress.cpu().tolist(),
+                },
+            }
+        )
+    return samples
+
+
+def collect_samples_for_visualizing(
+    model, graph, train_loader, val_loader, device, num_visualization_samples
+):
+    """Collect samples and predictions from both training and validation sets.
+    Uses fixed indices for consistent visualization.
+
+    Args:
+        model (torch.nn.Module): Trained model.
+        train_loader (DataLoader): Training DataLoader.
+        val_loader (DataLoader): Validation DataLoader.
+        device (torch.device): Device to run model on.
+        num_visualization_samples (int): Number of samples to visualize.
+
+    Returns:
+        dict: Dictionary containing samples and predictions for training and validation sets.
+    """
+    # Get the underlying dataset from the DataLoader
+    train_dataset = train_loader.dataset
+    val_dataset = val_loader.dataset
+
+    return {
+        "train": collect_samples_helper(
+            num_visualization_samples, train_dataset, model, graph, device
+        ),
+        "val": collect_samples_helper(
+            num_visualization_samples, val_dataset, model, graph, device
+        ),
+    }
+
+
+def run_validation(model, val_loader, graph, device):
     """
     Compute and return the average validation loss.
 
@@ -27,42 +181,46 @@ def run_validation(model, val_loader, device):
     stress_aniso_loss_sum = 0.0
     n = len(val_loader)
 
-    with torch.no_grad():
-        for batch in val_loader:
-            atomic_numbers = batch["atomic_numbers"].to(device)
-            positions = batch["positions"].to(device)
-            factorized_distances = batch["factorized_matrix"].to(device)
-            true_forces = batch["forces"].to(device)
-            true_energy = batch["energy"].to(device)
-            true_stress = batch["stress"].to(device)
+    for batch in val_loader:
+        (
+            pred_forces,
+            pred_energy,
+            pred_stress,
+            true_forces,
+            true_energy,
+            true_stress,
+            mask,
+            natoms,
+        ) = forward_pass(
+            model=model, batch=batch, graph=graph, training=False, device=device
+        )
 
-            mask = atomic_numbers != 0
-
-            pred_forces, pred_energy, pred_stress = model(
-                atomic_numbers, positions, factorized_distances, mask
-            )
-
-            natoms = mask.sum(dim=1)
-            val_loss_dict = compute_loss(
-                pred_forces,
-                pred_energy,
-                pred_stress,
-                true_forces,
-                true_energy,
-                true_stress,
-                mask,
-                device,
-                natoms=natoms,
-            )
-            val_loss_sum += val_loss_dict["total_loss"].item()
-            energy_loss_sum += val_loss_dict["energy_loss"].item()
-            force_loss_sum += val_loss_dict["force_loss"].item()
-            stress_iso_loss_sum += val_loss_dict["stress_iso_loss"].item()
-            stress_aniso_loss_sum += val_loss_dict["stress_aniso_loss"].item()
+        val_loss_dict = compute_loss(
+            pred_forces,
+            pred_energy,
+            pred_stress,
+            true_forces,
+            true_energy,
+            true_stress,
+            mask,
+            device,
+            natoms,
+        )
+        val_loss_sum += val_loss_dict["total_loss"].item()
+        energy_loss_sum += val_loss_dict["energy_loss"].item()
+        force_loss_sum += val_loss_dict["force_loss"].item()
+        stress_iso_loss_sum += val_loss_dict["stress_iso_loss"].item()
+        stress_aniso_loss_sum += val_loss_dict["stress_aniso_loss"].item()
 
     if n == 0:
         return float("inf")
-    return (val_loss_sum / n, energy_loss_sum / n, force_loss_sum / n, stress_iso_loss_sum / n, stress_aniso_loss_sum / n)
+    return (
+        val_loss_sum / n,
+        energy_loss_sum / n,
+        force_loss_sum / n,
+        stress_iso_loss_sum / n,
+        stress_aniso_loss_sum / n,
+    )
 
 
 def train(
@@ -72,6 +230,7 @@ def train(
     optimizer,
     scheduler,
     pbar,
+    graph,
     device,
     patience=50,
     results_path=None,
@@ -116,7 +275,13 @@ def train(
     losses = {}
 
     # Initial validation at epoch 0
-    val_loss, val_energy_loss, val_force_loss, val_stress_iso_loss, val_stress_aniso_loss = run_validation(model, val_loader, device)
+    (
+        val_loss,
+        val_energy_loss,
+        val_force_loss,
+        val_stress_iso_loss,
+        val_stress_aniso_loss,
+    ) = run_validation(model, val_loader, graph, device)
     losses[0] = {"val_loss": float(val_loss)}
     if writer is not None:
         tensorboard_log(
@@ -160,7 +325,6 @@ def train(
             tensorboard_prefix=tensorboard_prefix,
         )
 
-
     # Write partial JSON if everything is provided
     if can_write_partial:
         partial_json_log(
@@ -191,21 +355,20 @@ def train(
         n_train_batches = len(train_loader)
 
         for batch_idx, batch in enumerate(train_loader):
-            atomic_numbers = batch["atomic_numbers"].to(device)
-            positions = batch["positions"].to(device)
-            factorized_distances = batch["factorized_matrix"].to(device)
-            true_forces = batch["forces"].to(device)
-            true_energy = batch["energy"].to(device)
-            true_stress = batch["stress"].to(device)
-
-            mask = atomic_numbers != 0
-
             optimizer.zero_grad()
-            pred_forces, pred_energy, pred_stress = model(
-                atomic_numbers, positions, factorized_distances, mask
+            (
+                pred_forces,
+                pred_energy,
+                pred_stress,
+                true_forces,
+                true_energy,
+                true_stress,
+                mask,
+                natoms,
+            ) = forward_pass(
+                model=model, batch=batch, graph=graph, training=True, device=device
             )
 
-            natoms = mask.sum(dim=1)
             train_loss_dict = compute_loss(
                 pred_forces,
                 pred_energy,
@@ -215,7 +378,7 @@ def train(
                 true_stress,
                 mask,
                 device,
-                natoms=natoms,
+                natoms,
             )
             total_train_loss = train_loss_dict["total_loss"]
             total_train_loss.backward()
@@ -316,7 +479,13 @@ def train(
 
         # Validate every 'validate_every' epochs
         if epoch % validate_every == 0:
-            val_loss, val_energy_loss, val_force_loss, val_stress_iso_loss, val_stress_aniso_loss = run_validation(model, val_loader, device)
+            (
+                val_loss,
+                val_energy_loss,
+                val_force_loss,
+                val_stress_iso_loss,
+                val_stress_aniso_loss,
+            ) = run_validation(model, val_loader, graph, device)
             if writer is not None:
                 tensorboard_log(
                     val_loss,
@@ -360,7 +529,7 @@ def train(
                 )
             last_val_loss = val_loss
             losses[epoch]["val_loss"] = float(val_loss)
-            
+
             # Early stopping check
             if val_loss < best_val_loss:
                 best_val_loss = val_loss
@@ -373,8 +542,9 @@ def train(
 
         # Visualization samples every 'visualize_every' epochs
         if epoch % visualize_every == 0:
-            samples = collect_train_val_samples(
+            samples = collect_samples_for_visualizing(
                 model,
+                graph,
                 train_loader,
                 val_loader,
                 device,
