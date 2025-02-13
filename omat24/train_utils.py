@@ -81,7 +81,7 @@ def train(
     writer=None,
     tensorboard_prefix="model",
     num_visualization_samples=3,
-    gradient_clip=0.1,
+    gradient_clip=1,
     validate_every=500,
     visualize_every=500,
 ):

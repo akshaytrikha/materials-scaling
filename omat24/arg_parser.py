@@ -64,7 +64,7 @@ def get_args():
     parser.add_argument(
         "--gradient_clip",
         type=float,
-        default=0.1,
+        default=1,
         help="Maximum norm for gradient clipping",
     )
     parser.add_argument(

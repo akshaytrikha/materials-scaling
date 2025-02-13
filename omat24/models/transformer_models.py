@@ -61,30 +61,37 @@ class MetaTransformerModels:
             max_seq_len (int): Maximum sequence length for the transformer.
         """
         self.configurations = [
-            # 1729 params
             {
-                "d_model": 1,
-                "depth": 1,
-                "n_heads": 1,
-                "d_ff_mult": 1,
-                "concatenated": concatenated,
-            },
-            # 9061 params
-            {
-                "d_model": 4,
-                "depth": 2,
-                "n_heads": 2,
-                "d_ff_mult": 2,
-                "concatenated": concatenated,
-            },
-            # 109059 params
-            {
-                "d_model": 8,
-                "depth": 8,
+                "d_model": 64,
+                "depth": 12,
                 "n_heads": 4,
                 "d_ff_mult": 8,
                 "concatenated": concatenated,
-            },
+            }
+            # 1729 params
+            # {
+            #     "d_model": 1,
+            #     "depth": 1,
+            #     "n_heads": 1,
+            #     "d_ff_mult": 1,
+            #     "concatenated": concatenated,
+            # },
+            # # 9061 params
+            # {
+            #     "d_model": 4,
+            #     "depth": 2,
+            #     "n_heads": 2,
+            #     "d_ff_mult": 2,
+            #     "concatenated": concatenated,
+            # },
+            # # 109059 params
+            # {
+            #     "d_model": 8,
+            #     "depth": 8,
+            #     "n_heads": 4,
+            #     "d_ff_mult": 8,
+            #     "concatenated": concatenated,
+            # },
             # {
             #     "d_model": 2,
             #     "depth": 1,
