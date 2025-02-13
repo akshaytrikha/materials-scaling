@@ -1,5 +1,4 @@
 # External
-import torch
 import json
 import math
 

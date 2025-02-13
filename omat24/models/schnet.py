@@ -24,18 +24,18 @@ class MetaSchNetModels:
                 "num_interactions": 3,
                 "num_gaussians": 50,
             },
-            # {
-            #     "hidden_channels": 128,
-            #     "num_filters": 128,
-            #     "num_interactions": 6,
-            #     "num_gaussians": 50,
-            # },
-            # {
-            #     "hidden_channels": 256,
-            #     "num_filters": 256,
-            #     "num_interactions": 8,
-            #     "num_gaussians": 50,
-            # },
+            {
+                "hidden_channels": 128,
+                "num_filters": 128,
+                "num_interactions": 6,
+                "num_gaussians": 50,
+            },
+            {
+                "hidden_channels": 256,
+                "num_filters": 256,
+                "num_interactions": 8,
+                "num_gaussians": 50,
+            },
         ]
         self.device = device
 
@@ -379,6 +379,7 @@ class SchNet(nn.Module):
         h = self.lin1(h)
         h = self.act(h)
         h = self.lin2(h)
+
         # Aggregate per-atom energies into a global energy using scatter
         energy = scatter(h, batch, dim=0, reduce=self.readout).squeeze()
 
