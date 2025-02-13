@@ -102,6 +102,8 @@ def get_dataloaders(
             shuffle=True,
             collate_fn=collate_fn,
             num_workers=train_workers,
+            persistent_workers=train_workers > 0,
+            pin_memory=torch.cuda.is_available(),
         )
 
         val_loader = DataLoader(
@@ -110,6 +112,8 @@ def get_dataloaders(
             shuffle=False,  # Typically, shuffle=False for validation
             collate_fn=collate_fn,
             num_workers=val_workers,
+            persistent_workers=val_workers > 0,
+            pin_memory=torch.cuda.is_available(),
         )
 
     if return_indices:

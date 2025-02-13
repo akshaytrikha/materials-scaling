@@ -107,6 +107,7 @@ def compute_loss(
     # Compute losses
     energy_loss_fn = PerAtomMAELoss()
     energy_loss = energy_loss_fn(pred=pred_energy, target=true_energy, natoms=natoms)
+    energy_loss = torch.mean(energy_loss)  # Take mean over batch
 
     # # Use reduction="none" to compute the loss per atom
     # force_loss_fn = nn.MSELoss(reduction="none")
