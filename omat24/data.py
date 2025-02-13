@@ -155,6 +155,9 @@ class OMat24Dataset(Dataset):
         # Extract atomic numbers, positions, and symbols
         atomic_numbers = atoms.get_atomic_numbers()  # Shape: (N_atoms,)
         positions = atoms.get_positions()  # Shape: (N_atoms, 3)
+        cell = torch.tensor(
+            atoms.get_cell(), dtype=torch.float
+        )  # Cell / lattice parameters
         symbols = (
             atoms.symbols.get_chemical_formula()
         )  # Keep as string, no tensor conversion needed
@@ -198,6 +201,7 @@ class OMat24Dataset(Dataset):
             )
             sample.natoms = torch.tensor(len(atoms))
             sample.postiions = positions
+            sample.cell = cell
             sample.idx = idx
             sample.symbols = symbols
             return sample

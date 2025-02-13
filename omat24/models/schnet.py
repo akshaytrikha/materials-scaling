@@ -129,7 +129,7 @@ class CFConv(nn.Module):
     """Continuous-filter convolution layer"""
 
     def __init__(
-        self, in_channels, out_channels, num_filters, nn, cutoff, device="cpu"
+        self, in_channels, out_channels, num_filters, nn_module, cutoff, device="cpu"
     ):
         """Args:
         in_channels (int): The number of input channels
@@ -143,7 +143,7 @@ class CFConv(nn.Module):
         self.lin1 = Linear(in_channels, num_filters, bias=False, device=device)
         # self.lin1.weight = self.lin1.weight.to(device)
         self.lin2 = Linear(num_filters, out_channels, device=device)
-        self.nn = nn.to(device)
+        self.nn = nn_module.to(device)
         self.cutoff = cutoff
         self.device = device
         self.reset_parameters()
@@ -239,7 +239,7 @@ class SchNet(nn.Module):
     atomic_numbers, pos, and optionally edge_index). The forward pass computes the
     graph connectivity (if not provided), applies a series of interaction blocks,
     aggregates atom-wise contributions to yield a global energy, and computes forces
-    as the negative gradient of the energy with respect to positions.
+    as the negative gradient of energy with respect to positions.
     """
 
     def __init__(
@@ -321,7 +321,7 @@ class SchNet(nn.Module):
 
         Returns:
             energy: Tensor of shape [num_molecules] representing the predicted energy.
-            forces: Tensor of shape [N_atoms, 3] representing the negative gradient of energy.
+            forces: Tensor of shape [N_atoms, 3] representing the negative gradient of energy with respect to positions.
             stress: Tensor of shape [num_molecules, 6] representing the predicted stress.
         """
         # Extract atomic numbers and positions
@@ -330,6 +330,14 @@ class SchNet(nn.Module):
             pos = data["positions"]
             # When using dicts, assume a single molecule (or no batch)
             batch = torch.zeros(z.shape[0], dtype=torch.long, device=self.device)
+            # If cell is provided in the dictionary, use it for strain computation
+            if "cell" in data:
+                cell = data["cell"]
+                cell.requires_grad = True
+                # Convert positions to fractional coordinates and reconstruct them to make energy cell-dependent
+                cell_inv = torch.inverse(cell)
+                pos_frac = (cell_inv @ pos.T).T  # fractional coordinates
+                pos = pos_frac @ cell
         else:
             # Assume PyG Data (or Batch) object
             z = data.atomic_numbers
@@ -339,9 +347,13 @@ class SchNet(nn.Module):
                 if hasattr(data, "batch")
                 else torch.zeros(z.shape[0], dtype=torch.long, device=self.device)
             )
-
-        # Ensure positions require gradients for force computation
-        pos.requires_grad = True
+            # If cell is available in the PyG object, use it for strain computation
+            if hasattr(data, "cell"):
+                cell = data.cell
+                cell.requires_grad = True
+                cell_inv = torch.inverse(cell)
+                pos_frac = (cell_inv @ pos.T).T  # fractional coordinates
+                pos = pos_frac @ cell
 
         # Embed atomic numbers to get initial atom-wise features
         h = self.embedding(z)
@@ -374,19 +386,34 @@ class SchNet(nn.Module):
         # Pass through a series of interaction blocks
         for interaction in self.interactions:
             h = interaction(h, edge_index, edge_weight, edge_attr)
-
         # Atom-wise energy contributions
         h = self.lin1(h)
         h = self.act(h)
         h = self.lin2(h)
-
         # Aggregate per-atom energies into a global energy using scatter
         energy = scatter(h, batch, dim=0, reduce=self.readout).squeeze()
 
         # Compute forces as the negative gradient of energy with respect to positions
         forces = -torch.autograd.grad(energy.sum(), pos, create_graph=True)[0]
 
-        # Dummy stress tensor
-        stress = torch.zeros((6), device=self.device)
+        # Compute stress via Autograd of energy with respect to strain (cell)
+        # Using: stress = (1/V) * cell^T * (dE/dcell), where V = det(cell)
+        if "cell" in locals():
+            dE_dcell = torch.autograd.grad(energy.sum(), cell, create_graph=True)[0]
+            V = torch.det(cell)
+            stress_mat = (cell.t() @ dE_dcell) / V
+            # Convert 3x3 stress matrix to 6-component vector: [xx, yy, zz, yz, xz, xy]
+            stress = torch.stack(
+                [
+                    stress_mat[0, 0],
+                    stress_mat[1, 1],
+                    stress_mat[2, 2],
+                    stress_mat[1, 2],
+                    stress_mat[0, 2],
+                    stress_mat[0, 1],
+                ]
+            )
+        else:
+            stress = torch.zeros((6), device=self.device)
 
         return forces, energy.unsqueeze(0), stress
