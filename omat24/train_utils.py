@@ -5,7 +5,7 @@ from typing import Union, Dict
 
 # Internal
 from loss import compute_loss
-from log_utils import partial_json_log, collect_samples_for_visualizing, tensorboard_log
+from log_utils import partial_json_log, tensorboard_log
 from torch_geometric.data import Batch
 
 
@@ -68,6 +68,96 @@ def forward_pass(
         mask,
         natoms,
     )
+
+
+def collect_samples_helper(num_visualization_samples, dataset, model, graph, device):
+    samples = []
+    for i in range(min(num_visualization_samples, len(dataset))):
+        if graph:
+            batch = Batch.from_data_list([dataset[i]])
+            positions = batch["pos"]
+            atomic_numbers = batch["atomic_numbers"]
+            sample_length = len(atomic_numbers)
+            idx = batch["idx"].cpu().tolist()[0]
+        else:
+            batch = {
+                k: torch.unsqueeze(v, 0) if isinstance(v, torch.Tensor) else v
+                for k, v in dataset[i].items()
+            }
+            # Extract data from batch and sqeeuze batch dimension
+            positions = batch["positions"].squeeze(0)
+            atomic_numbers = batch["atomic_numbers"].squeeze(0)
+            sample_length = (batch["atomic_numbers"] != 0).sum(dim=1)[0].item()
+            idx = batch["idx"]
+
+        symbols = batch["symbols"]
+
+        (
+            pred_forces,
+            pred_energy,
+            pred_stress,
+            true_forces,
+            true_energy,
+            true_stress,
+            _,
+            _,
+        ) = forward_pass(model, batch, graph, False, device)
+
+        if not graph:
+            pred_forces = pred_forces.squeeze(0)
+            true_forces = true_forces.squeeze(0)
+            pred_stress = pred_stress.squeeze(0)
+            true_stress = true_stress.squeeze(0)
+
+        samples.append(
+            {
+                "idx": idx,
+                "symbols": symbols,
+                "atomic_numbers": atomic_numbers[:sample_length].cpu().tolist(),
+                "positions": positions[:sample_length].cpu().tolist(),
+                "true": {
+                    "forces": true_forces[:, :sample_length].cpu().tolist(),
+                    "energy": true_energy.cpu().tolist()[0],
+                    "stress": true_stress.cpu().tolist(),
+                },
+                "pred": {
+                    "forces": pred_forces[:, :sample_length].cpu().tolist(),
+                    "energy": pred_energy.cpu().tolist()[0],
+                    "stress": pred_stress.cpu().tolist(),
+                },
+            }
+        )
+    return samples
+
+
+def collect_samples_for_visualizing(
+    model, graph, train_loader, val_loader, device, num_visualization_samples
+):
+    """Collect samples and predictions from both training and validation sets.
+    Uses fixed indices for consistent visualization.
+
+    Args:
+        model (torch.nn.Module): Trained model.
+        train_loader (DataLoader): Training DataLoader.
+        val_loader (DataLoader): Validation DataLoader.
+        device (torch.device): Device to run model on.
+        num_visualization_samples (int): Number of samples to visualize.
+
+    Returns:
+        dict: Dictionary containing samples and predictions for training and validation sets.
+    """
+    # Get the underlying dataset from the DataLoader
+    train_dataset = train_loader.dataset
+    val_dataset = val_loader.dataset
+
+    return {
+        "train": collect_samples_helper(
+            num_visualization_samples, train_dataset, model, graph, device
+        ),
+        "val": collect_samples_helper(
+            num_visualization_samples, val_dataset, model, graph, device
+        ),
+    }
 
 
 def run_validation(model, val_loader, graph, device):
@@ -278,7 +368,6 @@ def train(
                 model=model, batch=batch, graph=graph, training=True, device=device
             )
 
-            natoms = mask.sum(dim=1)
             train_loss_dict = compute_loss(
                 pred_forces,
                 pred_energy,
@@ -288,7 +377,7 @@ def train(
                 true_stress,
                 mask,
                 device,
-                natoms=natoms,
+                natoms,
             )
             total_train_loss = train_loss_dict["total_loss"]
             total_train_loss.backward()
@@ -453,6 +542,7 @@ def train(
         if epoch % visualize_every == 0:
             samples = collect_samples_for_visualizing(
                 model,
+                graph,
                 train_loader,
                 val_loader,
                 device,
