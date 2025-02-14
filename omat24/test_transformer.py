@@ -15,7 +15,6 @@ from pathlib import Path
 
 # Internal
 from models.transformer_models import XTransformerModel
-from train import main as train_main
 
 
 class TestTransformer(unittest.TestCase):
@@ -51,6 +50,7 @@ class TestTransformer(unittest.TestCase):
         """Test that a minimal training job with the Transformer architecture
         executes successfully and produces a valid configuration and finite loss values.
         """
+        from train import main as train_main
 
         # Create a fixed transformer model with desired hyperparameters.
         fixed_model = XTransformerModel(
