@@ -62,6 +62,12 @@ def get_args():
         help="Factorize and use inverse distance matrix",
     )
     parser.add_argument(
+        "--gradient_clip",
+        type=float,
+        default=1,
+        help="Maximum norm for gradient clipping",
+    )
+    parser.add_argument(
         "--num_visualization_samples",
         type=int,
         default=3,

@@ -250,6 +250,7 @@ def train(
     writer=None,
     tensorboard_prefix="model",
     num_visualization_samples=3,
+    gradient_clip=1,
     validate_every=500,
     visualize_every=500,
 ):
@@ -395,6 +396,7 @@ def train(
             )
             total_train_loss = train_loss_dict["total_loss"]
             total_train_loss.backward()
+            torch.nn.utils.clip_grad_norm_(model.parameters(), gradient_clip)
             optimizer.step()
 
             train_loss_sum += total_train_loss.item()
