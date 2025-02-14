@@ -5,14 +5,17 @@ import re
 import numpy as np
 import os
 import sys
+import shutil
 import io
 from contextlib import redirect_stdout
 import torch
 import unittest
 from unittest.mock import patch
+from pathlib import Path
 
 # Internal
 from models.transformer_models import XTransformerModel
+from train import main as train_main
 
 
 class TestTransformer(unittest.TestCase):
@@ -72,11 +75,11 @@ class TestTransformer(unittest.TestCase):
                 "--epochs",
                 "500",
                 "--data_fraction",
-                "0.00001",
+                "0.0001",
                 "--val_data_fraction",
-                "0.001",
+                "0.0001",
                 "--batch_size",
-                "1",
+                "2",
                 "--lr",
                 "0.05",
                 "--val_every",
@@ -95,7 +98,6 @@ class TestTransformer(unittest.TestCase):
                         stderr="",
                     )
                     # Capture stdout from train_main() to retrieve the generated results filename.
-                    from train import main as train_main
 
                     buf = io.StringIO()
                     with redirect_stdout(buf):
@@ -113,15 +115,16 @@ class TestTransformer(unittest.TestCase):
                     print("Captured results filename:", results_filename)
 
             try:
+                # ---------- Test loss values and config ----------
                 with open(results_filename, "r") as f:
                     result_json = json.load(f)
 
                 # Get the config and loss information
-                config = result_json["1"][0]["config"]
-                first_train_loss = result_json["1"][0]["losses"]["1"]["train_loss"]
-                first_val_loss = result_json["1"][0]["losses"]["0"]["val_loss"]
-                last_train_loss = result_json["1"][0]["losses"]["500"]["train_loss"]
-                last_val_loss = result_json["1"][0]["losses"]["500"]["val_loss"]
+                config = result_json["3"][0]["config"]
+                first_train_loss = result_json["3"][0]["losses"]["1"]["train_loss"]
+                first_val_loss = result_json["3"][0]["losses"]["0"]["val_loss"]
+                last_train_loss = result_json["3"][0]["losses"]["500"]["train_loss"]
+                last_val_loss = result_json["3"][0]["losses"]["500"]["val_loss"]
 
                 # For the Transformer, the first configuration (from MetaTransformerModels) is expected to be:
                 self.assertEqual(config["embedding_dim"], 1)
@@ -129,16 +132,35 @@ class TestTransformer(unittest.TestCase):
                 self.assertEqual(config["num_params"], 1789)
 
                 np.testing.assert_allclose(
-                    first_train_loss, 9.455551147460938, rtol=0.1
+                    first_train_loss, 88.22005462646484, rtol=0.1
                 )
-                np.testing.assert_allclose(first_val_loss, 24.48845680781773, rtol=0.1)
+                np.testing.assert_allclose(first_val_loss, 19.623334884643555, rtol=0.1)
                 np.testing.assert_allclose(
-                    last_train_loss, 0.060804929584264755, rtol=0.1
+                    last_train_loss, 19.811334133148193, rtol=0.1
                 )
-                np.testing.assert_allclose(last_val_loss, 14.681191853114537, rtol=0.1)
+                np.testing.assert_allclose(last_val_loss, 65.93015670776367, rtol=0.1)
+
+                # ---------- Test visualization was created ----------
+                result = subprocess.run(
+                    [
+                        "python3",
+                        "model_prediction_evolution.py",
+                        str(results_filename),
+                        "--split",
+                        "train",
+                    ],
+                    capture_output=True,
+                    text=True,
+                )
+
+                visualization_filepath = Path(f"figures/{Path(results_filename).stem}")
+                assert visualization_filepath.exists(), "Visualization was not created."
+
             finally:
                 if os.path.exists(results_filename):
                     os.remove(results_filename)
+                if os.path.exists(visualization_filepath):
+                    shutil.rmtree(visualization_filepath)
 
     def test_forward_non_factorized_output_shapes(self):
         """
