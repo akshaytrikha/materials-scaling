@@ -16,7 +16,6 @@ import random
 
 # Internal
 from models.transformer_models import XTransformerModel
-from train import main as train_main
 
 
 class TestTransformer(unittest.TestCase):
@@ -105,6 +104,8 @@ class TestTransformer(unittest.TestCase):
                         stderr="",
                     )
                     # Capture stdout from train_main() to retrieve the generated results filename.
+
+                    from train import main as train_main
 
                     buf = io.StringIO()
                     with redirect_stdout(buf):
