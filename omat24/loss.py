@@ -153,12 +153,12 @@ def compute_loss(
         force_loss = compute_graph_force_loss(
             pred_forces, true_forces, structure_index, natoms
         )
-
     else:
         force_loss = force_loss.sum(dim=(2, 1)) / (
             3 * natoms
         )  # [B, N, 3] -> [B] / natoms
         # Then take the mean over the directions and then atoms [B, N, 3] -> [B]
+        force_loss = torch.mean(force_loss)
 
     true_isotropic_stress, true_anisotropic_stress = unvoigt_stress(true_stress)
     pred_isotropic_stress, pred_anisotropic_stress = unvoigt_stress(pred_stress)
