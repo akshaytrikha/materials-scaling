@@ -313,29 +313,31 @@ class SchNet(nn.Module):
         nn.init.xavier_uniform_(self.stress_output.weight)
         self.stress_output.bias.data.fill_(0)
 
-    def forward(self, data):
+    def forward(self, atomic_numbers, positions, edge_index, structure_index):
         """
         Forward pass for SchNet.
 
         Args:
-            data: For PyG Data, attributes are assumed to be:
-                      atomic_numbers, pos, (optionally edge_index and batch)
+            atomic_numbers: Tensor of atomic numbers with shape [N_atoms].
+            positions: Tensor of atomic positions with shape [N_atoms, 3].
+            edge_index: Tensor of edge indices with shape [2, N_edges].
+            structure_index: Tensor of mappings for atoms to their respective molecules with shape [N_atoms].
 
         Returns:
             energy: Tensor of shape [num_molecules] representing the predicted energy.
             forces: Tensor of shape [N_atoms, 3] representing the negative gradient of energy.
         """
         # data is a single PyG Batch, with data.pos, data.atomic_numbers, data.batch, etc.
-        z = data.atomic_numbers
-        pos = data.pos
-        structure_index = data.batch  # e.g. shape [N], each atom's structure index
+        # z = data.atomic_numbers
+        # pos = data.pos
+        # structure_index = data.batch  # e.g. shape [N], each atom's structure index
 
         # --- Standard SchNet embedding & interactions ---
-        pos.requires_grad = True
-        h = self.embedding(z)
-        edge_index = data.edge_index
+        positions.requires_grad = True
+        h = self.embedding(atomic_numbers)
+        edge_index = edge_index
         row, col = edge_index
-        edge_weight = (pos[row] - pos[col]).norm(dim=1)
+        edge_weight = (positions[row] - positions[col]).norm(dim=1)
         edge_attr = self.distance_expansion(edge_weight)
         for interaction in self.interactions:
             h = interaction(h, edge_index, edge_weight, edge_attr)
@@ -353,7 +355,7 @@ class SchNet(nn.Module):
         # (2) Forces from autograd
         # Forces are a gradient w.r.t. position, so it's one vector per atom (total = N).
         # shape ends up [N, 3]
-        forces = -torch.autograd.grad(energy.sum(), pos, create_graph=True)[0]
+        forces = -torch.autograd.grad(energy.sum(), positions, create_graph=True)[0]
 
         # (3) Stress. Output 6 components per atom, then sum across each structure.
         # That yields [batch_size, 6].
