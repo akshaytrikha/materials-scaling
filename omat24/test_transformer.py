@@ -50,8 +50,6 @@ class TestTransformer(unittest.TestCase):
         """Test that a minimal training job with the Transformer architecture
         executes successfully and produces a valid configuration and finite loss values.
         """
-        from train import main as train_main
-
         # Create a fixed transformer model with desired hyperparameters.
         fixed_model = XTransformerModel(
             num_tokens=119,
@@ -98,6 +96,8 @@ class TestTransformer(unittest.TestCase):
                         stderr="",
                     )
                     # Capture stdout from train_main() to retrieve the generated results filename.
+
+                    from train import main as train_main
 
                     buf = io.StringIO()
                     with redirect_stdout(buf):
