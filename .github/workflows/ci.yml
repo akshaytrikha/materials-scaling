@@ -31,7 +31,7 @@ jobs:
       - name: Run tests
         run: |
           cd omat24
+          pytest test_transformer.py
           pytest test_dataloader.py
           pytest test_fcn.py
-          pytest test_transformer.py
           pytest test_collect_samples_for_visualizing.py
