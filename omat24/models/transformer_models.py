@@ -69,36 +69,12 @@ class MetaTransformerModels:
                 "d_ff_mult": 1,
                 "concatenated": concatenated,
             },
-            # 3,688 parameters
-            {
-                "d_model": 2,
-                "depth": 1,
-                "n_heads": 2,
-                "d_ff_mult": 2,
-                "concatenated": concatenated,
-            },
-            # 6,373 parameters
-            {
-                "d_model": 2,
-                "depth": 2,
-                "n_heads": 2,
-                "d_ff_mult": 2,
-                "concatenated": concatenated,
-            },
             # 9,229 params
             {
                 "d_model": 4,
                 "depth": 2,
                 "n_heads": 2,
                 "d_ff_mult": 2,
-                "concatenated": concatenated,
-            },
-            # 9,649 parameters
-            {
-                "d_model": 4,
-                "depth": 2,
-                "n_heads": 2,
-                "d_ff_mult": 4,
                 "concatenated": concatenated,
             },
             # 109,455 params
@@ -116,7 +92,7 @@ class MetaTransformerModels:
                 "n_heads": 4,
                 "d_ff_mult": 8,
                 "concatenated": concatenated,
-            }
+            },
         ]
 
         self.vocab_size = vocab_size
@@ -212,21 +188,15 @@ class XTransformerModel(TransformerWrapper):
         self.energy_1 = nn.Linear(
             d_model + self.additional_dim, d_model + self.additional_dim
         )
-        self.energy_2 = nn.Linear(
-            d_model + self.additional_dim, 1
-        )  # Energy: [M, 1]
+        self.energy_2 = nn.Linear(d_model + self.additional_dim, 1)  # Energy: [M, 1]
         self.force_1 = nn.Linear(
             d_model + self.additional_dim, d_model + self.additional_dim
         )
-        self.force_2 = nn.Linear(
-            d_model + self.additional_dim, 3
-        )  # Forces: [M, A, 3]
+        self.force_2 = nn.Linear(d_model + self.additional_dim, 3)  # Forces: [M, A, 3]
         self.stress_1 = nn.Linear(
             d_model + self.additional_dim, d_model + self.additional_dim
         )
-        self.stress_2 = nn.Linear(
-            d_model + self.additional_dim, 6
-        )  # Stresses: [M, 6]
+        self.stress_2 = nn.Linear(d_model + self.additional_dim, 6)  # Stresses: [M, 6]
 
         # Initialize weights in the __init__ method
         # Initialize Linear 1 with Xavier initialization (normal distribution)
@@ -282,7 +252,9 @@ class XTransformerModel(TransformerWrapper):
         forces = forces * expanded_mask.float()  # Mask padded atoms
 
         # Predict per-atom energy contributions and sum
-        energy_contrib = self.energy_2(torch.tanh(self.energy_1(output))).squeeze(-1)  # [M, A]
+        energy_contrib = self.energy_2(torch.tanh(self.energy_1(output))).squeeze(
+            -1
+        )  # [M, A]
         energy_contrib = energy_contrib * mask.squeeze(-1).float()
         energy = energy_contrib.sum(dim=1)  # [batch_size]
 

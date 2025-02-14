@@ -35,7 +35,8 @@ elif torch.backends.mps.is_available():
 else:
     DEVICE = torch.device("cpu")
 
-if __name__ == "__main__":
+
+def main():
     args = get_args()
     log = not args.no_log
 
@@ -206,3 +207,7 @@ if __name__ == "__main__":
                 "train",
             ]
         )
+
+
+if __name__ == "__main__":
+    main()
