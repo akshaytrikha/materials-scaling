@@ -61,6 +61,55 @@ class MetaTransformerModels:
             max_seq_len (int): Maximum sequence length for the transformer.
         """
         self.configurations = [
+            # 1,789 parameters
+            {
+                "d_model": 1,
+                "depth": 1,
+                "n_heads": 1,
+                "d_ff_mult": 1,
+                "concatenated": concatenated,
+            },
+            # 3,688 parameters
+            {
+                "d_model": 2,
+                "depth": 1,
+                "n_heads": 2,
+                "d_ff_mult": 2,
+                "concatenated": concatenated,
+            },
+            # 6,373 parameters
+            {
+                "d_model": 2,
+                "depth": 2,
+                "n_heads": 2,
+                "d_ff_mult": 2,
+                "concatenated": concatenated,
+            },
+            # 9,229 params
+            {
+                "d_model": 4,
+                "depth": 2,
+                "n_heads": 2,
+                "d_ff_mult": 2,
+                "concatenated": concatenated,
+            },
+            # 9,649 parameters
+            {
+                "d_model": 4,
+                "depth": 2,
+                "n_heads": 2,
+                "d_ff_mult": 4,
+                "concatenated": concatenated,
+            },
+            # 109,455 params
+            {
+                "d_model": 8,
+                "depth": 8,
+                "n_heads": 4,
+                "d_ff_mult": 8,
+                "concatenated": concatenated,
+            },
+            # 1,728,387 parameters
             {
                 "d_model": 64,
                 "depth": 12,
@@ -68,51 +117,6 @@ class MetaTransformerModels:
                 "d_ff_mult": 8,
                 "concatenated": concatenated,
             }
-            # # 1729 params
-            # {
-            #     "d_model": 1,
-            #     "depth": 1,
-            #     "n_heads": 1,
-            #     "d_ff_mult": 1,
-            #     "concatenated": concatenated,
-            # },
-            # # 9061 params
-            # {
-            #     "d_model": 4,
-            #     "depth": 2,
-            #     "n_heads": 2,
-            #     "d_ff_mult": 2,
-            #     "concatenated": concatenated,
-            # },
-            # # 109059 params
-            # {
-            #     "d_model": 8,
-            #     "depth": 8,
-            #     "n_heads": 4,
-            #     "d_ff_mult": 8,
-            #     "concatenated": concatenated,
-            # },
-            # {
-            #     "d_model": 2,
-            #     "depth": 1,
-            #     "n_heads": 2,
-            #     "d_ff_mult": 2,
-            #     "concatenated": concatenated,
-            # },
-            # {
-            #     "d_model": 2,
-            #     "depth": 2,
-            #     "n_heads": 2,
-            #     "d_ff_mult": 2,
-            #     "concatenated": concatenated,
-            # },
-            # {
-            #     "d_model": 4,
-            #     "depth": 2,
-            #     "n_heads": 2,
-            #     "d_ff_mult": 4,
-            #     "concatenated": concatenated,
-            # },  # Medium
         ]
 
         self.vocab_size = vocab_size
