@@ -1,15 +1,20 @@
 import os
 
 filenames_to_include = [
+    "model_prediction_evolution.py",
     "data.py",
     "data_utils.py",
     "loss.py",
     "models/fcn.py",
     "models/transformer_models.py",
+    "models/schnet.py",
     "train.py",
     "train_utils.py",
     "log_utils.py",
     "arg_parser.py",
+    "test_dataloader.py",
+    "test_fcn.py",
+    "test_transformer.py",
 ]
 directory_path = "."
 output_file = "context.txt"

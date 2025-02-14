@@ -50,13 +50,19 @@ def forward_pass(
 
         elif isinstance(batch, Batch):
             # PyG Batch
+            atomic_numbers = batch.atomic_numbers.to(device, non_blocking=True)
+            positions = batch.pos.to(device, non_blocking=True)
+            edge_index = batch.edge_index.to(device, non_blocking=True)
+            structure_index = batch.batch.to(device, non_blocking=True)
             true_forces = batch.forces.to(device, non_blocking=True)
             true_energy = batch.energy.to(device, non_blocking=True)
             true_stress = batch.stress.to(device, non_blocking=True)
             mask = None
             natoms = batch.natoms
 
-            pred_forces, pred_energy, pred_stress = model(batch)
+            pred_forces, pred_energy, pred_stress = model(
+                atomic_numbers, positions, edge_index, structure_index
+            )
 
     return (
         pred_forces,
@@ -195,6 +201,8 @@ def run_validation(model, val_loader, graph, device):
             model=model, batch=batch, graph=graph, training=False, device=device
         )
 
+        # Mapping atoms to their respective structures (for graphs)
+        structure_index = batch.batch if graph and hasattr(batch, "batch") else []
         val_loss_dict = compute_loss(
             pred_forces,
             pred_energy,
@@ -205,6 +213,8 @@ def run_validation(model, val_loader, graph, device):
             mask,
             device,
             natoms,
+            graph,
+            structure_index,
         )
         val_loss_sum += val_loss_dict["total_loss"].item()
         energy_loss_sum += val_loss_dict["energy_loss"].item()
@@ -369,6 +379,8 @@ def train(
                 model=model, batch=batch, graph=graph, training=True, device=device
             )
 
+            # Mapping atoms to their respective structures (for graphs)
+            structure_index = batch.batch if graph and hasattr(batch, "batch") else []
             train_loss_dict = compute_loss(
                 pred_forces,
                 pred_energy,
@@ -379,6 +391,8 @@ def train(
                 mask,
                 device,
                 natoms,
+                graph,
+                structure_index,
             )
             total_train_loss = train_loss_dict["total_loss"]
             total_train_loss.backward()

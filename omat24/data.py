@@ -177,14 +177,9 @@ class OMat24Dataset(Dataset):
             positions, R = random_rotate_atoms(positions)
             forces = forces @ R.T
 
-        # Compute the distance matrix from (possibly rotated) positions
-        distance_matrix = compute_distance_matrix(
-            positions
-        )  # Shape: [N_atoms, N_atoms]
-
         if self.graph:
             # Generate graph connectivity (edge_index) and edge attributes (edge_attr)
-            edge_index, edge_attr = generate_graph(positions, distance_matrix)
+            edge_index, edge_attr = generate_graph(positions)
 
             # Create PyG Data object
             sample = Data(
@@ -202,11 +197,16 @@ class OMat24Dataset(Dataset):
             sample.symbols = symbols
             return sample
         else:
+            # Compute the distance matrix from (possibly rotated) positions
+            distance_matrix = compute_distance_matrix(
+                positions
+            )  # Shape: [N_atoms, N_atoms]
+
             factorized_matrix = factorize_matrix(
                 distance_matrix
             )  # Left matrix: U * sqrt(Sigma) - Shape: [N_atoms, k=5]
 
-            # Package the input and labels into a dictionary
+            # Package into a dictionary
             sample = {
                 "idx": idx,
                 "symbols": symbols,
