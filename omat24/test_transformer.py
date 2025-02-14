@@ -12,6 +12,7 @@ import torch
 import unittest
 from unittest.mock import patch
 from pathlib import Path
+import random
 
 # Internal
 from models.transformer_models import XTransformerModel
@@ -21,6 +22,8 @@ class TestTransformer(unittest.TestCase):
     def setUp(self):
         """Initialize dummy data for TransformerModel tests."""
         SEED = 1024
+        random.seed(SEED)
+        np.random.seed(SEED)
         torch.manual_seed(SEED)
         torch.cuda.manual_seed(SEED)
         torch.cuda.manual_seed_all(SEED)
