@@ -16,11 +16,11 @@ import random
 
 # Internal
 from models.transformer_models import XTransformerModel
+from train import main as train_main
 
 
 class TestTransformer(unittest.TestCase):
-    def setUp(self):
-        """Initialize dummy data for TransformerModel tests."""
+    def set_seed(self):
         SEED = 1024
         random.seed(SEED)
         np.random.seed(SEED)
@@ -30,6 +30,10 @@ class TestTransformer(unittest.TestCase):
         torch.backends.cudnn.deterministic = True
         torch.backends.cudnn.benchmark = False
         self.device = torch.device("cpu")
+
+    def setUp(self):
+        """Initialize dummy data for TransformerModel tests."""
+        self.set_seed()
 
         self.batch_size = 2
         self.n_atoms = 4
@@ -53,6 +57,8 @@ class TestTransformer(unittest.TestCase):
         """Test that a minimal training job with the Transformer architecture
         executes successfully and produces a valid configuration and finite loss values.
         """
+        self.set_seed()
+
         # Create a fixed transformer model with desired hyperparameters.
         fixed_model = XTransformerModel(
             num_tokens=119,
@@ -100,8 +106,6 @@ class TestTransformer(unittest.TestCase):
                     )
                     # Capture stdout from train_main() to retrieve the generated results filename.
 
-                    from train import main as train_main
-
                     buf = io.StringIO()
                     with redirect_stdout(buf):
                         train_main()
@@ -134,14 +138,10 @@ class TestTransformer(unittest.TestCase):
                 self.assertEqual(config["depth"], 1)
                 self.assertEqual(config["num_params"], 1789)
 
-                np.testing.assert_allclose(
-                    first_train_loss, 88.22005462646484, rtol=0.2
-                )
-                np.testing.assert_allclose(first_val_loss, 19.623334884643555, rtol=0.2)
-                np.testing.assert_allclose(
-                    last_train_loss, 19.811334133148193, rtol=0.2
-                )
-                np.testing.assert_allclose(last_val_loss, 65.93015670776367, rtol=0.2)
+                np.testing.assert_allclose(first_train_loss, 62.5931510925293, rtol=0.1)
+                np.testing.assert_allclose(first_val_loss, 23.387828826904297, rtol=0.1)
+                np.testing.assert_allclose(last_train_loss, 18.15552282333374, rtol=0.1)
+                np.testing.assert_allclose(last_val_loss, 74.33089447021484, rtol=0.1)
 
                 # ---------- Test visualization was created ----------
                 result = subprocess.run(
@@ -170,6 +170,8 @@ class TestTransformer(unittest.TestCase):
         Verify that the TransformerModel's forward pass in non-factorized (concatenated) mode
         returns outputs with the correct shapes.
         """
+        self.set_seed()
+
         # Use concatenated mode (non-factorized): positions are provided.
         model = XTransformerModel(
             num_tokens=self.vocab_size,
@@ -190,6 +192,8 @@ class TestTransformer(unittest.TestCase):
     def test_forward_factorized_output_shapes(self):
         """Verify that the TransformerModel's forward pass in factorized mode
         returns outputs with the correct shapes."""
+        self.set_seed()
+
         model = XTransformerModel(
             num_tokens=self.vocab_size,
             d_model=6,
@@ -217,6 +221,8 @@ class TestTransformer(unittest.TestCase):
           - Ensuring that a fully padded input yields zero outputs.
           - Checking that a mismatched input shape raises an exception.
         """
+        self.set_seed()
+
         model = XTransformerModel(
             num_tokens=self.vocab_size,
             d_model=6,
@@ -274,6 +280,8 @@ class TestTransformer(unittest.TestCase):
 
     def test_gradient_flow(self):
         """Verify that gradients flow back through the Transformer model during backpropagation."""
+        self.set_seed()
+
         model = XTransformerModel(
             num_tokens=self.vocab_size,
             d_model=6,
@@ -305,6 +313,8 @@ class TestTransformer(unittest.TestCase):
         Verify that the force prediction layer's input feature size differs between factorized
         and non-factorized modes.
         """
+        self.set_seed()
+
         model_factorized = XTransformerModel(
             num_tokens=self.vocab_size,
             d_model=4,
