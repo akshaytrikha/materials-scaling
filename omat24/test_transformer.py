@@ -298,18 +298,19 @@ class TestTransformer(unittest.TestCase):
             concatenated=True,
             use_factorized=False,
         )
+
         # For factorized mode: additional_dim should be 5, so input = d_model + 5.
         # For non-factorized (concatenated) mode: additional_dim should be 3, so input = d_model + 3.
         expected_in_features_factorized = 4 + 5
         expected_in_features_non_factorized = 4 + 3
 
         self.assertEqual(
-            model_factorized.force_output.in_features,
+            model_factorized.force_1.in_features,
             expected_in_features_factorized,
-            "Factorized mode force_output input feature size incorrect.",
+            "Factorized mode force_1 input feature size incorrect.",
         )
         self.assertEqual(
-            model_non_factorized.force_output.in_features,
+            model_non_factorized.force_1.in_features,
             expected_in_features_non_factorized,
-            "Non-factorized mode force_output input feature size incorrect.",
+            "Non-factorized mode force_1 input feature size incorrect.",
         )
