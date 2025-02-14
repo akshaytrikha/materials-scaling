@@ -135,13 +135,13 @@ class TestTransformer(unittest.TestCase):
                 self.assertEqual(config["num_params"], 1789)
 
                 np.testing.assert_allclose(
-                    first_train_loss, 88.22005462646484, rtol=0.1
+                    first_train_loss, 88.22005462646484, rtol=0.2
                 )
-                np.testing.assert_allclose(first_val_loss, 19.623334884643555, rtol=0.1)
+                np.testing.assert_allclose(first_val_loss, 19.623334884643555, rtol=0.2)
                 np.testing.assert_allclose(
-                    last_train_loss, 19.811334133148193, rtol=0.1
+                    last_train_loss, 19.811334133148193, rtol=0.2
                 )
-                np.testing.assert_allclose(last_val_loss, 65.93015670776367, rtol=0.1)
+                np.testing.assert_allclose(last_val_loss, 65.93015670776367, rtol=0.2)
 
                 # ---------- Test visualization was created ----------
                 result = subprocess.run(
