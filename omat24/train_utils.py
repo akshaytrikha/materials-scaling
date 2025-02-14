@@ -195,6 +195,8 @@ def run_validation(model, val_loader, graph, device):
             model=model, batch=batch, graph=graph, training=False, device=device
         )
 
+        # Mapping atoms to their respective structures (for graphs)
+        structure_index = batch.batch if graph and hasattr(batch, "batch") else []
         val_loss_dict = compute_loss(
             pred_forces,
             pred_energy,
@@ -206,7 +208,7 @@ def run_validation(model, val_loader, graph, device):
             device,
             natoms,
             graph,
-            batch.batch,
+            structure_index,
         )
         val_loss_sum += val_loss_dict["total_loss"].item()
         energy_loss_sum += val_loss_dict["energy_loss"].item()
@@ -370,6 +372,8 @@ def train(
                 model=model, batch=batch, graph=graph, training=True, device=device
             )
 
+            # Mapping atoms to their respective structures (for graphs)
+            structure_index = batch.batch if graph and hasattr(batch, "batch") else []
             train_loss_dict = compute_loss(
                 pred_forces,
                 pred_energy,
@@ -381,7 +385,7 @@ def train(
                 device,
                 natoms,
                 graph,
-                batch.batch,
+                structure_index,
             )
             total_train_loss = train_loss_dict["total_loss"]
             total_train_loss.backward()

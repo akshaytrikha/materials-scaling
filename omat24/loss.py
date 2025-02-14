@@ -190,16 +190,3 @@ def compute_loss(
     }
 
     return loss_dict
-
-
-# Not in use
-# class CosineSimilarityLoss(nn.Module):
-#     def __init__(self, dim=1):
-#         super(CosineSimilarityLoss, self).__init__()
-#         self.cos = nn.CosineSimilarity(dim=dim)
-
-#     def forward(self, prediction, target):
-#         cosine_sim = self.cos(prediction, target)
-#         mean_cosine_sim = cosine_sim.mean()
-#         loss = 1 - mean_cosine_sim
-#         return loss
