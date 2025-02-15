@@ -315,7 +315,7 @@ def custom_collate_fn_batch_padded(batch: list) -> Dict[str, torch.Tensor]:
     return return_dict
 
 
-def generate_graph(positions, distance_matrix):
+def generate_graph(positions):
     """
     Generate graph connectivity and edge attributes based on positions or distance matrix.
     Customize this method based on how you want to define edges.

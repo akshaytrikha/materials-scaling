@@ -61,7 +61,7 @@ class MetaTransformerModels:
             max_seq_len (int): Maximum sequence length for the transformer.
         """
         self.configurations = [
-            # 1729 params
+            # 1,789 parameters
             {
                 "d_model": 1,
                 "depth": 1,
@@ -69,7 +69,7 @@ class MetaTransformerModels:
                 "d_ff_mult": 1,
                 "concatenated": concatenated,
             },
-            # 9061 params
+            # 9,229 params
             {
                 "d_model": 4,
                 "depth": 2,
@@ -77,7 +77,7 @@ class MetaTransformerModels:
                 "d_ff_mult": 2,
                 "concatenated": concatenated,
             },
-            # 109059 params
+            # 109,455 params
             {
                 "d_model": 8,
                 "depth": 8,
@@ -85,27 +85,14 @@ class MetaTransformerModels:
                 "d_ff_mult": 8,
                 "concatenated": concatenated,
             },
-            # {
-            #     "d_model": 2,
-            #     "depth": 1,
-            #     "n_heads": 2,
-            #     "d_ff_mult": 2,
-            #     "concatenated": concatenated,
-            # },
-            # {
-            #     "d_model": 2,
-            #     "depth": 2,
-            #     "n_heads": 2,
-            #     "d_ff_mult": 2,
-            #     "concatenated": concatenated,
-            # },
-            # {
-            #     "d_model": 4,
-            #     "depth": 2,
-            #     "n_heads": 2,
-            #     "d_ff_mult": 4,
-            #     "concatenated": concatenated,
-            # },  # Medium
+            # 1,728,387 parameters
+            {
+                "d_model": 64,
+                "depth": 12,
+                "n_heads": 4,
+                "d_ff_mult": 8,
+                "concatenated": concatenated,
+            },
         ]
 
         self.vocab_size = vocab_size
@@ -199,15 +186,40 @@ class XTransformerModel(TransformerWrapper):
             self.token_emb = CombinedEmbedding(num_tokens, d_model, self.additional_dim)
 
         # Predictors for Energy, Forces, and Stresses
-        self.energy_output = nn.Linear(
-            d_model + self.additional_dim, 1
-        )  # Energy: [M, 1]
-        self.force_output = nn.Linear(
-            d_model + self.additional_dim, 3
-        )  # Forces: [M, A, 3]
-        self.stress_output = nn.Linear(
-            d_model + self.additional_dim, 6
-        )  # Stresses: [M, 6]
+        self.energy_1 = nn.Linear(
+            d_model + self.additional_dim, d_model + self.additional_dim
+        )
+        self.energy_2 = nn.Linear(d_model + self.additional_dim, 1)  # Energy: [M, 1]
+        self.force_1 = nn.Linear(
+            d_model + self.additional_dim, d_model + self.additional_dim
+        )
+        self.force_2 = nn.Linear(d_model + self.additional_dim, 3)  # Forces: [M, A, 3]
+        self.stress_1 = nn.Linear(
+            d_model + self.additional_dim, d_model + self.additional_dim
+        )
+        self.stress_2 = nn.Linear(d_model + self.additional_dim, 6)  # Stresses: [M, 6]
+
+        # Initialize weights in the __init__ method
+        # Initialize Linear 1 with Xavier initialization (normal distribution)
+        nn.init.xavier_normal_(self.energy_1.weight)
+        if self.energy_1.bias is not None:
+            nn.init.zeros_(self.energy_1.bias)
+        nn.init.xavier_normal_(self.force_1.weight)
+        if self.force_1.bias is not None:
+            nn.init.zeros_(self.force_1.bias)
+        nn.init.xavier_normal_(self.stress_1.weight)
+        if self.stress_1.bias is not None:
+            nn.init.zeros_(self.stress_1.bias)
+        # Initialize Linear 2 with Xavier initialization (normal distribution)
+        nn.init.xavier_normal_(self.energy_2.weight)
+        if self.energy_2.bias is not None:
+            nn.init.zeros_(self.energy_2.bias)
+        nn.init.xavier_normal_(self.force_2.weight)
+        if self.force_2.bias is not None:
+            nn.init.zeros_(self.force_2.bias)
+        nn.init.xavier_normal_(self.stress_2.weight)
+        if self.stress_2.bias is not None:
+            nn.init.zeros_(self.stress_2.bias)
 
         # Count parameters
         self.num_params = sum(p.numel() for p in self.parameters())
@@ -236,17 +248,19 @@ class XTransformerModel(TransformerWrapper):
         output = self.attn_layers(x=combined_emb, mask=mask)  # [M, A, d_model]
 
         # Predict forces
-        forces = self.force_output(output)  # [M, A, 3]
+        forces = self.force_2(torch.tanh(self.force_1(output)))  # [M, A, 3]
         expanded_mask = mask.unsqueeze(-1).expand(-1, -1, 3)
         forces = forces * expanded_mask.float()  # Mask padded atoms
 
         # Predict per-atom energy contributions and sum
-        energy_contrib = self.energy_output(output).squeeze(-1)  # [M, A]
+        energy_contrib = self.energy_2(torch.tanh(self.energy_1(output))).squeeze(
+            -1
+        )  # [M, A]
         energy_contrib = energy_contrib * mask.squeeze(-1).float()
         energy = energy_contrib.sum(dim=1)  # [batch_size]
 
         # Predict per-atom stress contributions and sum
-        stress_contrib = self.stress_output(output)  # [M, A, 6]
+        stress_contrib = self.stress_2(torch.tanh(self.stress_1(output)))  # [M, A, 6]
         expanded_mask = mask.unsqueeze(-1).expand(-1, -1, 6)
         stress_contrib = stress_contrib * expanded_mask.float()
         stress = stress_contrib.sum(dim=1)  # [batch_size, 6]
