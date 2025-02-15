@@ -189,7 +189,7 @@ class OMat24Dataset(Dataset):
                 edge_attr=edge_attr,
                 energy=energy,
                 forces=forces,
-                stress=stress,
+                stress=stress.unsqueeze(0),
             )
             sample.natoms = torch.tensor(len(atoms))
             sample.postiions = positions
