@@ -121,6 +121,7 @@ class TestTransformer(unittest.TestCase):
                     results_filename = match.group(1).strip()
                     print("Captured results filename:", results_filename)
 
+            visualization_filepath = None
             try:
                 # ---------- Test loss values and config ----------
                 with open(results_filename, "r") as f:
@@ -162,7 +163,7 @@ class TestTransformer(unittest.TestCase):
             finally:
                 if os.path.exists(results_filename):
                     os.remove(results_filename)
-                if os.path.exists(visualization_filepath):
+                if visualization_filepath and os.path.exists(visualization_filepath):
                     shutil.rmtree(visualization_filepath)
 
     def test_forward_non_factorized_output_shapes(self):
