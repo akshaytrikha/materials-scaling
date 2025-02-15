@@ -60,6 +60,8 @@ def plot_atomic_forces(
     pl.add_mesh(arrows, color="red", opacity=0.5)
 
     # Replace Ground Truth/Prediction title with stress values
+    if stress.ndim == 2:
+        stress = stress.squeeze(0)
     stress_text = (
         f"σxx={stress[0]:.2f}, σyy={stress[1]:.2f}, σzz={stress[2]:.2f}\n"
         f"σyz={stress[3]:.2f}, σxz={stress[4]:.2f}, σxy={stress[5]:.2f}"
