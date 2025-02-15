@@ -1,7 +1,6 @@
 import torch
 import torch.nn as nn
 from x_transformers import TransformerWrapper, Encoder
-import torch.nn.functional as F
 
 
 class CombinedEmbedding(nn.Module):
