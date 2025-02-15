@@ -34,4 +34,5 @@ jobs:
           pytest test_transformer.py
           pytest test_dataloader.py
           pytest test_fcn.py
+          pytest test_schnet.py
           pytest test_collect_samples_for_visualizing.py

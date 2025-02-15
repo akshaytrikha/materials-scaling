@@ -175,6 +175,7 @@ class XTransformerModel(TransformerWrapper):
                 depth=depth,
                 heads=n_heads,
                 ff_mult=d_ff_mult,
+                attn_flash=torch.cuda.is_available(),
             ),
             use_abs_pos_emb=False,  # Disable internal positional embeddings
         )

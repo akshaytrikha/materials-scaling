@@ -30,6 +30,7 @@ if torch.cuda.is_available():
     torch.cuda.manual_seed_all(SEED)
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
+    torch.backends.cuda.enable_flash_sdp(True)
 elif torch.backends.mps.is_available():
     DEVICE = torch.device("mps")
 else:
@@ -39,12 +40,7 @@ else:
 def main():
     args = get_args()
     log = not args.no_log
-
-    # For TensorBoard
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    tb_logdir = os.path.join("runs", f"exp_{timestamp}")
-    writer = SummaryWriter(log_dir=tb_logdir)
-    print(f"TensorBoard logs will be saved to: {tb_logdir}")
+    global DEVICE
 
     # Load dataset
     split_name = "val"
@@ -84,10 +80,19 @@ def main():
             use_factorized=use_factorize,
         )
     elif args.architecture == "SchNet":
+        if DEVICE == torch.device("mps"):
+            print("MPS is not supported for SchNet. Switching to CPU.")
+            DEVICE = torch.device("cpu")
         meta_models = MetaSchNetModels(device=DEVICE)
 
     # Create results path and initialize file if logging is enabled
     experiment_results = {}
+
+    # For TensorBoard
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    tb_logdir = os.path.join("runs", f"exp_{timestamp}")
+    writer = SummaryWriter(log_dir=tb_logdir)
+    print(f"TensorBoard logs will be saved to: {tb_logdir}")
 
     results_path = Path("results") / f"experiments_{timestamp}.json"
     if log:
