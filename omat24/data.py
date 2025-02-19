@@ -14,7 +14,7 @@ from data_utils import (
     custom_collate_fn_batch_padded,
     custom_collate_fn_dataset_padded,
     generate_graph,
-    DATASETS,
+    DATASET_INFO,
 )
 
 
@@ -143,7 +143,7 @@ class OMat24Dataset(Dataset):
         self.graph = graph
         split_name = dataset_path.parent.name  # Parent directory's name
         dataset_name = dataset_path.name
-        self.max_n_atoms = DATASETS[split_name][dataset_name]["max_n_atoms"]
+        self.max_n_atoms = DATASET_INFO[split_name][dataset_name]["max_n_atoms"]
 
     def __len__(self):
         return len(self.dataset)
