@@ -1,6 +1,5 @@
 import os
 from pathlib import Path
-from data_utils import download_dataset
 import requests
 import tarfile
 import argparse
