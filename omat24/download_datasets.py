@@ -4,6 +4,7 @@ from data_utils import download_dataset
 import requests
 import tarfile
 import argparse
+from tqdm import tqdm
 
 train_base_url = (
     "https://dl.fbaipublicfiles.com/opencatalystproject/data/omat/241018/omat/train"
@@ -67,9 +68,22 @@ def download_dataset(dataset_name: str, split_name: str):
     print(f"Starting download from {url}...")
     response = requests.get(url, stream=True)
     response.raise_for_status()
+
+    # Get total file size for progress bar
+    total_size = int(response.headers.get("content-length", 0))
+
+    # Download with progress bar
     with open(str(compressed_path), "wb") as f:
-        for chunk in response.iter_content(chunk_size=8192):
-            f.write(chunk)
+        with tqdm(
+            total=total_size,
+            unit="iB",
+            unit_scale=True,
+            unit_divisor=1024,
+            desc=f"Downloading {dataset_name}",
+        ) as pbar:
+            for chunk in response.iter_content(chunk_size=8192):
+                size = f.write(chunk)
+                pbar.update(size)
 
     # Extract the dataset
     print(f"Extracting {compressed_path}...")
