@@ -68,12 +68,14 @@ def download_dataset(dataset_name: str, split_name: str):
     gdown.download(url, str(compressed_path), quiet=False)
 
     # Extract the dataset
+    extract_and_clenaup(compressed_path, dataset_path)
+
+
+def extract_and_clenaup(compressed_path, dataset_path):
     print(f"Extracting {compressed_path}...")
     with tarfile.open(compressed_path, "r:gz") as tar:
         tar.extractall(path=dataset_path.parent)
     print(f"Extraction completed. Files are available at {dataset_path}.")
-
-    # Clean up
     try:
         compressed_path.unlink()
         print(f"Deleted the compressed file {compressed_path}.")
