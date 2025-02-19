@@ -2,16 +2,35 @@
 from pathlib import Path
 import torch
 import tarfile
-import gdown
+import requests
 import os
 from typing import Dict
+from tqdm.auto import tqdm
 from torch_geometric.nn import radius_graph
 
+BASE_URL = "https://dl.fbaipublicfiles.com/opencatalystproject/data/omat/"
+TRAIN_BASE_URL = BASE_URL + "241018/omat/train"
+VAL_BASE_URL = BASE_URL + "241220/omat/val"
 
-DATASETS = {
+
+VALID_DATASETS = [
+    "rattled-1000",
+    "rattled-1000-subsampled",
+    "rattled-500",
+    "rattled-500-subsampled",
+    "rattled-300",
+    "rattled-300-subsampled",
+    "aimd-from-PBE-3000-npt",
+    "aimd-from-PBE-3000-nvt",
+    "aimd-from-PBE-1000-npt",
+    "aimd-from-PBE-1000-nvt",
+    "rattled-relax",
+]
+
+
+DATASET_INFO = {
     "val": {
         "rattled-300-subsampled": {
-            "url": "https://drive.google.com/uc?export=download&id=1ycJ0uMTaVS42T-A57h9_CkBx-ifwyfvL",
             "max_n_atoms": 104,
             "means": {
                 "energy": -61.11903078327683,
@@ -44,38 +63,69 @@ DATASETS = {
 }
 
 
+def get_dataset_url(dataset_name: str, split_name: str):
+    if split_name == "train":
+        return f"{TRAIN_BASE_URL}/{dataset_name}.tar.gz"
+    elif split_name == "val":
+        return f"{VAL_BASE_URL}/{dataset_name}.tar.gz"
+    else:
+        raise ValueError(f"Invalid split name: {split_name}")
+
+
 def download_dataset(dataset_name: str, split_name: str):
     """Downloads a compressed dataset from a predefined URL and extracts it to the specified directory.
 
     Args:
         dataset_name (str): The key corresponding to the dataset in the DATASETS dictionary.
+        split_name (str): The split to download ("train" or "val")
 
     Raises:
-        KeyError: If the dataset_name is not found in the DATASETS dictionary.
+        ValueError: If the dataset_name is not valid or the split_name is not valid.
         Exception: If there is an error during the extraction or deletion of the compressed file.
     """
+    if split_name not in ["train", "val"]:
+        raise ValueError(f"Invalid split name: {split_name}")
+
+    if dataset_name not in VALID_DATASETS:
+        raise ValueError(f"Invalid dataset name: {dataset_name}")
+
+    # Get the URL for the dataset
+    url = get_dataset_url(dataset_name, split_name)
+
+    # Create the necessary directories
     os.makedirs("./datasets", exist_ok=True)
     os.makedirs(f"./datasets/{split_name}", exist_ok=True)
-
-    try:
-        url = DATASETS[split_name][dataset_name]["url"]
-    except KeyError:
-        raise KeyError(f"Dataset '{dataset_name}' not found in DATASETS dictionary.")
-
     dataset_path = Path(f"datasets/{split_name}/{dataset_name}")
     compressed_path = dataset_path.with_suffix(".tar.gz")
+
+    # Download the dataset
     print(f"Starting download from {url}...")
-    gdown.download(url, str(compressed_path), quiet=False)
+    response = requests.get(url, stream=True)
+    response.raise_for_status()
+
+    # Get total file size for progress bar
+    total_size = int(response.headers.get("content-length", 0))
+
+    # Download with progress bar
+    with open(str(compressed_path), "wb") as f:
+        with tqdm(
+            total=total_size,
+            unit="iB",
+            unit_scale=True,
+            unit_divisor=1024,
+            desc=f"Downloading {dataset_name}",
+        ) as pbar:
+            for chunk in response.iter_content(chunk_size=8192):
+                size = f.write(chunk)
+                pbar.update(size)
 
     # Extract the dataset
-    extract_and_clenaup(compressed_path, dataset_path)
-
-
-def extract_and_clenaup(compressed_path, dataset_path):
     print(f"Extracting {compressed_path}...")
     with tarfile.open(compressed_path, "r:gz") as tar:
         tar.extractall(path=dataset_path.parent)
     print(f"Extraction completed. Files are available at {dataset_path}.")
+
+    # Delete the compressed file
     try:
         compressed_path.unlink()
         print(f"Deleted the compressed file {compressed_path}.")
