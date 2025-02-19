@@ -53,6 +53,10 @@ DATASET_INFO = {
             "url": "https://drive.google.com/uc?export=download&id=1nZh6j2G9SNtYXnAWsjYGju1QLAqMvIQ-",
             "max_n_atoms": 152,
         },
+        "aimd-from-PBE-3000-nvt": {
+            "url": "https://drive.google.com/uc?export=download&id=1tRFiYFRBMis1tRPY2SShPGwLUjx6xX_2",
+            "max_n_atoms": 160,
+        },
     },
     "train": {
         "rattled-500-subsampled": {
