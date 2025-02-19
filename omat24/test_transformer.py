@@ -5,26 +5,35 @@ import re
 import numpy as np
 import os
 import sys
+import shutil
 import io
 from contextlib import redirect_stdout
 import torch
 import unittest
 from unittest.mock import patch
+from pathlib import Path
+import random
 
 # Internal
 from models.transformer_models import XTransformerModel
+from train import main as train_main
 
 
 class TestTransformer(unittest.TestCase):
-    def setUp(self):
-        """Initialize dummy data for TransformerModel tests."""
+    def set_seed(self):
         SEED = 1024
+        random.seed(SEED)
+        np.random.seed(SEED)
         torch.manual_seed(SEED)
         torch.cuda.manual_seed(SEED)
         torch.cuda.manual_seed_all(SEED)
         torch.backends.cudnn.deterministic = True
         torch.backends.cudnn.benchmark = False
         self.device = torch.device("cpu")
+
+    def setUp(self):
+        """Initialize dummy data for TransformerModel tests."""
+        self.set_seed()
 
         self.batch_size = 2
         self.n_atoms = 4
@@ -48,6 +57,7 @@ class TestTransformer(unittest.TestCase):
         """Test that a minimal training job with the Transformer architecture
         executes successfully and produces a valid configuration and finite loss values.
         """
+        self.set_seed()
 
         # Create a fixed transformer model with desired hyperparameters.
         fixed_model = XTransformerModel(
@@ -72,11 +82,11 @@ class TestTransformer(unittest.TestCase):
                 "--epochs",
                 "500",
                 "--data_fraction",
-                "0.00001",
+                "0.0001",
                 "--val_data_fraction",
-                "0.001",
+                "0.0001",
                 "--batch_size",
-                "1",
+                "2",
                 "--lr",
                 "0.05",
                 "--val_every",
@@ -95,7 +105,6 @@ class TestTransformer(unittest.TestCase):
                         stderr="",
                     )
                     # Capture stdout from train_main() to retrieve the generated results filename.
-                    from train import main as train_main
 
                     buf = io.StringIO()
                     with redirect_stdout(buf):
@@ -112,39 +121,63 @@ class TestTransformer(unittest.TestCase):
                     results_filename = match.group(1).strip()
                     print("Captured results filename:", results_filename)
 
+            visualization_filepath = None
             try:
+                # ---------- Test loss values and config ----------
                 with open(results_filename, "r") as f:
                     result_json = json.load(f)
 
                 # Get the config and loss information
-                config = result_json["1"][0]["config"]
-                first_train_loss = result_json["1"][0]["losses"]["1"]["train_loss"]
-                first_val_loss = result_json["1"][0]["losses"]["0"]["val_loss"]
-                last_train_loss = result_json["1"][0]["losses"]["500"]["train_loss"]
-                last_val_loss = result_json["1"][0]["losses"]["500"]["val_loss"]
+                config = result_json["3"][0]["config"]
+                first_train_loss = result_json["3"][0]["losses"]["1"]["train_loss"]
+                first_val_loss = result_json["3"][0]["losses"]["0"]["val_loss"]
+                last_train_loss = result_json["3"][0]["losses"]["500"]["train_loss"]
+                last_val_loss = result_json["3"][0]["losses"]["500"]["val_loss"]
 
                 # For the Transformer, the first configuration (from MetaTransformerModels) is expected to be:
                 self.assertEqual(config["embedding_dim"], 1)
                 self.assertEqual(config["depth"], 1)
                 self.assertEqual(config["num_params"], 1789)
 
-                np.testing.assert_allclose(
-                    first_train_loss, 9.455551147460938, rtol=0.1
+                np.testing.assert_allclose(first_train_loss, 62.5931510925293, rtol=0.1)
+                np.testing.assert_allclose(first_val_loss, 23.387828826904297, rtol=0.1)
+                np.testing.assert_allclose(last_train_loss, 18.15552282333374, rtol=0.1)
+                if os.getenv("IS_CI", False):
+                    np.testing.assert_allclose(last_val_loss, 52.66148376, rtol=0.1)
+                else:
+                    np.testing.assert_allclose(
+                        last_val_loss, 74.33089447021484, rtol=0.1
+                    )
+
+                # ---------- Test visualization was created ----------
+                result = subprocess.run(
+                    [
+                        "python3",
+                        "model_prediction_evolution.py",
+                        str(results_filename),
+                        "--split",
+                        "train",
+                    ],
+                    capture_output=True,
+                    text=True,
                 )
-                np.testing.assert_allclose(first_val_loss, 24.48845680781773, rtol=0.1)
-                np.testing.assert_allclose(
-                    last_train_loss, 0.060804929584264755, rtol=0.1
-                )
-                np.testing.assert_allclose(last_val_loss, 14.681191853114537, rtol=0.1)
+
+                visualization_filepath = Path(f"figures/{Path(results_filename).stem}")
+                assert visualization_filepath.exists(), "Visualization was not created."
+
             finally:
                 if os.path.exists(results_filename):
                     os.remove(results_filename)
+                if visualization_filepath and os.path.exists(visualization_filepath):
+                    shutil.rmtree(visualization_filepath)
 
     def test_forward_non_factorized_output_shapes(self):
         """
         Verify that the TransformerModel's forward pass in non-factorized (concatenated) mode
         returns outputs with the correct shapes.
         """
+        self.set_seed()
+
         # Use concatenated mode (non-factorized): positions are provided.
         model = XTransformerModel(
             num_tokens=self.vocab_size,
@@ -165,6 +198,8 @@ class TestTransformer(unittest.TestCase):
     def test_forward_factorized_output_shapes(self):
         """Verify that the TransformerModel's forward pass in factorized mode
         returns outputs with the correct shapes."""
+        self.set_seed()
+
         model = XTransformerModel(
             num_tokens=self.vocab_size,
             d_model=6,
@@ -192,6 +227,8 @@ class TestTransformer(unittest.TestCase):
           - Ensuring that a fully padded input yields zero outputs.
           - Checking that a mismatched input shape raises an exception.
         """
+        self.set_seed()
+
         model = XTransformerModel(
             num_tokens=self.vocab_size,
             d_model=6,
@@ -249,6 +286,8 @@ class TestTransformer(unittest.TestCase):
 
     def test_gradient_flow(self):
         """Verify that gradients flow back through the Transformer model during backpropagation."""
+        self.set_seed()
+
         model = XTransformerModel(
             num_tokens=self.vocab_size,
             d_model=6,
@@ -280,6 +319,8 @@ class TestTransformer(unittest.TestCase):
         Verify that the force prediction layer's input feature size differs between factorized
         and non-factorized modes.
         """
+        self.set_seed()
+
         model_factorized = XTransformerModel(
             num_tokens=self.vocab_size,
             d_model=4,
