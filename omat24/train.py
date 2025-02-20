@@ -57,7 +57,7 @@ def main():
 
     # User Hyperparam Feedback
     params = vars(args) | {
-        "dataset_name": f"{args.split_name}/{args.datasets}",
+        "dataset_split": args.split_name,
         "max_n_atoms": dataset.max_n_atoms,
     }
     pprint.pprint(params)
@@ -106,25 +106,26 @@ def main():
 
     # Train
     for data_fraction in args.data_fractions:
-        print(f"\nData fraction: {data_fraction}")
+        train_loader, val_loader = get_dataloaders(
+            dataset,
+            train_data_fraction=data_fraction,
+            batch_size=batch_size,
+            seed=SEED,
+            batch_padded=False,
+            val_data_fraction=args.val_data_fraction,
+            train_workers=args.train_workers,
+            val_workers=args.val_workers,
+            graph=graph,
+        )
+        dataset_size = len(train_loader.dataset)
+        print(
+            f"\nTraining on dataset fraction {data_fraction} with {dataset_size} samples"
+        )
         for model_idx, model in enumerate(meta_models):
             print(
                 f"\nModel {model_idx + 1}/{len(meta_models)} is on device {DEVICE} "
                 f"and has {model.num_params} parameters"
             )
-
-            train_loader, val_loader = get_dataloaders(
-                dataset,
-                train_data_fraction=data_fraction,
-                batch_size=batch_size,
-                seed=SEED,
-                batch_padded=False,
-                val_data_fraction=args.val_data_fraction,
-                train_workers=args.train_workers,
-                val_workers=args.val_workers,
-                graph=graph,
-            )
-            dataset_size = len(train_loader.dataset)
             optimizer = optim.AdamW(model.parameters(), lr=lr)
 
             lambda_schedule = lambda epoch: 0.5 * (
