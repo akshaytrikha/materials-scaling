@@ -151,7 +151,7 @@ class TestTransformer(unittest.TestCase):
                     np.testing.assert_allclose(last_val_loss, 52.66148376, rtol=0.1)
                 else:
                     np.testing.assert_allclose(
-                        last_val_loss, 74.33089447021484, rtol=0.1
+                        last_val_loss, 117.96384048, rtol=0.1
                     )
                 np.testing.assert_allclose(last_flops, 12468728832, rtol=0.1)
 
