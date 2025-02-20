@@ -143,7 +143,7 @@ class OMat24Dataset(Dataset):
         self.graph = graph
 
         if len(dataset_paths) > 1:
-            self.max_n_atoms = 170
+            self.max_n_atoms = 180
         else:
             split_name = dataset_paths[0].parent.name  # Parent directory's name
             dataset_name = dataset_paths[0].name

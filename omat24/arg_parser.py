@@ -111,10 +111,10 @@ def get_args():
         help="OMat24 split to use",
     )
     parser.add_argument(
-        "--dataset",
+        "--datasets",
         type=str,
         nargs="+",
-        default=["val/rattled-300-subsampled"],
+        default=["rattled-300-subsampled"],
         help="Dataset(s) to use",
     )
 

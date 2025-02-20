@@ -214,3 +214,47 @@ class TestGetDataloaders(unittest.TestCase):
             expected_attrs.issubset(actual_keys),
             "PyG Data object is missing attributes in graph mode.",
         )
+
+    def test_multi_dataset(self):
+        # Load second dataset
+        dataset_name_2 = "aimd-from-PBE-3000-nvt"
+
+        dataset_path_2 = Path(f"datasets/{split_name}/{dataset_name_2}")
+        if not dataset_path_2.exists():
+            download_dataset(dataset_name_2, split_name)
+
+        dataset_1 = OMat24Dataset(dataset_paths=[dataset_path])
+        dataset_2 = OMat24Dataset(dataset_paths=[dataset_path_2])
+        combined_dataset = OMat24Dataset(dataset_paths=[dataset_path, dataset_path_2])
+
+        # Check that the combined dataset has the correct size
+        assert len(dataset_1) + len(dataset_2) == len(
+            combined_dataset
+        ), "Combined dataset size mismatch."
+
+        # Check that if we pass a data fraction of 0.1 to the combined dataset, it is split correctly
+        train_data_fraction = 0.01  # Use 1% of the full dataset to train with
+        val_data_fraction = 0.1
+        # We first reserve 10% of the dataset for validation, and then use 1% of the remaining data for training
+        val_size_expected = int(len(combined_dataset) * val_data_fraction)
+        train_size_expected = int(
+            (len(combined_dataset) - val_size_expected) * train_data_fraction
+        )
+
+        train_loader, val_loader = get_dataloaders(
+            dataset=combined_dataset,
+            train_data_fraction=train_data_fraction,
+            batch_size=10,
+            batch_padded=True,
+            seed=42,
+        )
+
+        train_samples = len(train_loader.dataset)
+        val_samples = len(val_loader.dataset)
+
+        self.assertEqual(
+            train_samples, train_size_expected, "Training set size mismatch."
+        )
+        self.assertEqual(
+            val_samples, val_size_expected, "Validation set size mismatch."
+        )
