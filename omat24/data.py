@@ -1,10 +1,10 @@
 # External
-from torch.utils.data import DataLoader, Subset, Dataset
-from pathlib import Path
+from typing import List
 import torch
-from fairchem.core.datasets import AseDBDataset
 import ase
 import random
+from torch.utils.data import DataLoader, Subset, Dataset
+from fairchem.core.datasets import AseDBDataset
 from torch_geometric.data import Data
 from torch_geometric.data import DataLoader as PyGDataLoader
 
@@ -133,17 +133,23 @@ class OMat24Dataset(Dataset):
 
     def __init__(
         self,
-        dataset_path: Path,
+        dataset_paths: List[str],
         config_kwargs={},
         augment: bool = False,
         graph: bool = False,
+        debug: bool = False,
     ):
-        self.dataset = AseDBDataset(config=dict(src=str(dataset_path), **config_kwargs))
+        self.dataset = AseDBDataset(config=dict(src=dataset_paths, **config_kwargs))
         self.augment = augment
         self.graph = graph
-        split_name = dataset_path.parent.name  # Parent directory's name
-        dataset_name = dataset_path.name
-        self.max_n_atoms = DATASET_INFO[split_name][dataset_name]["max_n_atoms"]
+        self.debug = debug
+
+        if len(dataset_paths) > 1:
+            self.max_n_atoms = 180
+        else:
+            split_name = dataset_paths[0].parent.name  # Parent directory's name
+            dataset_name = dataset_paths[0].name
+            self.max_n_atoms = DATASET_INFO[split_name][dataset_name]["max_n_atoms"]
 
     def __len__(self):
         return len(self.dataset)
@@ -195,7 +201,7 @@ class OMat24Dataset(Dataset):
             sample.postiions = positions
             sample.idx = idx
             sample.symbols = symbols
-            return sample
+
         else:
             # Compute the distance matrix from (possibly rotated) positions
             distance_matrix = compute_distance_matrix(
@@ -218,4 +224,9 @@ class OMat24Dataset(Dataset):
                 "forces": forces,  # Target forces on each atom
                 "stress": stress,  # Target stress tensor
             }
-            return sample
+
+        # Add source information for verifying mutli-dataset usage
+        if self.debug:
+            sample["source"] = atoms.info["calc_id"]
+
+        return sample

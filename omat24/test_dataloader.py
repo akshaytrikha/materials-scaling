@@ -14,7 +14,7 @@ dataset_name = "rattled-300-subsampled"
 dataset_path = Path(f"datasets/{split_name}/{dataset_name}")
 if not dataset_path.exists():
     download_dataset(dataset_name, split_name)
-dataset = OMat24Dataset(dataset_path=dataset_path)
+dataset = OMat24Dataset(dataset_paths=[dataset_path])
 
 
 class TestGetDataloaders(unittest.TestCase):
@@ -24,7 +24,9 @@ class TestGetDataloaders(unittest.TestCase):
         val_data_fraction = 0.1
         # We first reserve 10% of the dataset for validation, and then use 1% of the remaining data for training
         val_size_expected = int(len(dataset) * val_data_fraction)
-        train_size_expected = int((len(dataset) - val_size_expected) * train_data_fraction)
+        train_size_expected = int(
+            (len(dataset) - val_size_expected) * train_data_fraction
+        )
 
         train_loader, val_loader = get_dataloaders(
             dataset=dataset,
@@ -145,7 +147,7 @@ class TestGetDataloaders(unittest.TestCase):
 
     def test_batch_keys_graph_false(self):
         """Test that the batch dictionary contains all expected keys when graph=False.
-        
+
         Though the dataset's __getitem__() returns a dict containing the keys "idx" and "symbols",
         the batch dictionary returned by the DataLoader does not contain these keys because of the
         custom collate functions.
@@ -181,11 +183,10 @@ class TestGetDataloaders(unittest.TestCase):
             "Dataset dictionary is missing keys in non-graph mode.",
         )
 
-
     def test_batch_keys_graph_true(self):
         """Test that the PyG Data object contains all expected attributes when graph=True."""
         # Instantiate a dataset that returns PyG Data objects.
-        dataset_graph = OMat24Dataset(dataset_path=dataset_path, graph=True)
+        dataset_graph = OMat24Dataset(dataset_paths=[dataset_path], graph=True)
         train_loader, _ = get_dataloaders(
             dataset=dataset_graph,
             train_data_fraction=0.01,
@@ -206,9 +207,68 @@ class TestGetDataloaders(unittest.TestCase):
             "natoms",
         }
         # PyG Data objects support the keys() method.
-        actual_keys = set(batch.keys()) if hasattr(batch, "keys") else set(batch.__dict__.keys())
+        actual_keys = (
+            set(batch.keys()) if hasattr(batch, "keys") else set(batch.__dict__.keys())
+        )
         self.assertTrue(
             expected_attrs.issubset(actual_keys),
             "PyG Data object is missing attributes in graph mode.",
         )
 
+    def test_multi_dataset_fractions(self):
+        # Load second dataset
+        dataset_name_2 = "aimd-from-PBE-3000-nvt"
+
+        dataset_path_2 = Path(f"datasets/{split_name}/{dataset_name_2}")
+        if not dataset_path_2.exists():
+            download_dataset(dataset_name_2, split_name)
+
+        dataset_1 = OMat24Dataset(dataset_paths=[dataset_path])
+        dataset_2 = OMat24Dataset(dataset_paths=[dataset_path_2])
+        combined_dataset = OMat24Dataset(
+            dataset_paths=[dataset_path, dataset_path_2], debug=True
+        )
+
+        # Check that the combined dataset has the correct size
+        self.assertEqual(
+            len(dataset_1) + len(dataset_2), len(combined_dataset)
+        ), "Combined dataset size mismatch."
+
+        # Check that if we pass a data fraction of 0.1 to the combined dataset, it is split correctly
+        train_data_fraction = 0.01  # Use 1% of the full dataset to train with
+        val_data_fraction = 0.1
+        # We first reserve 10% of the dataset for validation, and then use 1% of the remaining data for training
+        val_size_expected = int(len(combined_dataset) * val_data_fraction)
+        train_size_expected = int(
+            (len(combined_dataset) - val_size_expected) * train_data_fraction
+        )
+
+        train_loader, val_loader = get_dataloaders(
+            dataset=combined_dataset,
+            train_data_fraction=train_data_fraction,
+            batch_size=10,
+            batch_padded=True,
+            seed=42,
+        )
+
+        train_samples = len(train_loader.dataset)
+        val_samples = len(val_loader.dataset)
+
+        self.assertEqual(
+            train_samples, train_size_expected, "Training set size mismatch."
+        )
+        self.assertEqual(
+            val_samples, val_size_expected, "Validation set size mismatch."
+        )
+
+        # Iterate through the combined dataset and check that the proportions are correct
+        count_1 = 0
+        count_2 = 0
+        for sample in combined_dataset:
+            if sample["source"] == "rattled-300-subsampled":
+                count_1 += 1
+            elif sample["source"] == "aimd-from-PBE-3000-nvt":
+                count_2 += 1
+
+        self.assertEqual(count_1, len(dataset_1), "Dataset 1 sample count mismatch.")
+        self.assertEqual(count_2, len(dataset_2), "Dataset 2 sample count mismatch.")
