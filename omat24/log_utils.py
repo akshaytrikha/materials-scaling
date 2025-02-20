@@ -166,21 +166,21 @@ def partial_json_log(
         json.dump(experiment_results, f)
 
 
-def tensorboard_log(loss_value, loss_type, train, writer, epoch, tensorboard_prefix):
+def log_tb_metrics(
+    metrics: dict, writer, epoch: int, tensorboard_prefix: str, train: bool
+):
     """
-    Log a loss value to TensorBoard.
+    Log multiple metrics to TensorBoard.
 
     Args:
-        loss_value (float): The loss value to log.
-        train (bool): Whether this is training (True) or validation (False) loss.
+        metrics (dict): Dictionary where keys are loss types and values are the loss values.
         writer (SummaryWriter): TensorBoard writer object.
         epoch (int): Current training epoch.
         tensorboard_prefix (str): Prefix for naming the logs.
-
-    Returns:
-        None
+        train (bool): True for training metrics, False for validation metrics.
     """
     if writer is None:
         return
-    tag = f"{tensorboard_prefix}/{'train' if train else 'val'}_{loss_type}_loss"
-    writer.add_scalar(tag, loss_value, global_step=epoch)
+    for loss_type, loss_value in metrics.items():
+        tag = f"{tensorboard_prefix}/{'train' if train else 'val'}_{loss_type}_loss"
+        writer.add_scalar(tag, loss_value, global_step=epoch)
