@@ -1,6 +1,13 @@
 import argparse
 
 
+def check_val_data_fraction(value):
+    fvalue = float(value)
+    if fvalue == 1.0:
+        raise argparse.ArgumentTypeError("val_data_fraction cannot be 1")
+    return fvalue
+
+
 def get_args():
     parser = argparse.ArgumentParser(description="Training script for the model.")
     parser.add_argument(
@@ -36,7 +43,7 @@ def get_args():
     )
     parser.add_argument(
         "--val_data_fraction",
-        type=float,
+        type=check_val_data_fraction,
         default=0.1,
         help="Fraction of the dataset to use for validation",
     )
@@ -96,6 +103,19 @@ def get_args():
         type=int,
         default=500,
         help="Number of epochs to run in between visualizations",
+    )
+    parser.add_argument(
+        "--split_name",
+        type=str,
+        default="val",
+        help="OMat24 split to use",
+    )
+    parser.add_argument(
+        "--datasets",
+        type=str,
+        nargs="+",
+        default=["rattled-300-subsampled"],
+        help="Dataset(s) to use",
     )
 
     return parser.parse_args()

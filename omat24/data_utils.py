@@ -50,13 +50,14 @@ DATASET_INFO = {
             },
         },
         "rattled-1000": {
-            "url": "https://drive.google.com/uc?export=download&id=1nZh6j2G9SNtYXnAWsjYGju1QLAqMvIQ-",
             "max_n_atoms": 152,
+        },
+        "aimd-from-PBE-3000-nvt": {
+            "max_n_atoms": 160,
         },
     },
     "train": {
         "rattled-500-subsampled": {
-            "url": "https://drive.google.com/uc?id=1gP_p2uIgNGFpfm-eAR-FoRMh-Sf-wrAd",
             "max_n_atoms": 160,
         },
     },
