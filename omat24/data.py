@@ -137,10 +137,12 @@ class OMat24Dataset(Dataset):
         config_kwargs={},
         augment: bool = False,
         graph: bool = False,
+        debug: bool = False,
     ):
         self.dataset = AseDBDataset(config=dict(src=dataset_paths, **config_kwargs))
         self.augment = augment
         self.graph = graph
+        self.debug = debug
 
         if len(dataset_paths) > 1:
             self.max_n_atoms = 180
@@ -199,7 +201,7 @@ class OMat24Dataset(Dataset):
             sample.postiions = positions
             sample.idx = idx
             sample.symbols = symbols
-            return sample
+
         else:
             # Compute the distance matrix from (possibly rotated) positions
             distance_matrix = compute_distance_matrix(
@@ -222,4 +224,9 @@ class OMat24Dataset(Dataset):
                 "forces": forces,  # Target forces on each atom
                 "stress": stress,  # Target stress tensor
             }
-            return sample
+
+        # Add source information for verifying mutli-dataset usage
+        if self.debug:
+            sample["source"] = atoms.info["calc_id"]
+
+        return sample

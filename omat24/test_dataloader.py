@@ -215,7 +215,7 @@ class TestGetDataloaders(unittest.TestCase):
             "PyG Data object is missing attributes in graph mode.",
         )
 
-    def test_multi_dataset(self):
+    def test_multi_dataset_fractions(self):
         # Load second dataset
         dataset_name_2 = "aimd-from-PBE-3000-nvt"
 
@@ -225,11 +225,13 @@ class TestGetDataloaders(unittest.TestCase):
 
         dataset_1 = OMat24Dataset(dataset_paths=[dataset_path])
         dataset_2 = OMat24Dataset(dataset_paths=[dataset_path_2])
-        combined_dataset = OMat24Dataset(dataset_paths=[dataset_path, dataset_path_2])
+        combined_dataset = OMat24Dataset(
+            dataset_paths=[dataset_path, dataset_path_2], debug=True
+        )
 
         # Check that the combined dataset has the correct size
-        assert len(dataset_1) + len(dataset_2) == len(
-            combined_dataset
+        self.assertEqual(
+            len(dataset_1) + len(dataset_2), len(combined_dataset)
         ), "Combined dataset size mismatch."
 
         # Check that if we pass a data fraction of 0.1 to the combined dataset, it is split correctly
@@ -258,3 +260,15 @@ class TestGetDataloaders(unittest.TestCase):
         self.assertEqual(
             val_samples, val_size_expected, "Validation set size mismatch."
         )
+
+        # Iterate through the combined dataset and check that the proportions are correct
+        count_1 = 0
+        count_2 = 0
+        for sample in combined_dataset:
+            if sample["source"] == "rattled-300-subsampled":
+                count_1 += 1
+            elif sample["source"] == "aimd-from-PBE-3000-nvt":
+                count_2 += 1
+
+        self.assertEqual(count_1, len(dataset_1), "Dataset 1 sample count mismatch.")
+        self.assertEqual(count_2, len(dataset_2), "Dataset 2 sample count mismatch.")
