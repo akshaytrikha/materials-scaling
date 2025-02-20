@@ -61,7 +61,7 @@ class MetaTransformerModels:
             max_seq_len (int): Maximum sequence length for the transformer.
         """
         self.configurations = [
-            # 1,789 parameters
+            # 1,670 parameters
             {
                 "d_model": 1,
                 "depth": 1,
@@ -69,7 +69,7 @@ class MetaTransformerModels:
                 "d_ff_mult": 1,
                 "concatenated": concatenated,
             },
-            # 9,229 params
+            # 8,753 params
             {
                 "d_model": 4,
                 "depth": 2,
@@ -77,7 +77,7 @@ class MetaTransformerModels:
                 "d_ff_mult": 2,
                 "concatenated": concatenated,
             },
-            # 109,455 params
+            # 108,503 params
             {
                 "d_model": 8,
                 "depth": 8,
@@ -85,7 +85,7 @@ class MetaTransformerModels:
                 "d_ff_mult": 8,
                 "concatenated": concatenated,
             },
-            # 1,728,387 parameters
+            # 1,720,771 parameters
             {
                 "d_model": 64,
                 "depth": 12,
@@ -222,7 +222,10 @@ class XTransformerModel(TransformerWrapper):
             nn.init.zeros_(self.stress_2.bias)
 
         # Count parameters
-        self.num_params = sum(p.numel() for p in self.parameters())
+        self.num_params = sum(
+            p.numel() for name, p in self.named_parameters() if "token_emb" not in name
+        )
+
 
     def forward(self, x, positions, distance_matrix=None, mask=None):
         """Forward pass of the transformer model.

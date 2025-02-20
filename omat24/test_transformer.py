@@ -131,16 +131,21 @@ class TestTransformer(unittest.TestCase):
                 config = result_json["3"][0]["config"]
                 first_train_loss = result_json["3"][0]["losses"]["1"]["train_loss"]
                 first_val_loss = result_json["3"][0]["losses"]["0"]["val_loss"]
+                first_flops = result_json["3"][0]["losses"]["0"]["flops"]
+                second_flops = result_json["3"][0]["losses"]["1"]["flops"]
                 last_train_loss = result_json["3"][0]["losses"]["500"]["train_loss"]
                 last_val_loss = result_json["3"][0]["losses"]["500"]["val_loss"]
+                last_flops = result_json["3"][0]["losses"]["500"]["flops"]
 
                 # For the Transformer, the first configuration (from MetaTransformerModels) is expected to be:
                 self.assertEqual(config["embedding_dim"], 1)
                 self.assertEqual(config["depth"], 1)
-                self.assertEqual(config["num_params"], 1789)
+                self.assertEqual(config["num_params"], 1670)
 
                 np.testing.assert_allclose(first_train_loss, 62.5931510925293, rtol=0.1)
                 np.testing.assert_allclose(first_val_loss, 23.387828826904297, rtol=0.1)
+                np.testing.assert_allclose(first_flops, 0, rtol=0.1)
+                np.testing.assert_allclose(second_flops, 24920064, rtol=0.1)
                 np.testing.assert_allclose(last_train_loss, 18.15552282333374, rtol=0.1)
                 if os.getenv("IS_CI", False):
                     np.testing.assert_allclose(last_val_loss, 52.66148376, rtol=0.1)
@@ -148,6 +153,7 @@ class TestTransformer(unittest.TestCase):
                     np.testing.assert_allclose(
                         last_val_loss, 74.33089447021484, rtol=0.1
                     )
+                np.testing.assert_allclose(last_flops, 12468728832, rtol=0.1)
 
                 # ---------- Test visualization was created ----------
                 result = subprocess.run(

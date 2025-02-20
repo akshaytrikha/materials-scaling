@@ -2,6 +2,7 @@
 import torch
 import torch.nn as nn
 from typing import Union, Dict
+from torch.utils.flop_counter import FlopCounterMode
 
 # Internal
 from loss import compute_loss
@@ -344,7 +345,7 @@ def train(
             0,
             float("nan"),
             val_loss,
-            results_path,
+            results_path
         )
 
     # Early stopping setup
@@ -354,230 +355,237 @@ def train(
     samples = None
 
     # Training loop
-    for epoch in range(1, len(pbar) + 1):
-        model.train()
-        train_loss_sum = 0.0
-        energy_loss_sum = 0.0
-        force_loss_sum = 0.0
-        stress_iso_loss_sum = 0.0
-        stress_aniso_loss_sum = 0.0
+    flop_counter = FlopCounterMode(display=False)
+    with flop_counter:
+        for epoch in range(1, len(pbar) + 1):
+            model.train()
+            train_loss_sum = 0.0
+            energy_loss_sum = 0.0
+            force_loss_sum = 0.0
+            stress_iso_loss_sum = 0.0
+            stress_aniso_loss_sum = 0.0
 
-        n_train_batches = len(train_loader)
+            n_train_batches = len(train_loader)
 
-        for batch_idx, batch in enumerate(train_loader):
-            optimizer.zero_grad()
-            (
-                pred_forces,
-                pred_energy,
-                pred_stress,
-                true_forces,
-                true_energy,
-                true_stress,
-                mask,
-                natoms,
-            ) = forward_pass(
-                model=model, batch=batch, graph=graph, training=True, device=device
-            )
+            for batch_idx, batch in enumerate(train_loader):
+                optimizer.zero_grad()
+                (
+                    pred_forces,
+                    pred_energy,
+                    pred_stress,
+                    true_forces,
+                    true_energy,
+                    true_stress,
+                    mask,
+                    natoms,
+                ) = forward_pass(
+                    model=model, batch=batch, graph=graph, training=True, device=device
+                )
+                # Mapping atoms to their respective structures (for graphs)
+                structure_index = batch.batch if graph and hasattr(batch, "batch") else []
+                train_loss_dict = compute_loss(
+                    pred_forces,
+                    pred_energy,
+                    pred_stress,
+                    true_forces,
+                    true_energy,
+                    true_stress,
+                    mask,
+                    device,
+                    natoms,
+                    graph,
+                    structure_index,
+                )
+                
+                print("hey")
+                total_train_loss = train_loss_dict["total_loss"]
+                print("sup!")
+                total_train_loss.backward()
+                print("yo")
+                torch.nn.utils.clip_grad_norm_(model.parameters(), gradient_clip)
+                print("sup")
+                optimizer.step()
+                print("hi!")
 
-            # Mapping atoms to their respective structures (for graphs)
-            structure_index = batch.batch if graph and hasattr(batch, "batch") else []
-            train_loss_dict = compute_loss(
-                pred_forces,
-                pred_energy,
-                pred_stress,
-                true_forces,
-                true_energy,
-                true_stress,
-                mask,
-                device,
-                natoms,
-                graph,
-                structure_index,
-            )
-            total_train_loss = train_loss_dict["total_loss"]
-            total_train_loss.backward()
-            torch.nn.utils.clip_grad_norm_(model.parameters(), gradient_clip)
-            optimizer.step()
+                train_loss_sum += total_train_loss.item()
+                energy_loss_sum += train_loss_dict["energy_loss"].item()
+                force_loss_sum += train_loss_dict["force_loss"].item()
+                stress_iso_loss_sum += train_loss_dict["stress_iso_loss"].item()
+                stress_aniso_loss_sum += train_loss_dict["stress_aniso_loss"].item()
+                current_avg_loss = train_loss_sum / (batch_idx + 1)
 
-            train_loss_sum += total_train_loss.item()
-            energy_loss_sum += train_loss_dict["energy_loss"].item()
-            force_loss_sum += train_loss_dict["force_loss"].item()
-            stress_iso_loss_sum += train_loss_dict["stress_iso_loss"].item()
-            stress_aniso_loss_sum += train_loss_dict["stress_aniso_loss"].item()
-            current_avg_loss = train_loss_sum / (batch_idx + 1)
+                pbar.set_description(
+                    f"train_loss={current_avg_loss:.2f} val_loss={last_val_loss:.2f}"
+                )
 
-            pbar.set_description(
-                f"train_loss={current_avg_loss:.2f} val_loss={last_val_loss:.2f}"
-            )
+            # Step the scheduler if provided
+            if scheduler is not None:
+                scheduler.step()
 
-        # Step the scheduler if provided
-        if scheduler is not None:
-            scheduler.step()
+            avg_epoch_train_loss = train_loss_sum / n_train_batches
+            avg_epoch_energy_loss = energy_loss_sum / n_train_batches
+            avg_epoch_force_loss = force_loss_sum / n_train_batches
+            avg_epoch_stress_iso_loss = stress_iso_loss_sum / n_train_batches
+            avg_epoch_stress_aniso_loss = stress_aniso_loss_sum / n_train_batches
 
-        avg_epoch_train_loss = train_loss_sum / n_train_batches
-        avg_epoch_energy_loss = energy_loss_sum / n_train_batches
-        avg_epoch_force_loss = force_loss_sum / n_train_batches
-        avg_epoch_stress_iso_loss = stress_iso_loss_sum / n_train_batches
-        avg_epoch_stress_aniso_loss = stress_aniso_loss_sum / n_train_batches
-
-        losses[epoch] = {"train_loss": float(avg_epoch_train_loss)}
-
-        # TensorBoard logging for training loss
-        if writer is not None:
-            # Log parameter norms (example usage)
-            tensorboard_log(
-                avg_epoch_train_loss,
-                "",
-                train=True,
-                writer=writer,
-                epoch=epoch,
-                tensorboard_prefix=tensorboard_prefix,
-            )
-            tensorboard_log(
-                avg_epoch_energy_loss,
-                "energy",
-                train=True,
-                writer=writer,
-                epoch=epoch,
-                tensorboard_prefix=tensorboard_prefix,
-            )
-            tensorboard_log(
-                avg_epoch_force_loss,
-                "force",
-                train=True,
-                writer=writer,
-                epoch=epoch,
-                tensorboard_prefix=tensorboard_prefix,
-            )
-            tensorboard_log(
-                avg_epoch_stress_iso_loss,
-                "stress_iso",
-                train=True,
-                writer=writer,
-                epoch=epoch,
-                tensorboard_prefix=tensorboard_prefix,
-            )
-            tensorboard_log(
-                avg_epoch_stress_aniso_loss,
-                "stress_aniso",
-                train=True,
-                writer=writer,
-                epoch=epoch,
-                tensorboard_prefix=tensorboard_prefix,
-            )
-            # Simple gradient logging for debugging (skip bias layers)
-            for name, param in model.named_parameters():
-                if (
-                    param is not None
-                    and param.requires_grad
-                    and param.grad is not None
-                    and not name.endswith("bias")
-                ):  # Skip bias layers
-                    # Log mean gradient - key indicator for vanishing/exploding gradients
-                    grad_mean = param.grad.abs().mean().item()
-                    writer.add_scalar(
-                        f"{tensorboard_prefix}/Grads/{name}",
-                        grad_mean,
-                        global_step=epoch,
-                    )
-
-                    # Log gradient-to-weight ratio - indicates if updates are well-scaled
-                    grad_to_weight = (
-                        param.grad.abs().mean() / (param.data.abs().mean() + 1e-8)
-                    ).item()
-                    writer.add_scalar(
-                        f"{tensorboard_prefix}/G2W/{name}",
-                        grad_to_weight,
-                        global_step=epoch,
-                    )
-
-        # Validate every 'validate_every' epochs
-        if epoch % validate_every == 0:
-            (
-                val_loss,
-                val_energy_loss,
-                val_force_loss,
-                val_stress_iso_loss,
-                val_stress_aniso_loss,
-            ) = run_validation(model, val_loader, graph, device)
+            losses[epoch] = {"train_loss": float(avg_epoch_train_loss)}
+            # TensorBoard logging for training loss
             if writer is not None:
+                # Log parameter norms (example usage)
                 tensorboard_log(
-                    val_loss,
+                    avg_epoch_train_loss,
                     "",
-                    train=False,
+                    train=True,
                     writer=writer,
                     epoch=epoch,
                     tensorboard_prefix=tensorboard_prefix,
                 )
                 tensorboard_log(
-                    val_energy_loss,
+                    avg_epoch_energy_loss,
                     "energy",
-                    train=False,
+                    train=True,
                     writer=writer,
                     epoch=epoch,
                     tensorboard_prefix=tensorboard_prefix,
                 )
                 tensorboard_log(
-                    val_force_loss,
+                    avg_epoch_force_loss,
                     "force",
-                    train=False,
+                    train=True,
                     writer=writer,
                     epoch=epoch,
                     tensorboard_prefix=tensorboard_prefix,
                 )
                 tensorboard_log(
-                    val_stress_iso_loss,
+                    avg_epoch_stress_iso_loss,
                     "stress_iso",
-                    train=False,
+                    train=True,
                     writer=writer,
                     epoch=epoch,
                     tensorboard_prefix=tensorboard_prefix,
                 )
                 tensorboard_log(
-                    val_stress_aniso_loss,
+                    avg_epoch_stress_aniso_loss,
                     "stress_aniso",
-                    train=False,
+                    train=True,
                     writer=writer,
                     epoch=epoch,
                     tensorboard_prefix=tensorboard_prefix,
                 )
-            last_val_loss = val_loss
-            losses[epoch]["val_loss"] = float(val_loss)
+                # Simple gradient logging for debugging (skip bias layers)
+                for name, param in model.named_parameters():
+                    if (
+                        param is not None
+                        and param.requires_grad
+                        and param.grad is not None
+                        and not name.endswith("bias")
+                    ):  # Skip bias layers
+                        # Log mean gradient - key indicator for vanishing/exploding gradients
+                        grad_mean = param.grad.abs().mean().item()
+                        writer.add_scalar(
+                            f"{tensorboard_prefix}/Grads/{name}",
+                            grad_mean,
+                            global_step=epoch,
+                        )
 
-            # Early stopping check
-            if val_loss < best_val_loss:
-                best_val_loss = val_loss
-                epochs_since_improvement = 0
-            else:
-                epochs_since_improvement += 1
-                if epochs_since_improvement >= patience:
-                    print(f"Early stopping triggered at epoch {epoch}")
-                    return model, losses
+                        # Log gradient-to-weight ratio - indicates if updates are well-scaled
+                        grad_to_weight = (
+                            param.grad.abs().mean() / (param.data.abs().mean() + 1e-8)
+                        ).item()
+                        writer.add_scalar(
+                            f"{tensorboard_prefix}/G2W/{name}",
+                            grad_to_weight,
+                            global_step=epoch,
+                        )
+            # Validate every 'validate_every' epochs
+            if epoch % validate_every == 0:
+                (
+                    val_loss,
+                    val_energy_loss,
+                    val_force_loss,
+                    val_stress_iso_loss,
+                    val_stress_aniso_loss,
+                ) = run_validation(model, val_loader, graph, device)
+                if writer is not None:
+                    tensorboard_log(
+                        val_loss,
+                        "",
+                        train=False,
+                        writer=writer,
+                        epoch=epoch,
+                        tensorboard_prefix=tensorboard_prefix,
+                    )
+                    tensorboard_log(
+                        val_energy_loss,
+                        "energy",
+                        train=False,
+                        writer=writer,
+                        epoch=epoch,
+                        tensorboard_prefix=tensorboard_prefix,
+                    )
+                    tensorboard_log(
+                        val_force_loss,
+                        "force",
+                        train=False,
+                        writer=writer,
+                        epoch=epoch,
+                        tensorboard_prefix=tensorboard_prefix,
+                    )
+                    tensorboard_log(
+                        val_stress_iso_loss,
+                        "stress_iso",
+                        train=False,
+                        writer=writer,
+                        epoch=epoch,
+                        tensorboard_prefix=tensorboard_prefix,
+                    )
+                    tensorboard_log(
+                        val_stress_aniso_loss,
+                        "stress_aniso",
+                        train=False,
+                        writer=writer,
+                        epoch=epoch,
+                        tensorboard_prefix=tensorboard_prefix,
+                    )
+                last_val_loss = val_loss
+                losses[epoch]["val_loss"] = float(val_loss)
 
-        # Visualization samples every 'visualize_every' epochs
-        if epoch % visualize_every == 0:
-            samples = collect_samples_for_visualizing(
-                model,
-                graph,
-                train_loader,
-                val_loader,
-                device,
-                num_visualization_samples,
-            )
+                # Early stopping check
+                if val_loss < best_val_loss:
+                    best_val_loss = val_loss
+                    epochs_since_improvement = 0
+                else:
+                    epochs_since_improvement += 1
+                    if epochs_since_improvement >= patience:
+                        print(f"Early stopping triggered at epoch {epoch}")
+                        return model, losses
 
-        # Write partial JSON if requested
-        if can_write_partial:
-            partial_json_log(
-                experiment_results,
-                data_size_key,
-                run_entry,
-                epoch,
-                avg_epoch_train_loss,
-                val_loss if epoch % validate_every == 0 else float("nan"),
-                results_path,
-                samples if epoch % visualize_every == 0 else None,
-            )
+            # Visualization samples every 'visualize_every' epochs
+            if epoch % visualize_every == 0:
+                samples = collect_samples_for_visualizing(
+                    model,
+                    graph,
+                    train_loader,
+                    val_loader,
+                    device,
+                    num_visualization_samples,
+                )
 
-        pbar.update(1)
+            # Write partial JSON if requested
+            flops = flop_counter.get_total_flops()
+            if can_write_partial:
+                partial_json_log(
+                    experiment_results,
+                    data_size_key,
+                    run_entry,
+                    epoch,
+                    avg_epoch_train_loss,
+                    val_loss if epoch % validate_every == 0 else float("nan"),
+                    results_path,
+                    samples if epoch % visualize_every == 0 else None,
+                    flops
+                )
+
+            pbar.update(1)
 
     return model, losses
