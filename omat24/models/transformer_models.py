@@ -226,7 +226,6 @@ class XTransformerModel(TransformerWrapper):
             p.numel() for name, p in self.named_parameters() if "token_emb" not in name
         )
 
-
     def forward(self, x, positions, distance_matrix=None, mask=None):
         """Forward pass of the transformer model.
 

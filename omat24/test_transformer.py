@@ -147,13 +147,11 @@ class TestTransformer(unittest.TestCase):
                 np.testing.assert_allclose(first_flops, 0, rtol=0.1)
                 np.testing.assert_allclose(second_flops, 24920064, rtol=0.1)
                 np.testing.assert_allclose(last_train_loss, 18.15552282333374, rtol=0.1)
+                np.testing.assert_allclose(last_flops, 12468728832, rtol=0.1)
                 if os.getenv("IS_CI", False):
                     np.testing.assert_allclose(last_val_loss, 52.66148376, rtol=0.1)
                 else:
-                    np.testing.assert_allclose(
-                        last_val_loss, 117.96384048, rtol=0.1
-                    )
-                np.testing.assert_allclose(last_flops, 12468728832, rtol=0.1)
+                    np.testing.assert_allclose(last_val_loss, 117.96384048, rtol=0.1)
 
                 # ---------- Test visualization was created ----------
                 result = subprocess.run(
