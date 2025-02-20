@@ -5,13 +5,20 @@ import torch.nn as nn
 class MetaFCNModels:
     def __init__(self, vocab_size=119, use_factorized=False):
         self.configurations = [
-            # {"embedding_dim": 1, "hidden_dim": 1, "depth": 1},  # 148 params
-            # {"embedding_dim": 4, "hidden_dim": 4, "depth": 2},
-            {"embedding_dim": 6, "hidden_dim": 6, "depth": 4},  # 1060 params
-            # {"embedding_dim": 8, "hidden_dim": 16, "depth": 3},
+            # 29 params
+            # {"embedding_dim": 1, "hidden_dim": 1, "depth": 1},
+            # 138 params
+            {"embedding_dim": 4, "hidden_dim": 4, "depth": 2},
+            # 346 params
+            # {"embedding_dim": 6, "hidden_dim": 6, "depth": 4},
+            # 1274 params
+            {"embedding_dim": 8, "hidden_dim": 16, "depth": 3},
+            # 4330 params
             # {"embedding_dim": 16, "hidden_dim": 32, "depth": 3},
-            {"embedding_dim": 32, "hidden_dim": 32, "depth": 4},  # 9770 params
-            {"embedding_dim": 64, "hidden_dim": 64, "depth": 20},  # 98378 params
+            # 5962 params
+            # {"embedding_dim": 32, "hidden_dim": 32, "depth": 4},
+            # 99338 params
+            {"embedding_dim": 64, "hidden_dim": 64, "depth": 22},
         ]
         self.vocab_size = vocab_size
         self.use_factorized = use_factorized
@@ -79,7 +86,9 @@ class FCNModel(nn.Module):
         self.stress_output = nn.Linear(hidden_dim, 6)  # Stress contributions per atom
 
         # Calculate number of parameters
-        self.num_params = sum(p.numel() for p in self.parameters())
+        self.num_params = sum(
+            p.numel() for name, p in self.named_parameters() if "embedding" not in name
+        )
 
     def forward(self, atomic_numbers, positions, distance_matrix=None, mask=None):
         """

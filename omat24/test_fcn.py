@@ -4,12 +4,20 @@ import json
 import re
 import numpy as np
 import os
+import sys
+import shutil
+import io
+from contextlib import redirect_stdout
 import torch
-import torch.nn as nn
 import unittest
+from unittest.mock import patch
+from pathlib import Path
+import random
+from torch import nn
 
 # Internal
 from models.fcn import FCNModel, MetaFCNModels
+from train import main as train_main
 
 
 # A helper module that always returns zeros, to “remove” the effect of inner layers.
@@ -19,8 +27,21 @@ class ZeroLayer(nn.Module):
 
 
 class TestFCN(unittest.TestCase):
+    def set_seed(self):
+        SEED = 1024
+        random.seed(SEED)
+        np.random.seed(SEED)
+        torch.manual_seed(SEED)
+        torch.cuda.manual_seed(SEED)
+        torch.cuda.manual_seed_all(SEED)
+        torch.backends.cudnn.deterministic = True
+        torch.backends.cudnn.benchmark = False
+        self.device = torch.device("cpu")
+
     def setUp(self):
         """Initialize dummy data for FCNModel tests, including atomic numbers, positions, distance matrix, and mask."""
+        self.set_seed()
+
         # Define a small dummy batch.
         self.batch_size = 2
         self.n_atoms = 4
@@ -41,54 +62,116 @@ class TestFCN(unittest.TestCase):
         # Mask: valid (nonzero) atoms are True.
         self.mask = self.atomic_numbers != 0
 
-    def test_train_job(self):
+    def test_fixed_fcn_overfit(self):
         """Test that a minimal training job executes successfully and produces expected configuration and loss values."""
-        result = subprocess.run(
-            [
-                "python3",
+        self.set_seed()
+
+        # Create a fixed FCN model with desired hyperparameters.
+        fixed_model = FCNModel(
+            vocab_size=119,
+            embedding_dim=2,
+            hidden_dim=2,
+            depth=2,
+            use_factorized=False,
+        )
+
+        # Patch MetaFCNModels so that iterating over it yields only our fixed_model.
+        with patch("train.MetaFCNModels") as MockMeta:
+            instance = MockMeta.return_value
+            instance.__iter__.return_value = iter([fixed_model])
+
+            test_args = [
                 "train.py",
                 "--architecture",
                 "FCN",
                 "--epochs",
-                "1",
+                "500",
                 "--data_fraction",
-                "0.00001",
+                "0.0001",
                 "--val_data_fraction",
-                "0.001",
+                "0.0001",
                 "--batch_size",
-                "1",
+                "2",
                 "--lr",
-                "0.001",
+                "0.05",
+                "--val_every",
+                "500",
                 "--vis_every",
-                "1",
-            ],
-            capture_output=True,
-            text=True,
-        )
+                "500",
+            ]
+            with patch.object(sys, "argv", test_args):
+                # Patch subprocess.run inside train.py to intercept the call to model_prediction_evolution.py.
+                # This prevents the production code from trying to read an empty results file.
+                with patch("train.subprocess.run") as mock_subproc_run:
+                    mock_subproc_run.return_value = subprocess.CompletedProcess(
+                        args=["python3", "model_prediction_evolution.py"],
+                        returncode=0,
+                        stdout="dummy output",
+                        stderr="",
+                    )
+                    # Capture stdout from train_main() to retrieve the generated results filename.
 
-        # Extract results path from stdout
-        match = re.search(
-            r"Results will be saved to (?P<results_path>.+)", result.stdout
-        )
-        self.assertIsNotNone(match, "Results path not found in output")
-        results_path = match.group("results_path")
+                    buf = io.StringIO()
+                    with redirect_stdout(buf):
+                        train_main()
+                    output = buf.getvalue()
 
-        try:
-            with open(results_path, "r") as f:
-                result_json = json.load(f)
-            config = result_json["1"][0]["config"]
-            first_val_loss = result_json["1"][0]["losses"]["0"]["val_loss"]
-            first_train_loss = result_json["1"][0]["losses"]["1"]["train_loss"]
+                    # Extract the experiment JSON filename from the output.
+                    match = re.search(
+                        r"Results will be saved to (?P<results_path>.+)", output
+                    )
+                    self.assertIsNotNone(
+                        match, "Could not find results filename in output"
+                    )
+                    results_filename = match.group(1).strip()
+                    print("Captured results filename:", results_filename)
 
-            self.assertEqual(config["embedding_dim"], 6)
-            self.assertEqual(config["depth"], 4)
-            self.assertEqual(config["num_params"], 1060)
+            visualization_filepath = None
+            try:
+                # ---------- Test loss values and config ----------
+                with open(results_filename, "r") as f:
+                    result_json = json.load(f)
 
-            np.testing.assert_allclose(first_train_loss, 21.387577056884766, rtol=0.1)
-            np.testing.assert_allclose(first_val_loss, 38.86819725036621, rtol=0.1)
-        finally:
-            if os.path.exists(results_path):
-                os.remove(results_path)
+                # Get the config and loss information
+                config = result_json["3"][0]["config"]
+                first_train_loss = result_json["3"][0]["losses"]["1"]["train_loss"]
+                first_val_loss = result_json["3"][0]["losses"]["0"]["val_loss"]
+                last_train_loss = result_json["3"][0]["losses"]["500"]["train_loss"]
+                last_val_loss = result_json["3"][0]["losses"]["500"]["val_loss"]
+
+                # For the FCN, the first configuration (from MetaFCNModels) is expected to be:
+                self.assertEqual(config["embedding_dim"], 2)
+                self.assertEqual(config["depth"], 2)
+                self.assertEqual(config["num_params"], 62)
+
+                np.testing.assert_allclose(
+                    first_train_loss, 79.37819862365723, rtol=0.1
+                )
+                np.testing.assert_allclose(first_val_loss, 54.985219955444336, rtol=0.1)
+                np.testing.assert_allclose(last_train_loss, 36.39643859863281, rtol=0.1)
+                np.testing.assert_allclose(last_val_loss, 35.48009490966797, rtol=0.1)
+
+                # ---------- Test visualization was created ----------
+                result = subprocess.run(
+                    [
+                        "python3",
+                        "model_prediction_evolution.py",
+                        str(results_filename),
+                        "--split",
+                        "train",
+                    ],
+                    capture_output=True,
+                    text=True,
+                )
+
+                visualization_filepath = Path(f"figures/{Path(results_filename).stem}")
+                assert visualization_filepath.exists(), "Visualization was not created."
+
+            finally:
+                if os.path.exists(results_filename):
+                    os.remove(results_filename)
+                if visualization_filepath and os.path.exists(visualization_filepath):
+                    shutil.rmtree(visualization_filepath)
 
     def test_forward_non_factorized_output_shapes(self):
         """Verify that the FCNModel's forward pass without factorized distances returns outputs with correct shapes."""
@@ -295,13 +378,23 @@ class TestFCN(unittest.TestCase):
         and that each returned model has the correct configuration (e.g. parameter count).
         """
         meta_models = MetaFCNModels(vocab_size=self.vocab_size, use_factorized=False)
+
+        meta_models.configurations = [
+            # 138 params
+            {"embedding_dim": 4, "hidden_dim": 4, "depth": 2},
+            # 1274 params
+            {"embedding_dim": 8, "hidden_dim": 16, "depth": 3},
+            # 99338 params
+            {"embedding_dim": 64, "hidden_dim": 64, "depth": 22},
+        ]
+
         models_list = list(iter(meta_models))
         self.assertEqual(
             len(models_list),
             len(meta_models),
             "Number of models returned by iteration does not match expected count.",
         )
-        expected_params = [1060, 9770, 98378]
+        expected_params = [138, 1274, 99338]
         for model, expected in zip(models_list, expected_params):
             self.assertEqual(
                 model.num_params,
