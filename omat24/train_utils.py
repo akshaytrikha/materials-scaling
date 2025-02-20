@@ -5,7 +5,7 @@ from typing import Union, Dict
 
 # Internal
 from loss import compute_loss
-from log_utils import partial_json_log, tensorboard_log, log_tb_metrics
+from log_utils import partial_json_log, log_tb_metrics
 from torch_geometric.data import Batch
 
 
