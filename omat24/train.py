@@ -42,21 +42,22 @@ def main():
     log = not args.no_log
     global DEVICE
 
+    # Download datasets if not present
+    dataset_paths = []
+    for dataset_name in args.datasets:
+        dataset_path = Path(f"datasets/{args.split_name}/{dataset_name}")
+        if not dataset_path.exists():
+            download_dataset(dataset_name, args.split_name)
+        dataset_paths += [dataset_path]
     # Load dataset
-    split_name = "val"
-    dataset_name = "rattled-300-subsampled"
     graph = args.architecture == "SchNet"
-
-    dataset_path = Path(f"datasets/{split_name}/{dataset_name}")
-    if not dataset_path.exists():
-        download_dataset(dataset_name, split_name)
     dataset = OMat24Dataset(
-        dataset_path=dataset_path, augment=args.augment, graph=graph
+        dataset_paths=dataset_paths, augment=args.augment, graph=graph
     )
 
     # User Hyperparam Feedback
     params = vars(args) | {
-        "dataset_name": f"{split_name}/{dataset_name}",
+        "dataset_name": f"{args.split_name}/{args.datasets}",
         "max_n_atoms": dataset.max_n_atoms,
     }
     pprint.pprint(params)

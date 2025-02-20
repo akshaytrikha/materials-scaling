@@ -104,6 +104,19 @@ def get_args():
         default=500,
         help="Number of epochs to run in between visualizations",
     )
+    parser.add_argument(
+        "--split_name",
+        type=str,
+        default="val",
+        help="OMat24 split to use",
+    )
+    parser.add_argument(
+        "--dataset",
+        type=str,
+        nargs="+",
+        default=["val/rattled-300-subsampled"],
+        help="Dataset(s) to use",
+    )
 
     return parser.parse_args()
 

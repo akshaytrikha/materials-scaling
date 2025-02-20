@@ -14,7 +14,7 @@ dataset_name = "rattled-300-subsampled"
 dataset_path = Path(f"datasets/{split_name}/{dataset_name}")
 if not dataset_path.exists():
     download_dataset(dataset_name, split_name)
-dataset = OMat24Dataset(dataset_path=dataset_path)
+dataset = OMat24Dataset(dataset_paths=[dataset_path])
 
 
 class TestGetDataloaders(unittest.TestCase):
@@ -24,7 +24,9 @@ class TestGetDataloaders(unittest.TestCase):
         val_data_fraction = 0.1
         # We first reserve 10% of the dataset for validation, and then use 1% of the remaining data for training
         val_size_expected = int(len(dataset) * val_data_fraction)
-        train_size_expected = int((len(dataset) - val_size_expected) * train_data_fraction)
+        train_size_expected = int(
+            (len(dataset) - val_size_expected) * train_data_fraction
+        )
 
         train_loader, val_loader = get_dataloaders(
             dataset=dataset,
@@ -145,7 +147,7 @@ class TestGetDataloaders(unittest.TestCase):
 
     def test_batch_keys_graph_false(self):
         """Test that the batch dictionary contains all expected keys when graph=False.
-        
+
         Though the dataset's __getitem__() returns a dict containing the keys "idx" and "symbols",
         the batch dictionary returned by the DataLoader does not contain these keys because of the
         custom collate functions.
@@ -181,11 +183,10 @@ class TestGetDataloaders(unittest.TestCase):
             "Dataset dictionary is missing keys in non-graph mode.",
         )
 
-
     def test_batch_keys_graph_true(self):
         """Test that the PyG Data object contains all expected attributes when graph=True."""
         # Instantiate a dataset that returns PyG Data objects.
-        dataset_graph = OMat24Dataset(dataset_path=dataset_path, graph=True)
+        dataset_graph = OMat24Dataset(dataset_paths=[dataset_path], graph=True)
         train_loader, _ = get_dataloaders(
             dataset=dataset_graph,
             train_data_fraction=0.01,
@@ -206,9 +207,10 @@ class TestGetDataloaders(unittest.TestCase):
             "natoms",
         }
         # PyG Data objects support the keys() method.
-        actual_keys = set(batch.keys()) if hasattr(batch, "keys") else set(batch.__dict__.keys())
+        actual_keys = (
+            set(batch.keys()) if hasattr(batch, "keys") else set(batch.__dict__.keys())
+        )
         self.assertTrue(
             expected_attrs.issubset(actual_keys),
             "PyG Data object is missing attributes in graph mode.",
         )
-
