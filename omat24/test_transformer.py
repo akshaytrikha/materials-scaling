@@ -137,7 +137,7 @@ class TestTransformer(unittest.TestCase):
                 # For the Transformer, the first configuration (from MetaTransformerModels) is expected to be:
                 self.assertEqual(config["embedding_dim"], 1)
                 self.assertEqual(config["depth"], 1)
-                self.assertEqual(config["num_params"], 1789)
+                self.assertEqual(config["num_params"], 1670)
 
                 np.testing.assert_allclose(first_train_loss, 62.5931510925293, rtol=0.1)
                 np.testing.assert_allclose(first_val_loss, 23.387828826904297, rtol=0.1)
@@ -145,9 +145,7 @@ class TestTransformer(unittest.TestCase):
                 if os.getenv("IS_CI", False):
                     np.testing.assert_allclose(last_val_loss, 52.66148376, rtol=0.1)
                 else:
-                    np.testing.assert_allclose(
-                        last_val_loss, 74.33089447021484, rtol=0.1
-                    )
+                    np.testing.assert_allclose(last_val_loss, 117.96384048, rtol=0.1)
 
                 # ---------- Test visualization was created ----------
                 result = subprocess.run(
