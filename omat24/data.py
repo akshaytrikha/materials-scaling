@@ -226,6 +226,8 @@ class OMat24Dataset(Dataset):
                 # Factorize the distance matrix
                 factorized_matrix = factorize_matrix(distance_matrix)
                 sample["factorized_matrix"] = factorized_matrix  # [N_atoms, k=5]
+            else:
+                sample["factorized_matrix"] = torch.zeros(1)
 
         # Add source information for verifying mutli-dataset usage
         if self.debug:
