@@ -95,7 +95,7 @@ def factorize_matrix(D: torch.Tensor) -> torch.Tensor:
     D_inv_reg = D_inv + EPS * torch.eye(D.shape[0], device=D.device)
 
     # Fix k=5 and compute SVD
-    k = min(5, D.size(0))
+    k = min(2, D.size(0))
     U, s, Vt = torch.linalg.svd(D_inv_reg)
 
     # Take first k components
