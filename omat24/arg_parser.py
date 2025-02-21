@@ -117,6 +117,7 @@ def get_args():
         default=["rattled-300-subsampled"],
         help="Dataset(s) to use",
     )
+    parser.add_argument('--distributed', action='store_true', help='Enable distributed training')
 
     return parser.parse_args()
 

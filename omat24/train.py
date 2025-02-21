@@ -11,6 +11,9 @@ from tqdm import tqdm
 from torch.utils.tensorboard import SummaryWriter
 import os
 import subprocess
+import torch.distributed as dist
+from torch.nn.parallel import DistributedDataParallel as DDP
+from torch.utils.data.distributed import DistributedSampler
 
 # Internal
 from data import OMat24Dataset, get_dataloaders
@@ -37,10 +40,31 @@ else:
     DEVICE = torch.device("cpu")
 
 
-def main():
+def setup_ddp(rank, world_size):
+    """Initialize DDP process group."""
+    os.environ["MASTER_ADDR"] = "localhost"
+    os.environ["MASTER_PORT"] = "12355"
+
+    # Initialize the process group
+    dist.init_process_group("nccl", rank=rank, world_size=world_size)
+    torch.cuda.set_device(rank)
+
+
+def cleanup_ddp():
+    """Clean up DDP process group."""
+    dist.destroy_process_group()
+
+
+def main(rank=None, world_size=None):
     args = get_args()
     log = not args.no_log
-    global DEVICE
+
+    # DDP setup if world_size is provided
+    if world_size is not None:
+        setup_ddp(rank, world_size)
+        device = torch.device(f"cuda:{rank}")
+    else:
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     # Download datasets if not present
     dataset_paths = []
@@ -84,7 +108,6 @@ def main():
         if DEVICE == torch.device("mps"):
             print("MPS is not supported for SchNet. Switching to CPU.")
             DEVICE = torch.device("cpu")
-        meta_models = MetaSchNetModels(device=DEVICE)
 
     # Create results path and initialize file if logging is enabled
     experiment_results = {}
@@ -104,45 +127,72 @@ def main():
     else:
         print("\nLogging disabled. No experiment log will be saved.")
 
-    # Train
+    # Get dataloaders with DDP support if needed
+    train_loader, val_loader = get_dataloaders(
+        dataset=dataset,
+        train_data_fraction=args.data_fractions[0],
+        batch_size=batch_size,
+        seed=SEED,
+        batch_padded=False,
+        val_data_fraction=args.val_data_fraction,
+        train_workers=args.train_workers,
+        val_workers=args.val_workers,
+        graph=graph,
+        distributed=(
+            world_size is not None
+        ),  # Enable DDP dataloading if using multiple GPUs
+    )
+
+    # Only show progress bar on main process
+    is_main_process = rank == 0 if world_size is not None else True
+    
     for data_fraction in args.data_fractions:
-        train_loader, val_loader = get_dataloaders(
-            dataset,
-            train_data_fraction=data_fraction,
-            batch_size=batch_size,
-            seed=SEED,
-            batch_padded=False,
-            val_data_fraction=args.val_data_fraction,
-            train_workers=args.train_workers,
-            val_workers=args.val_workers,
-            graph=graph,
-        )
         dataset_size = len(train_loader.dataset)
-        print(
-            f"\nTraining on dataset fraction {data_fraction} with {dataset_size} samples"
-        )
+        if is_main_process:
+            print(f"\nTraining on dataset fraction {data_fraction} with {dataset_size} samples")
+        
         for model_idx, model in enumerate(meta_models):
-            print(
-                f"\nModel {model_idx + 1}/{len(meta_models)} is on device {DEVICE} "
-                f"and has {model.num_params} parameters"
-            )
-            optimizer = optim.AdamW(model.parameters(), lr=lr)
+            if log and is_main_process:
+                print(
+                    f"\nModel {model_idx + 1}/{len(meta_models)} is on device {device} "
+                    f"with batch size {args.batch_size[model_idx]} "
+                    f"and learning rate {args.lr[model_idx]}"
+                )
 
-            lambda_schedule = lambda epoch: 0.5 * (
-                1 + math.cos(math.pi * epoch / num_epochs)
-            )
-            scheduler = LambdaLR(optimizer, lr_lambda=lambda_schedule)
+            # Move model to device before wrapping with DDP
+            model = model.to(device)
 
-            # Prepare run entry etc.
-            model_name = f"model_ds{dataset_size}_p{int(model.num_params)}"
-            checkpoint_path = f"checkpoints/{args.architecture}_ds{dataset_size}_p{int(model.num_params)}_{timestamp}.pth"
+            # Store original model attributes before DDP wrapping
+            num_params = model.num_params if hasattr(model, "num_params") else None
+            embedding_dim = getattr(model, "embedding_dim", None)
+            depth = getattr(model, "depth", None)
+
+            # Create optimizer before DDP wrapper
+            optimizer = torch.optim.Adam(model.parameters(), lr=args.lr[model_idx])
+
+            # Wrap model in DDP if using multiple GPUs
+            if world_size is not None:
+                model = DDP(
+                    model,
+                    device_ids=[rank],
+                    find_unused_parameters=True,
+                    broadcast_buffers=False,
+                )
+
+            # Create checkpoint path using stored num_params
+            checkpoint_path = f"checkpoints/{args.architecture}_ds{dataset_size}_p{int(num_params)}_{timestamp}.pth"
+
+            # Use the stored num_params for model_name
+            model_name = f"model_ds{dataset_size}_p{int(num_params)}"
+
+            # Prepare run entry using stored attributes
             run_entry = {
                 "model_name": model_name,
                 "config": {
                     "architecture": args.architecture,
-                    "embedding_dim": getattr(model, "embedding_dim", None),
-                    "depth": getattr(model, "depth", None),
-                    "num_params": model.num_params,
+                    "embedding_dim": embedding_dim,
+                    "depth": depth,
+                    "num_params": num_params,
                     "dataset_size": dataset_size,
                     "num_epochs": num_epochs,
                     "batch_size": batch_size,
@@ -160,27 +210,32 @@ def main():
                 with open(results_path, "w") as f:
                     json.dump(experiment_results, f, indent=4)
 
-            pbar = tqdm(range(num_epochs + 1))
+            # Create progress bar only on main process
+            if is_main_process:
+                progress_bar = tqdm(range(num_epochs + 1))
+            else:
+                progress_bar = range(num_epochs + 1)  # Just a range object for non-main processes
+            
+            # Train
             trained_model, losses = train(
                 model=model,
                 train_loader=train_loader,
                 val_loader=val_loader,
                 optimizer=optimizer,
-                scheduler=scheduler,
-                pbar=pbar,
+                scheduler=None,
+                pbar=progress_bar,
                 graph=graph,
-                device=DEVICE,
-                patience=50,
+                device=device,
+                distributed=(world_size is not None),
+                rank=rank,
                 results_path=results_path if log else None,
-                experiment_results=experiment_results if log else None,
+                experiment_results=experiment_results,
                 data_size_key=ds_key if log else None,
                 run_entry=run_entry if log else None,
                 writer=writer,
                 tensorboard_prefix=model_name,
                 num_visualization_samples=args.num_visualization_samples,
                 gradient_clip=args.gradient_clip,
-                validate_every=args.val_every,
-                visualize_every=args.vis_every,
             )
 
             # --- Save checkpoint ---
@@ -194,7 +249,6 @@ def main():
                 },
                 checkpoint_path,
             )
-            pbar.close()
 
     # Close the SummaryWriter
     writer.close()
@@ -215,6 +269,18 @@ def main():
             ]
         )
 
+    if world_size is not None:
+        cleanup_ddp()
+
 
 if __name__ == "__main__":
-    main()
+    import torch.multiprocessing as mp
+
+    args = get_args()
+    if args.distributed:
+        # Need to use spawn method for CUDA runtime initialization
+        mp.set_start_method("spawn")
+        world_size = torch.cuda.device_count()
+        mp.spawn(main, args=(world_size,), nprocs=world_size, join=True)
+    else:
+        main()

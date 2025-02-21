@@ -2,6 +2,8 @@
 import torch
 import torch.nn as nn
 from typing import Union, Dict
+import torch.distributed as dist
+from tqdm import tqdm
 
 # Internal
 from loss import compute_loss
@@ -242,6 +244,8 @@ def train(
     pbar,
     graph,
     device,
+    distributed=False,
+    rank=0,
     patience=50,
     results_path=None,
     experiment_results=None,
@@ -254,92 +258,52 @@ def train(
     validate_every=500,
     visualize_every=500,
 ):
-    """
-    Train model with validation at epoch 0 and every 'validate_every' epochs.
-    Includes early stopping and optional JSON + TensorBoard logging.
-
-    Args:
-        model (nn.Module): The PyTorch model to train.
-        train_loader (DataLoader): DataLoader for training data.
-        val_loader (DataLoader): DataLoader for validation data.
-        optimizer (torch.optim.Optimizer): The optimizer for training.
-        scheduler (torch.optim.lr_scheduler): Learning rate scheduler, or None.
-        pbar (tqdm): A tqdm progress bar initialized with the total number of epochs.
-        device (torch.device): The device to run training on.
-        patience (int): Early stopping patience (number of checks with no improvement).
-        results_path (str, optional): Path to JSON results file. If provided, partial logs are written.
-        experiment_results (dict, optional): Dict for storing experiment results.
-        data_size_key (str, optional): Key to label experiment_results by dataset size.
-        run_entry (dict, optional): Dictionary describing the current run (e.g., model_name, config).
-        writer (SummaryWriter, optional): TensorBoard writer for logging.
-        tensorboard_prefix (str, optional): Prefix for naming logs in TensorBoard.
-        num_visualization_samples (int, optional): Number of samples to visualize in logs.
-        gradient_clip (int, optional): Gradient clipping value.
-        validate_every (int, optional): Frequency (in epochs) to run validation.
-        visualize_every (int, optional): Frequency (in epochs) to collect visualization samples.
-
-    Returns:
-        (nn.Module, dict): The trained model and a dictionary of recorded losses.
-    """
+    """Train model with validation at epoch 0 and every 'validate_every' epochs."""
     model.to(device)
-    can_write_partial = all(
-        [results_path, experiment_results, data_size_key, run_entry]
-    )
+    can_write_partial = all([results_path, experiment_results, data_size_key, run_entry])
     losses = {}
-
+    is_main_process = not distributed or rank == 0
+    n_train_batches = len(train_loader)
+    
+    # Get total epochs without accessing pbar methods
+    total_epochs = len(pbar) if is_main_process else pbar[-1] + 1
+    
     # Initial validation at epoch 0
-    (
-        val_loss,
-        val_energy_loss,
-        val_force_loss,
-        val_stress_iso_loss,
-        val_stress_aniso_loss,
-    ) = run_validation(model, val_loader, graph, device)
-    losses[0] = {"val_loss": float(val_loss)}
-    if writer is not None:
-        # Logging each metric individually using log_tb_metrics
-        log_tb_metrics(
-            {
-                "": val_loss,
-                "energy": val_energy_loss,
-                "force": val_force_loss,
-                "stress_iso": val_stress_iso_loss,
-                "stress_aniso": val_stress_aniso_loss,
-            },
-            writer,
-            0,
-            tensorboard_prefix,
-            train=False,
-        )
-
-    # Write partial JSON if everything is provided
-    if can_write_partial:
-        partial_json_log(
-            experiment_results,
-            data_size_key,
-            run_entry,
-            0,
-            float("nan"),
-            val_loss,
-            results_path,
-        )
-
-    # Early stopping setup
-    best_val_loss = val_loss
-    epochs_since_improvement = 0
+    val_loss, val_energy_loss, val_force_loss, val_stress_iso_loss, val_stress_aniso_loss = run_validation(
+        model, val_loader, graph, device
+    )
     last_val_loss = val_loss
-    samples = None
+    best_val_loss = float('inf')
+    epochs_since_improvement = 0
+
+    if is_main_process:
+        losses[0] = {"val_loss": float(val_loss)}
+        if writer is not None:
+            log_tb_metrics(
+                {
+                    "": val_loss,
+                    "energy": val_energy_loss,
+                    "force": val_force_loss,
+                    "stress_iso": val_stress_iso_loss,
+                    "stress_aniso": val_stress_aniso_loss,
+                },
+                writer,
+                0,
+                tensorboard_prefix,
+                train=False,
+            )
 
     # Training loop
-    for epoch in range(1, len(pbar) + 1):
+    for epoch in range(1, total_epochs):
+        if distributed:
+            train_loader.sampler.set_epoch(epoch)
+        
         model.train()
         train_loss_sum = 0.0
         energy_loss_sum = 0.0
         force_loss_sum = 0.0
         stress_iso_loss_sum = 0.0
         stress_aniso_loss_sum = 0.0
-
-        n_train_batches = len(train_loader)
 
         for batch_idx, batch in enumerate(train_loader):
             optimizer.zero_grad()
@@ -383,9 +347,10 @@ def train(
             stress_aniso_loss_sum += train_loss_dict["stress_aniso_loss"].item()
             current_avg_loss = train_loss_sum / (batch_idx + 1)
 
-            pbar.set_description(
-                f"train_loss={current_avg_loss:.2f} val_loss={last_val_loss:.2f}"
-            )
+            if is_main_process:
+                pbar.set_description(
+                    f"train_loss={current_avg_loss:.2f} val_loss={last_val_loss:.2f}"
+                )
 
         # Step the scheduler if provided
         if scheduler is not None:
@@ -443,13 +408,9 @@ def train(
 
         # Validate every 'validate_every' epochs
         if epoch % validate_every == 0:
-            (
-                val_loss,
-                val_energy_loss,
-                val_force_loss,
-                val_stress_iso_loss,
-                val_stress_aniso_loss,
-            ) = run_validation(model, val_loader, graph, device)
+            val_loss = run_validation(model, val_loader, graph, device)
+            if distributed:
+                val_loss = reduce_tensor(torch.tensor(val_loss, device=device), average=True)
             if writer is not None:
                 log_tb_metrics(
                     {
@@ -501,6 +462,59 @@ def train(
                 samples if epoch % visualize_every == 0 else None,
             )
 
-        pbar.update(1)
+        # Synchronize metrics across GPUs if using DDP
+        if distributed:
+            dist.barrier()
+            train_loss_tensor = torch.tensor(train_loss_sum, device=device)
+            train_loss_sum = reduce_tensor(train_loss_tensor, average=True).item()
+            
+        # Calculate average loss for all processes
+        avg_epoch_train_loss = train_loss_sum / n_train_batches
+        
+        # Only main process handles progress bar and logging
+        if is_main_process:
+            losses[epoch] = {"train_loss": float(avg_epoch_train_loss)}
+            
+            # Update progress bar only if it's a tqdm object and we're on the main process
+            if isinstance(pbar, tqdm):
+                pbar.set_description(
+                    f"train_loss={avg_epoch_train_loss:.2f} val_loss={last_val_loss:.2f}"
+                )
+                pbar.update(1)
+            
+            # Handle logging only on main process
+            if writer is not None:
+                # Log metrics
+                log_tb_metrics(
+                    {
+                        "": avg_epoch_train_loss,
+                        "energy": avg_epoch_energy_loss,
+                        "force": avg_epoch_force_loss,
+                        "stress_iso": avg_epoch_stress_iso_loss,
+                        "stress_aniso": avg_epoch_stress_aniso_loss,
+                    },
+                    writer,
+                    epoch,
+                    tensorboard_prefix,
+                    train=True,
+                )
+                
+                # Log gradients
+                for name, param in model.named_parameters():
+                    if param.requires_grad and param.grad is not None:
+                        grad_mean = param.grad.abs().mean().item()
+                        writer.add_scalar(
+                            f"{tensorboard_prefix}/Grads/{name}",
+                            grad_mean,
+                            global_step=epoch,
+                        )
 
     return model, losses
+
+
+def reduce_tensor(tensor, average=True):
+    rt = tensor.clone()
+    dist.all_reduce(rt, op=dist.ReduceOp.SUM)
+    if average:
+        rt /= dist.get_world_size()
+    return rt

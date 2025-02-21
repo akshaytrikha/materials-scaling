@@ -7,6 +7,7 @@ from torch.utils.data import DataLoader, Subset, Dataset
 from fairchem.core.datasets import AseDBDataset
 from torch_geometric.data import Data
 from torch_geometric.data import DataLoader as PyGDataLoader
+from torch.utils.data.distributed import DistributedSampler
 
 # Internal
 from matrix import compute_distance_matrix, factorize_matrix, random_rotate_atoms
@@ -49,41 +50,42 @@ def get_dataloaders(
     train_workers: int = 0,
     val_workers: int = 0,
     graph: bool = False,
+    distributed: bool = False,
 ):
     """Creates training and validation DataLoaders from a given dataset.
-
-    This function splits the dataset into training and validation subsets based on the
-    specified fractions. It then creates DataLoaders for each subset, using either a custom
-    collate function that keeps variable-length tensors as lists or one that pads them to uniform sizes.
-
-    Args:
-        dataset (Dataset): The dataset to create DataLoaders from.
-        train_data_fraction (float): Fraction of the remaining data (after validation split) to use for training.
-        batch_size (int): Number of samples per batch.
-        seed (int): Seed for random number generators to ensure reproducibility.
-        batch_padded (bool, optional): Whether to pad variable-length tensors.
-        return_indices (bool, optional): Whether to return dataset indices for debugging.
-        val_data_fraction (float, optional): Fraction of the dataset to use for validation.
-        train_workers (int, optional): Number of worker processes for the training DataLoader.
-        val_workers (int, optional): Number of worker processes for the validation DataLoader.
-        graph (bool, optional): Whether to create PyG DataLoaders for graph datasets.
-
-    Returns:
-        tuple:
-            - train_loader (DataLoader): DataLoader for the training subset.
-            - val_loader (DataLoader): DataLoader for the validation subset.
+    Supports both regular and distributed (DDP) training.
     """
     train_subset, val_subset, train_indices, val_indices = split_dataset(
         dataset, train_data_fraction, val_data_fraction, seed
     )
 
+    # Configure samplers for DDP
+    if distributed:
+        train_sampler = DistributedSampler(train_subset)
+        val_sampler = DistributedSampler(val_subset, shuffle=False)
+        shuffle = False  # Sampler handles shuffling
+    else:
+        train_sampler = None
+        val_sampler = None
+        shuffle = True  # DataLoader handles shuffling
+
     if graph:
         # Create PyG DataLoaders
         train_loader = PyGDataLoader(
-            train_subset, batch_size=batch_size, shuffle=True, num_workers=train_workers
+            train_subset,
+            batch_size=batch_size,
+            shuffle=shuffle and not distributed,
+            sampler=train_sampler,
+            num_workers=train_workers,
+            pin_memory=True,
         )
         val_loader = PyGDataLoader(
-            val_subset, batch_size=batch_size, shuffle=False, num_workers=val_workers
+            val_subset,
+            batch_size=batch_size,
+            shuffle=False,
+            sampler=val_sampler,
+            num_workers=val_workers,
+            pin_memory=True,
         )
     else:
         # Select the appropriate collate function
@@ -98,7 +100,8 @@ def get_dataloaders(
         train_loader = DataLoader(
             train_subset,
             batch_size=batch_size,
-            shuffle=True,
+            shuffle=shuffle and not distributed,
+            sampler=train_sampler,
             collate_fn=collate_fn,
             num_workers=train_workers,
             persistent_workers=train_workers > 0,
@@ -108,7 +111,8 @@ def get_dataloaders(
         val_loader = DataLoader(
             val_subset,
             batch_size=batch_size,
-            shuffle=False,  # Typically, shuffle=False for validation
+            shuffle=False,
+            sampler=val_sampler,
             collate_fn=collate_fn,
             num_workers=val_workers,
             persistent_workers=val_workers > 0,
@@ -116,7 +120,6 @@ def get_dataloaders(
         )
 
     if return_indices:
-        # For debugging
         return train_loader, val_loader, train_indices, val_indices
     else:
         return train_loader, val_loader
