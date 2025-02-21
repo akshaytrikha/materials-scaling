@@ -66,6 +66,7 @@ def get_args():
     parser.add_argument(
         "--factorize",
         action="store_true",
+        default=False,
         help="Factorize and use inverse distance matrix",
     )
     parser.add_argument(

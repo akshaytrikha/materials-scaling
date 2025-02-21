@@ -136,11 +136,13 @@ class OMat24Dataset(Dataset):
         dataset_paths: List[str],
         config_kwargs={},
         augment: bool = False,
+        factorize: bool = False,
         graph: bool = False,
         debug: bool = False,
     ):
         self.dataset = AseDBDataset(config=dict(src=dataset_paths, **config_kwargs))
         self.augment = augment
+        self.factorize = factorize
         self.graph = graph
         self.debug = debug
 
@@ -208,10 +210,6 @@ class OMat24Dataset(Dataset):
                 positions
             )  # Shape: [N_atoms, N_atoms]
 
-            factorized_matrix = factorize_matrix(
-                distance_matrix
-            )  # Left matrix: U * sqrt(Sigma) - Shape: [N_atoms, k=5]
-
             # Package into a dictionary
             sample = {
                 "idx": idx,
@@ -219,11 +217,15 @@ class OMat24Dataset(Dataset):
                 "atomic_numbers": atomic_numbers,  # Element types
                 "positions": positions,  # 3D atomic coordinates
                 "distance_matrix": distance_matrix,  # [N_atoms, N_atoms]
-                "factorized_matrix": factorized_matrix,  # [N_atoms, k=5]
                 "energy": energy,  # Target energy
                 "forces": forces,  # Target forces on each atom
                 "stress": stress,  # Target stress tensor
             }
+
+            if self.factorize:
+                # Factorize the distance matrix
+                factorized_matrix = factorize_matrix(distance_matrix)
+                sample["factorized_matrix"] = factorized_matrix  # [N_atoms, k=5]
 
         # Add source information for verifying mutli-dataset usage
         if self.debug:

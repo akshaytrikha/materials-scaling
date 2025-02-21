@@ -14,7 +14,7 @@ import subprocess
 
 # Internal
 from data import OMat24Dataset, get_dataloaders
-from data_utils import download_dataset
+from data_utils import download_dataset, VALID_DATASETS
 from arg_parser import get_args
 from models.fcn import MetaFCNModels
 from models.transformer_models import MetaTransformerModels
@@ -42,6 +42,10 @@ def main():
     log = not args.no_log
     global DEVICE
 
+    # Convinience for running all datasets
+    if args.datasets[0] == "all":
+        args.datasets = VALID_DATASETS
+
     # Download datasets if not present
     dataset_paths = []
     for dataset_name in args.datasets:
@@ -52,7 +56,10 @@ def main():
     # Load dataset
     graph = args.architecture == "SchNet"
     dataset = OMat24Dataset(
-        dataset_paths=dataset_paths, augment=args.augment, graph=graph
+        dataset_paths=dataset_paths,
+        augment=args.augment,
+        factorize=args.factorize,
+        graph=graph,
     )
 
     # User Hyperparam Feedback
