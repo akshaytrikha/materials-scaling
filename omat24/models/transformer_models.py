@@ -61,25 +61,26 @@ class MetaTransformerModels:
             max_seq_len (int): Maximum sequence length for the transformer.
         """
         self.configurations = [
-            {"d_model": 1, "depth": 1, "n_heads": 1, "d_ff_mult": 1, "concatenated": False},  # 1,670 params
-            {"d_model": 4, "depth": 2, "n_heads": 2, "d_ff_mult": 2, "concatenated": False},  # 8,753 params
-            {"d_model": 8, "depth": 2, "n_heads": 4, "d_ff_mult": 2, "concatenated": False},  # 18,383 params
-            {"d_model": 8, "depth": 4, "n_heads": 4, "d_ff_mult": 4, "concatenated": False},  # 32,763 params
-            {"d_model": 16, "depth": 4, "n_heads": 4, "d_ff_mult": 4, "concatenated": False},  # 60,283 params
-            {"d_model": 16, "depth": 6, "n_heads": 4, "d_ff_mult": 8, "concatenated": False},  # 186,403 params
-            {"d_model": 32, "depth": 8, "n_heads": 8, "d_ff_mult": 8, "concatenated": False},  # 581,763 params
-            {"d_model": 32, "depth": 12, "n_heads": 8, "d_ff_mult": 8, "concatenated": False},  # 1,211,223 params
-            {"d_model": 64, "depth": 6, "n_heads": 8, "d_ff_mult": 16, "concatenated": False},  # 2,741,283 params
-            {"d_model": 64, "depth": 8, "n_heads": 8, "d_ff_mult": 16, "concatenated": False},  # 4,577,903 params
-            {"d_model": 128, "depth": 8, "n_heads": 8, "d_ff_mult": 16, "concatenated": False},  # 9,206,503 params
-            {"d_model": 128, "depth": 10, "n_heads": 16, "d_ff_mult": 16, "concatenated": False},  # 20,293,823 params
-            {"d_model": 256, "depth": 6, "n_heads": 8, "d_ff_mult": 32, "concatenated": False},  # 19,850,563 params
-            {"d_model": 256, "depth": 8, "n_heads": 16, "d_ff_mult": 32, "concatenated": False},  # 39,877,303 params
-            {"d_model": 512, "depth": 8, "n_heads": 16, "d_ff_mult": 32, "concatenated": False},  # 79,754,303 params
-            {"d_model": 512, "depth": 10, "n_heads": 32, "d_ff_mult": 32, "concatenated": False},  # 159,508,603 params
-            {"d_model": 1024, "depth": 6, "n_heads": 32, "d_ff_mult": 64, "concatenated": False},  # 309,248,903 params
-            {"d_model": 1024, "depth": 8, "n_heads": 32, "d_ff_mult": 64, "concatenated": False},  # 618,497,803 params
-            {"d_model": 2048, "depth": 12, "n_heads": 64, "d_ff_mult": 128, "concatenated": False},  # 1,242,785,703 params
+            {"d_model": 1, "depth": 1, "n_heads": 1, "d_ff_mult": 1, "concatenated": concatenated},  # 1,670 params
+            {"d_model": 4, "depth": 2, "n_heads": 2, "d_ff_mult": 2, "concatenated": concatenated},  # 8,753 params
+            {"d_model": 8, "depth": 2, "n_heads": 4, "d_ff_mult": 2, "concatenated": concatenated},  # 25,541 params
+            {"d_model": 8, "depth": 4, "n_heads": 4, "d_ff_mult": 4, "concatenated": concatenated},  # 51,171 params
+            {"d_model": 16, "depth": 4, "n_heads": 4, "d_ff_mult": 4, "concatenated": concatenated},  # 93,851 params
+            {"d_model": 16, "depth": 6, "n_heads": 4, "d_ff_mult": 8, "concatenated": concatenated},  # 156,589 params
+            {"d_model": 24, "depth": 6, "n_heads": 6, "d_ff_mult": 8, "concatenated": concatenated},  # 327,061 params
+            {"d_model": 32, "depth": 8, "n_heads": 8, "d_ff_mult": 8, "concatenated": concatenated},  # 742,815 params
+            {"d_model": 32, "depth": 12, "n_heads": 8, "d_ff_mult": 8, "concatenated": concatenated},  # 1,109,475 params
+            {"d_model": 48, "depth": 12, "n_heads": 8, "d_ff_mult": 12, "concatenated": concatenated},  # 2,028,739 params
+            {"d_model": 64, "depth": 6, "n_heads": 8, "d_ff_mult": 16, "concatenated": concatenated},  # 1,719,565 params
+            {"d_model": 64, "depth": 8, "n_heads": 8, "d_ff_mult": 16, "concatenated": concatenated},  # 2,283,839 params
+            {"d_model": 96, "depth": 8, "n_heads": 8, "d_ff_mult": 16, "concatenated": concatenated},  # 4,198,303 params
+            {"d_model": 128, "depth": 8, "n_heads": 8, "d_ff_mult": 16, "concatenated": concatenated},  # 6,645,247 params
+            {"d_model": 128, "depth": 10, "n_heads": 16, "d_ff_mult": 16, "concatenated": concatenated},  # 10,967,985 params
+            {"d_model": 192, "depth": 8, "n_heads": 12, "d_ff_mult": 24, "concatenated": concatenated},  # 19,613,695 params
+            {"d_model": 256, "depth": 6, "n_heads": 8, "d_ff_mult": 32, "concatenated": concatenated},  # 29,298,349 params
+            {"d_model": 256, "depth": 8, "n_heads": 16, "d_ff_mult": 32, "concatenated": concatenated},  # 43,207,167 params
+            {"d_model": 384, "depth": 8, "n_heads": 16, "d_ff_mult": 48, "concatenated": concatenated},  # 128,511,487 params
+            {"d_model": 512, "depth": 8, "n_heads": 16, "d_ff_mult": 32, "concatenated": concatenated},  # 153,943,295 params
         ]
 
 
