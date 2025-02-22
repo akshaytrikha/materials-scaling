@@ -66,7 +66,6 @@ class TestTransformer(unittest.TestCase):
             depth=1,
             n_heads=1,
             d_ff_mult=1,
-            concatenated=True,
             use_factorized=False,
         )
         # Patch MetaTransformerModels so that iterating over it yields only our fixed_model.
@@ -177,19 +176,18 @@ class TestTransformer(unittest.TestCase):
 
     def test_forward_non_factorized_output_shapes(self):
         """
-        Verify that the TransformerModel's forward pass in non-factorized (concatenated) mode
+        Verify that the TransformerModel's forward pass in non-factorized mode
         returns outputs with the correct shapes.
         """
         self.set_seed()
 
-        # Use concatenated mode (non-factorized): positions are provided.
+        # Use non-factorized mode: positions are provided.
         model = XTransformerModel(
             num_tokens=self.vocab_size,
             d_model=6,
             depth=4,
             n_heads=2,
             d_ff_mult=2,
-            concatenated=True,
             use_factorized=False,
         )
         forces, energy, stress = model(
@@ -210,7 +208,6 @@ class TestTransformer(unittest.TestCase):
             depth=4,
             n_heads=2,
             d_ff_mult=2,
-            concatenated=True,
             use_factorized=True,
         )
         forces, energy, stress = model(
@@ -239,7 +236,6 @@ class TestTransformer(unittest.TestCase):
             depth=4,
             n_heads=2,
             d_ff_mult=2,
-            concatenated=True,
             use_factorized=False,
         )
         model.eval()
@@ -298,7 +294,6 @@ class TestTransformer(unittest.TestCase):
             depth=4,
             n_heads=2,
             d_ff_mult=2,
-            concatenated=True,
             use_factorized=False,
         )
         model.train()
@@ -331,7 +326,6 @@ class TestTransformer(unittest.TestCase):
             depth=2,
             n_heads=2,
             d_ff_mult=2,
-            concatenated=False,
             use_factorized=True,
         )
         model_non_factorized = XTransformerModel(
@@ -340,12 +334,11 @@ class TestTransformer(unittest.TestCase):
             depth=2,
             n_heads=2,
             d_ff_mult=2,
-            concatenated=True,
             use_factorized=False,
         )
 
         # For factorized mode: additional_dim should be 5, so input = d_model + 5.
-        # For non-factorized (concatenated) mode: additional_dim should be 3, so input = d_model + 3.
+        # For non-factorized mode: additional_dim should be 3, so input = d_model + 3.
         expected_in_features_factorized = 4 + 5
         expected_in_features_non_factorized = 4 + 3
 
