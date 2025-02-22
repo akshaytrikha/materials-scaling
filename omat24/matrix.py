@@ -91,12 +91,11 @@ def factorize_matrix(D: torch.Tensor) -> torch.Tensor:
     # Create inverse distance matrix with zeros on diagonal
     D_inv = torch.zeros_like(D)
     mask = ~torch.eye(D.shape[0], dtype=bool, device=D.device)
-    EPS = 1e-6
-    D_inv_reg = D_inv + EPS * torch.eye(D.shape[0], device=D.device)
+    D_inv[mask] = 1.0 / D[mask]
 
     # Fix k=5 and compute SVD
-    k = min(5, D.size(0))
-    U, s, Vt = torch.linalg.svd(D_inv_reg)
+    k = min(2, D.size(0))
+    U, s, Vt = torch.linalg.svd(D_inv)
 
     # Take first k components
     U_k = U[:, :k]  # n x k matrix
