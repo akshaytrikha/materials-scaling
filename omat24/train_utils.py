@@ -1,7 +1,9 @@
 # External
 import torch
 import torch.nn as nn
-from typing import Union, Dict
+from typing import Union
+from torch.utils.flop_counter import FlopCounterMode
+from contextlib import nullcontext
 
 # Internal
 from loss import compute_loss
@@ -11,7 +13,7 @@ from torch_geometric.data import Batch
 
 def forward_pass(
     model: nn.Module,
-    batch: Union[Dict, Batch],
+    batch: Union[dict, Batch],
     graph: bool,
     training: bool,
     device: torch.device,
@@ -331,6 +333,8 @@ def train(
     samples = None
 
     # Training loop
+    flop_counter = FlopCounterMode(display=False)
+    flops_per_epoch = 0
     for epoch in range(1, len(pbar) + 1):
         model.train()
         train_loss_sum = 0.0
@@ -340,52 +344,56 @@ def train(
         stress_aniso_loss_sum = 0.0
 
         n_train_batches = len(train_loader)
+        context = flop_counter if epoch == 1 else nullcontext()
+        with context:
+            for batch_idx, batch in enumerate(train_loader):
+                optimizer.zero_grad()
+                (
+                    pred_forces,
+                    pred_energy,
+                    pred_stress,
+                    true_forces,
+                    true_energy,
+                    true_stress,
+                    mask,
+                    natoms,
+                ) = forward_pass(
+                    model=model, batch=batch, graph=graph, training=True, device=device
+                )
+                # Mapping atoms to their respective structures (for graphs)
+                structure_index = (
+                    batch.batch if graph and hasattr(batch, "batch") else []
+                )
+                train_loss_dict = compute_loss(
+                    pred_forces,
+                    pred_energy,
+                    pred_stress,
+                    true_forces,
+                    true_energy,
+                    true_stress,
+                    mask,
+                    device,
+                    natoms,
+                    graph,
+                    structure_index,
+                )
+                total_train_loss = train_loss_dict["total_loss"]
+                total_train_loss.backward()
+                torch.nn.utils.clip_grad_norm_(model.parameters(), gradient_clip)
+                optimizer.step()
 
-        for batch_idx, batch in enumerate(train_loader):
-            optimizer.zero_grad()
-            (
-                pred_forces,
-                pred_energy,
-                pred_stress,
-                true_forces,
-                true_energy,
-                true_stress,
-                mask,
-                natoms,
-            ) = forward_pass(
-                model=model, batch=batch, graph=graph, training=True, device=device
-            )
+                train_loss_sum += total_train_loss.item()
+                energy_loss_sum += train_loss_dict["energy_loss"].item()
+                force_loss_sum += train_loss_dict["force_loss"].item()
+                stress_iso_loss_sum += train_loss_dict["stress_iso_loss"].item()
+                stress_aniso_loss_sum += train_loss_dict["stress_aniso_loss"].item()
+                current_avg_loss = train_loss_sum / (batch_idx + 1)
 
-            # Mapping atoms to their respective structures (for graphs)
-            structure_index = batch.batch if graph and hasattr(batch, "batch") else []
-            train_loss_dict = compute_loss(
-                pred_forces,
-                pred_energy,
-                pred_stress,
-                true_forces,
-                true_energy,
-                true_stress,
-                mask,
-                device,
-                natoms,
-                graph,
-                structure_index,
-            )
-            total_train_loss = train_loss_dict["total_loss"]
-            total_train_loss.backward()
-            torch.nn.utils.clip_grad_norm_(model.parameters(), gradient_clip)
-            optimizer.step()
-
-            train_loss_sum += total_train_loss.item()
-            energy_loss_sum += train_loss_dict["energy_loss"].item()
-            force_loss_sum += train_loss_dict["force_loss"].item()
-            stress_iso_loss_sum += train_loss_dict["stress_iso_loss"].item()
-            stress_aniso_loss_sum += train_loss_dict["stress_aniso_loss"].item()
-            current_avg_loss = train_loss_sum / (batch_idx + 1)
-
-            pbar.set_description(
-                f"train_loss={current_avg_loss:.2f} val_loss={last_val_loss:.2f}"
-            )
+                pbar.set_description(
+                    f"train_loss={current_avg_loss:.2f} val_loss={last_val_loss:.2f}"
+                )
+        if epoch == 1:
+            flops_per_epoch = flop_counter.get_total_flops()
 
         # Step the scheduler if provided
         if scheduler is not None:
@@ -398,7 +406,6 @@ def train(
         avg_epoch_stress_aniso_loss = stress_aniso_loss_sum / n_train_batches
 
         losses[epoch] = {"train_loss": float(avg_epoch_train_loss)}
-
         # TensorBoard logging for training loss
         if writer is not None:
             # Log parameter norms (example usage) using log_tb_metrics
@@ -440,7 +447,6 @@ def train(
                         grad_to_weight,
                         global_step=epoch,
                     )
-
         # Validate every 'validate_every' epochs
         if epoch % validate_every == 0:
             (
@@ -499,6 +505,7 @@ def train(
                 val_loss if epoch % validate_every == 0 else float("nan"),
                 results_path,
                 samples if epoch % visualize_every == 0 else None,
+                flops_per_epoch * epoch,
             )
 
         pbar.update(1)
