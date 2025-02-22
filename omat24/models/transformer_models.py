@@ -61,39 +61,27 @@ class MetaTransformerModels:
             max_seq_len (int): Maximum sequence length for the transformer.
         """
         self.configurations = [
-            # 1,670 parameters
-            {
-                "d_model": 1,
-                "depth": 1,
-                "n_heads": 1,
-                "d_ff_mult": 1,
-                "concatenated": concatenated,
-            },
-            # 8,753 params
-            {
-                "d_model": 4,
-                "depth": 2,
-                "n_heads": 2,
-                "d_ff_mult": 2,
-                "concatenated": concatenated,
-            },
-            # 108,503 params
-            {
-                "d_model": 8,
-                "depth": 8,
-                "n_heads": 4,
-                "d_ff_mult": 8,
-                "concatenated": concatenated,
-            },
-            # 1,720,771 parameters
-            {
-                "d_model": 64,
-                "depth": 12,
-                "n_heads": 4,
-                "d_ff_mult": 8,
-                "concatenated": concatenated,
-            },
+            {"d_model": 1, "depth": 1, "n_heads": 1, "d_ff_mult": 1, "concatenated": False},  # 1,670 params
+            {"d_model": 4, "depth": 2, "n_heads": 2, "d_ff_mult": 2, "concatenated": False},  # 8,753 params
+            {"d_model": 8, "depth": 2, "n_heads": 4, "d_ff_mult": 2, "concatenated": False},  # 18,383 params
+            {"d_model": 8, "depth": 4, "n_heads": 4, "d_ff_mult": 4, "concatenated": False},  # 32,763 params
+            {"d_model": 16, "depth": 4, "n_heads": 4, "d_ff_mult": 4, "concatenated": False},  # 60,283 params
+            {"d_model": 16, "depth": 6, "n_heads": 4, "d_ff_mult": 8, "concatenated": False},  # 186,403 params
+            {"d_model": 32, "depth": 8, "n_heads": 8, "d_ff_mult": 8, "concatenated": False},  # 581,763 params
+            {"d_model": 32, "depth": 12, "n_heads": 8, "d_ff_mult": 8, "concatenated": False},  # 1,211,223 params
+            {"d_model": 64, "depth": 6, "n_heads": 8, "d_ff_mult": 16, "concatenated": False},  # 2,741,283 params
+            {"d_model": 64, "depth": 8, "n_heads": 8, "d_ff_mult": 16, "concatenated": False},  # 4,577,903 params
+            {"d_model": 128, "depth": 8, "n_heads": 8, "d_ff_mult": 16, "concatenated": False},  # 9,206,503 params
+            {"d_model": 128, "depth": 10, "n_heads": 16, "d_ff_mult": 16, "concatenated": False},  # 20,293,823 params
+            {"d_model": 256, "depth": 6, "n_heads": 8, "d_ff_mult": 32, "concatenated": False},  # 19,850,563 params
+            {"d_model": 256, "depth": 8, "n_heads": 16, "d_ff_mult": 32, "concatenated": False},  # 39,877,303 params
+            {"d_model": 512, "depth": 8, "n_heads": 16, "d_ff_mult": 32, "concatenated": False},  # 79,754,303 params
+            {"d_model": 512, "depth": 10, "n_heads": 32, "d_ff_mult": 32, "concatenated": False},  # 159,508,603 params
+            {"d_model": 1024, "depth": 6, "n_heads": 32, "d_ff_mult": 64, "concatenated": False},  # 309,248,903 params
+            {"d_model": 1024, "depth": 8, "n_heads": 32, "d_ff_mult": 64, "concatenated": False},  # 618,497,803 params
+            {"d_model": 2048, "depth": 12, "n_heads": 64, "d_ff_mult": 128, "concatenated": False},  # 1,242,785,703 params
         ]
+
 
         self.vocab_size = vocab_size
         self.max_seq_len = max_seq_len
@@ -225,6 +213,7 @@ class XTransformerModel(TransformerWrapper):
         self.num_params = sum(
             p.numel() for name, p in self.named_parameters() if "token_emb" not in name
         )
+
 
     def forward(self, x, positions, distance_matrix=None, mask=None):
         """Forward pass of the transformer model.
