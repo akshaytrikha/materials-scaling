@@ -1,4 +1,5 @@
 # dataset_stats.py
+# dataset_stats.py
 from pathlib import Path
 from tqdm.auto import tqdm
 import ase
@@ -74,9 +75,9 @@ for dataset_name in VALID_DATASETS:
         },
     }
 
-# Save the aggregated results to a JSON file with keys in double quotes
-with open("all_datasets_stats.json", "w") as f:
-    json.dump(output_data, f, indent=4)
+    # Save the aggregated results to a JSON file immediately after processing each dataset
+    with open("all_datasets_stats.json", "w") as f:
+        json.dump(output_data, f, indent=4)
 
 # Print the JSON output to the console
 print(json.dumps(output_data, indent=4))
