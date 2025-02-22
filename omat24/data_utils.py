@@ -30,21 +30,6 @@ VALID_DATASETS = [
 
 DATASET_INFO = {
     "val": {
-        "aimd-from-PBE-1000-npt": {
-            "max_n_atoms": 168,
-        },
-        "aimd-from-PBE-1000-nvt": {
-            "max_n_atoms": 140,
-        },
-        "aimd-from-PBE-3000-npt": {
-            "max_n_atoms": 128,
-        },
-        "aimd-from-PBE-3000-nvt": {
-            "max_n_atoms": 160,
-        },
-        "rattled-300": {
-            "max_n_atoms": 106,
-        },
         "rattled-300-subsampled": {
             "max_n_atoms": 104,
             "means": {
@@ -64,20 +49,11 @@ DATASET_INFO = {
                 ],
             },
         },
-        "rattled-500": {
-            "max_n_atoms": 148,
-        },
-        "rattled-500-subsampled": {
-            "max_n_atoms": 106,
-        },
         "rattled-1000": {
             "max_n_atoms": 152,
         },
-        "rattled-1000-subsampled": {
-            "max_n_atoms": 136,
-        },
-        "rattled-relax": {
-            "max_n_atoms": 120,
+        "aimd-from-PBE-3000-nvt": {
+            "max_n_atoms": 160,
         },
     },
     "train": {
@@ -262,7 +238,7 @@ def custom_collate_fn_dataset_padded(
     forces = [sample["forces"] for sample in batch]
     stresses = torch.stack([sample["stress"] for sample in batch], dim=0)
 
-    # Pad atomic_numbers, positions, forces to MAX_ATOMS
+    # Pad atomic_numbers, positions, and forces to MAX_ATOMS
     padded_atomic_numbers = torch.stack(
         [
             pad_tensor(tensor, max_n_atoms, dim=0, padding_value=0)
@@ -296,15 +272,18 @@ def custom_collate_fn_dataset_padded(
         dim=0,
     )  # Shape: [batch_size, MAX_ATOMS, MAX_ATOMS]
 
+    # Determine the second dimension (k) for the factorized matrices.
+    k = factorized_matrices[0].size(1) if factorized_matrices[0].dim() > 1 else 1
+
     padded_factorized_matrices = torch.stack(
         [
-            pad_matrix(tensor, max_n_atoms, 0, padding_value=0.0)
+            pad_matrix(tensor, max_n_atoms, k, padding_value=0.0)
             for tensor in factorized_matrices
         ],
         dim=0,
     )  # Shape: [batch_size, MAX_ATOMS, k]
 
-    return_dict = {
+    return {
         "atomic_numbers": padded_atomic_numbers,  # [batch_size, MAX_ATOMS]
         "positions": padded_positions,  # [batch_size, MAX_ATOMS, 3]
         "distance_matrix": padded_distance_matrices,  # [batch_size, MAX_ATOMS, MAX_ATOMS]
@@ -313,8 +292,6 @@ def custom_collate_fn_dataset_padded(
         "forces": padded_forces,  # [batch_size, MAX_ATOMS, 3]
         "stress": stresses,  # [batch_size, 6]
     }
-
-    return return_dict
 
 
 def custom_collate_fn_batch_padded(batch: list) -> Dict[str, torch.Tensor]:

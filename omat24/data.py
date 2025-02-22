@@ -109,7 +109,7 @@ def get_dataloaders(
             collate_fn = custom_collate_fn_batch_padded
         else:
             collate_fn = lambda batch: custom_collate_fn_dataset_padded(
-                batch, dataset.max_n_atoms
+                batch, max_n_atoms
             )
 
         train_loader = DataLoader(
