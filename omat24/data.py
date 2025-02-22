@@ -74,11 +74,11 @@ def get_dataloaders(
     # Load each dataset from its path and split it individually
     for path in dataset_paths:
         dataset = OMat24Dataset(dataset_paths=[path], graph=graph)
-        t_subset, v_subset, _, _ = split_dataset(
+        train_subset, val_subset, _, _ = split_dataset(
             dataset, train_data_fraction, val_data_fraction, seed
         )
-        train_subsets.append(t_subset)
-        val_subsets.append(v_subset)
+        train_subsets.append(train_subset)
+        val_subsets.append(val_subset)
 
     train_dataset = ConcatDataset(train_subsets)
     val_dataset = ConcatDataset(val_subsets)

@@ -30,6 +30,21 @@ VALID_DATASETS = [
 
 DATASET_INFO = {
     "val": {
+        "aimd-from-PBE-1000-npt": {
+            "max_n_atoms": 168,
+        },
+        "aimd-from-PBE-1000-nvt": {
+            "max_n_atoms": 140,
+        },
+        "aimd-from-PBE-3000-npt": {
+            "max_n_atoms": 128,
+        },
+        "aimd-from-PBE-3000-nvt": {
+            "max_n_atoms": 160,
+        },
+        "rattled-300": {
+            "max_n_atoms": 106,
+        },
         "rattled-300-subsampled": {
             "max_n_atoms": 104,
             "means": {
@@ -49,11 +64,20 @@ DATASET_INFO = {
                 ],
             },
         },
+        "rattled-500": {
+            "max_n_atoms": 148,
+        },
+        "rattled-500-subsampled": {
+            "max_n_atoms": 106,
+        },
         "rattled-1000": {
             "max_n_atoms": 152,
         },
-        "aimd-from-PBE-3000-nvt": {
-            "max_n_atoms": 160,
+        "rattled-1000-subsampled": {
+            "max_n_atoms": 136,
+        },
+        "rattled-relax": {
+            "max_n_atoms": 120,
         },
     },
     "train": {
