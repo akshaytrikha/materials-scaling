@@ -30,12 +30,9 @@ class TestCollectTrainValSamples(unittest.TestCase):
         dataset_path = Path(f"datasets/{split_name}/{dataset_name}")
         if not dataset_path.exists():
             download_dataset(dataset_name, split_name)
-        dataset = OMat24Dataset(
-            dataset_paths=[dataset_path], augment=False, graph=graph
-        )
 
         self.train_loader, self.val_loader = get_dataloaders(
-            dataset,
+            [dataset_path],
             train_data_fraction=0.001,
             batch_size=2,
             seed=1024,

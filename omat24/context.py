@@ -1,7 +1,6 @@
 import os
 
 filenames_to_include = [
-    "model_prediction_evolution.py",
     "data.py",
     "data_utils.py",
     "loss.py",
@@ -15,6 +14,8 @@ filenames_to_include = [
     "test_dataloader.py",
     "test_fcn.py",
     "test_transformer.py",
+    "model_prediction_evolution.py",
+    "test_collect_samples_for_visualizing.py",
 ]
 directory_path = "."
 output_file = "context.txt"
