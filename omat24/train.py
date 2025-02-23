@@ -13,7 +13,7 @@ import os
 import subprocess
 
 # Internal
-from data import OMat24Dataset, get_dataloaders
+from data import get_dataloaders
 from data_utils import download_dataset, VALID_DATASETS
 from arg_parser import get_args
 from models.fcn import MetaFCNModels
@@ -52,19 +52,12 @@ def main():
         dataset_path = Path(f"datasets/{args.split_name}/{dataset_name}")
         if not dataset_path.exists():
             download_dataset(dataset_name, args.split_name)
-        dataset_paths += [dataset_path]
-    # Load dataset
-    graph = args.architecture == "SchNet"
-    dataset = OMat24Dataset(
-        dataset_paths=dataset_paths,
-        augment=args.augment,
-        graph=graph,
-    )
+        dataset_paths.append(dataset_path)
 
     # User Hyperparam Feedback
     params = vars(args) | {
         "dataset_split": args.split_name,
-        "max_n_atoms": dataset.max_n_atoms,
+        "dataset_paths": dataset_paths,
     }
     pprint.pprint(params)
     print()
@@ -73,6 +66,7 @@ def main():
     lr = args.lr[0]
     num_epochs = args.epochs
     use_factorize = args.factorize
+    graph = args.architecture == "SchNet"
 
     # Initialize meta model class based on architecture choice
     if args.architecture == "FCN":
@@ -82,7 +76,7 @@ def main():
     elif args.architecture == "Transformer":
         meta_models = MetaTransformerModels(
             vocab_size=args.n_elements,
-            max_seq_len=dataset.max_n_atoms,
+            max_seq_len=180,  # TODO: this should be calculated across all datasets
             use_factorized=use_factorize,
         )
     elif args.architecture == "SchNet":
@@ -92,15 +86,13 @@ def main():
         meta_models = MetaSchNetModels(device=DEVICE)
 
     # Create results path and initialize file if logging is enabled
-    experiment_results = {}
-
-    # For TensorBoard
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     tb_logdir = os.path.join("runs", f"exp_{timestamp}")
     writer = SummaryWriter(log_dir=tb_logdir)
     print(f"TensorBoard logs will be saved to: {tb_logdir}")
 
     results_path = Path("results") / f"experiments_{timestamp}.json"
+    experiment_results = {}
     if log:
         Path("results").mkdir(exist_ok=True)
         with open(results_path, "w") as f:
@@ -109,10 +101,9 @@ def main():
     else:
         print("\nLogging disabled. No experiment log will be saved.")
 
-    # Train
     for data_fraction in args.data_fractions:
         train_loader, val_loader = get_dataloaders(
-            dataset,
+            dataset_paths,
             train_data_fraction=data_fraction,
             batch_size=batch_size,
             seed=SEED,
@@ -128,9 +119,9 @@ def main():
         )
         for model_idx, model in enumerate(meta_models):
             print(
-                f"\nModel {model_idx + 1}/{len(meta_models)} is on device {DEVICE} "
-                f"and has {model.num_params} parameters"
+                f"\nModel {model_idx + 1}/{len(meta_models)} is on device {DEVICE} and has {model.num_params} parameters"
             )
+            model.to(DEVICE)
             optimizer = optim.AdamW(model.parameters(), lr=lr)
 
             lambda_schedule = lambda epoch: 0.5 * (
@@ -188,7 +179,7 @@ def main():
                 visualize_every=args.vis_every,
             )
 
-            # --- Save checkpoint ---
+            # Save checkpoint
             Path("checkpoints").mkdir(exist_ok=True)
             torch.save(
                 {
@@ -201,9 +192,7 @@ def main():
             )
             pbar.close()
 
-    # Close the SummaryWriter
     writer.close()
-
     print(
         f"\nTraining completed. {'Results continuously saved to ' + str(results_path) if log else 'No experiment log was written.'}"
     )
