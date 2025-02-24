@@ -74,9 +74,14 @@ def main():
             vocab_size=args.n_elements, use_factorized=use_factorize
         )
     elif args.architecture == "Transformer":
+        if args.split_name == "train":
+            max_n_atoms = 236
+        elif args.split_name == "val":
+            max_n_atoms = 168
+
         meta_models = MetaTransformerModels(
             vocab_size=args.n_elements,
-            max_seq_len=180,  # TODO: this should be calculated across all datasets
+            max_seq_len=max_n_atoms,
             use_factorized=use_factorize,
         )
     elif args.architecture == "SchNet":
