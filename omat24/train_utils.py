@@ -63,7 +63,8 @@ def forward_pass(
             natoms = batch.natoms
 
             pred_forces, pred_energy, pred_stress = model(
-                atomic_numbers, positions, edge_index, structure_index
+                # atomic_numbers, positions, edge_index, structure_index
+                batch
             )
 
     return (
