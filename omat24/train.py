@@ -72,9 +72,11 @@ def main(rank=None, world_size=None):
     # Download datasets if not present
     dataset_paths = []
     for dataset_name in args.datasets:
-        dataset_path = Path(f"datasets/{args.split_name}/{dataset_name}")
+        dataset_path = Path(
+            f"{args.datasets_base_path}/{args.split_name}/{dataset_name}"
+        )
         if not dataset_path.exists():
-            download_dataset(dataset_name, args.split_name)
+            download_dataset(dataset_name, args.split_name, args.datasets_base_path)
         dataset_paths.append(dataset_path)
 
     # User Hyperparam Feedback

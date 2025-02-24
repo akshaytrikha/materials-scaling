@@ -118,7 +118,12 @@ def get_args():
         help="Dataset(s) to use",
     )
     parser.add_argument(
-        "--distributed", action="store_true", help="Enable distributed training"
+        "--distributed",
+        action="store_true",
+        help="Enable distributed training" "--datasets_base_path",
+        type=str,
+        default="./datasets",
+        help="Base path for dataset storage",
     )
 
     return parser.parse_args()
