@@ -263,9 +263,8 @@ def custom_collate_fn_dataset_padded(
             dim=0,
         )  # Shape: [batch_size, MAX_ATOMS, k]
 
-        output["factorized_matrix"] = (
-            padded_factorized_matrices,
-        )  # [batch_size, MAX_ATOMS, k]
+        # [batch_size, MAX_ATOMS, k]
+        output["factorized_matrix"] = padded_factorized_matrices
 
     return output
 
@@ -348,8 +347,8 @@ def custom_collate_fn_batch_padded(
         )  # Shape: [batch_size, MAX_ATOMS, k]
 
         output["factorized_matrix"] = (
-            padded_factorized_matrices,
-        )  # [batch_size, MAX_ATOMS, k]
+            padded_factorized_matrices  # [batch_size, MAX_ATOMS, k]
+        )
 
     return output
 
