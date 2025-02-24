@@ -117,6 +117,7 @@ def main():
             train_workers=args.train_workers,
             val_workers=args.val_workers,
             graph=graph,
+            factorize=use_factorize,
         )
         dataset_size = len(train_loader.dataset)
         print(
@@ -172,6 +173,7 @@ def main():
                 graph=graph,
                 device=DEVICE,
                 patience=50,
+                factorize=use_factorize,
                 results_path=results_path if log else None,
                 experiment_results=experiment_results if log else None,
                 data_size_key=ds_key if log else None,
