@@ -4,11 +4,21 @@ import torch.nn as nn
 from typing import Union
 from torch.utils.flop_counter import FlopCounterMode
 from contextlib import nullcontext
+import torch.distributed as dist
+from tqdm import tqdm
 
 # Internal
 from loss import compute_loss
 from log_utils import partial_json_log, log_tb_metrics
 from torch_geometric.data import Batch
+
+
+def reduce_tensor(tensor, average=True):
+    rt = tensor.clone()
+    dist.all_reduce(rt, op=dist.ReduceOp.SUM)
+    if average:
+        rt /= dist.get_world_size()
+    return rt
 
 
 def forward_pass(
@@ -257,6 +267,8 @@ def train(
     pbar,
     graph,
     device,
+    distributed=False,
+    rank=0,
     patience=50,
     factorize=False,
     results_path=None,
@@ -282,6 +294,8 @@ def train(
         scheduler (torch.optim.lr_scheduler): Learning rate scheduler, or None.
         pbar (tqdm): A tqdm progress bar initialized with the total number of epochs.
         device (torch.device): The device to run training on.
+        distributed (bool, optional): Whether to use distributed training.
+        rank (int, optional): The rank of the process.
         patience (int): Early stopping patience (number of checks with no improvement).
         results_path (str, optional): Path to JSON results file. If provided, partial logs are written.
         experiment_results (dict, optional): Dict for storing experiment results.
@@ -302,6 +316,10 @@ def train(
         [results_path, experiment_results, data_size_key, run_entry]
     )
     losses = {}
+
+    is_main_process = not distributed or rank == 0
+    n_train_batches = len(train_loader)
+    total_epochs = len(pbar) if is_main_process else pbar[-1] + 1
 
     # Initial validation at epoch 0
     (
@@ -345,11 +363,15 @@ def train(
     epochs_since_improvement = 0
     last_val_loss = val_loss
     samples = None
+    n_train_batches = len(train_loader)
 
     # Training loop
     flop_counter = FlopCounterMode(display=False)
     flops_per_epoch = 0
-    for epoch in range(1, len(pbar) + 1):
+    for epoch in range(1, total_epochs):
+        if distributed:
+            train_loader.sampler.set_epoch(epoch)
+
         model.train()
         train_loss_sum = 0.0
         energy_loss_sum = 0.0
@@ -357,7 +379,6 @@ def train(
         stress_iso_loss_sum = 0.0
         stress_aniso_loss_sum = 0.0
 
-        n_train_batches = len(train_loader)
         context = flop_counter if epoch == 1 else nullcontext()
         with context:
             for batch_idx, batch in enumerate(train_loader):
@@ -408,15 +429,20 @@ def train(
                 stress_aniso_loss_sum += train_loss_dict["stress_aniso_loss"].item()
                 current_avg_loss = train_loss_sum / (batch_idx + 1)
 
-                pbar.set_description(
-                    f"train_loss={current_avg_loss:.2f} val_loss={last_val_loss:.2f}"
-                )
+                if is_main_process:
+                    pbar.set_description(
+                        f"train_loss={current_avg_loss:.2f} val_loss={last_val_loss:.2f}"
+                    )
         if epoch == 1:
             flops_per_epoch = flop_counter.get_total_flops()
 
         # Step the scheduler if provided
         if scheduler is not None:
             scheduler.step()
+
+        if distributed:
+            train_loss_tensor = torch.tensor(train_loss_sum, device=device)
+            train_loss_sum = reduce_tensor(train_loss_tensor, average=True).item()
 
         avg_epoch_train_loss = train_loss_sum / n_train_batches
         avg_epoch_energy_loss = energy_loss_sum / n_train_batches
@@ -468,13 +494,18 @@ def train(
                     )
         # Validate every 'validate_every' epochs
         if epoch % validate_every == 0:
+            val_loss = run_validation(model, val_loader, graph, device, factorize)
+            if distributed:
+                val_loss = reduce_tensor(
+                    torch.tensor(val_loss, device=device), average=True
+                )
             (
                 val_loss,
                 val_energy_loss,
                 val_force_loss,
                 val_stress_iso_loss,
                 val_stress_aniso_loss,
-            ) = run_validation(model, val_loader, graph, device, factorize)
+            ) = val_loss
             if writer is not None:
                 log_tb_metrics(
                     {
@@ -527,6 +558,7 @@ def train(
                 flops_per_epoch * epoch,
             )
 
-        pbar.update(1)
+        if is_main_process:
+            pbar.update(1)
 
     return model, losses

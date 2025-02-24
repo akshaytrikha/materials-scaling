@@ -11,6 +11,9 @@ from tqdm import tqdm
 from torch.utils.tensorboard import SummaryWriter
 import os
 import subprocess
+import torch.distributed as dist
+from torch.nn.parallel import DistributedDataParallel as DDP
+from torch.utils.data.distributed import DistributedSampler
 
 # Internal
 from data import get_dataloaders
@@ -37,10 +40,30 @@ else:
     DEVICE = torch.device("cpu")
 
 
-def main():
+def setup_ddp(rank, world_size):
+    """Initialize DDP process group."""
+    os.environ["MASTER_ADDR"] = "localhost"
+    os.environ["MASTER_PORT"] = "12355"
+
+    # Initialize the process group
+    dist.init_process_group("nccl", rank=rank, world_size=world_size)
+    torch.cuda.set_device(rank)
+
+
+def cleanup_ddp():
+    """Clean up DDP process group."""
+    dist.destroy_process_group()
+
+
+def main(rank=None, world_size=None):
     args = get_args()
     log = not args.no_log
     global DEVICE
+
+    # DDP setup if world_size is provided
+    if world_size is not None:
+        setup_ddp(rank, world_size)
+        DEVICE = torch.device(f"cuda:{rank}")
 
     # Convinience for running all datasets
     if args.datasets[0] == "all":
@@ -107,6 +130,7 @@ def main():
     else:
         print("\nLogging disabled. No experiment log will be saved.")
 
+    is_main_process = rank == 0 if world_size is not None else True
     for data_fraction in args.data_fractions:
         train_loader, val_loader = get_dataloaders(
             dataset_paths,
@@ -121,15 +145,32 @@ def main():
             factorize=use_factorize,
         )
         dataset_size = len(train_loader.dataset)
-        print(
-            f"\nTraining on dataset fraction {data_fraction} with {dataset_size} samples"
-        )
-        for model_idx, model in enumerate(meta_models):
+        if is_main_process:
             print(
-                f"\nModel {model_idx + 1}/{len(meta_models)} is on device {DEVICE} and has {model.num_params} parameters"
+                f"\nTraining on dataset fraction {data_fraction} with {dataset_size} samples"
             )
+        for model_idx, model in enumerate(meta_models):
+            if is_main_process:
+                print(
+                    f"\nModel {model_idx + 1}/{len(meta_models)} is on device {DEVICE} and has {model.num_params} parameters"
+                )
             model.to(DEVICE)
+
+            # Store original model attributes before DDP wrapping
+            num_params = model.num_params if hasattr(model, "num_params") else None
+            embedding_dim = getattr(model, "embedding_dim", None)
+            depth = getattr(model, "depth", None)
+
             optimizer = optim.AdamW(model.parameters(), lr=lr)
+
+            if world_size is not None:
+                # Wrap model in DDP to use multiple GPUs
+                model = DDP(
+                    model,
+                    device_ids=[rank],
+                    find_unused_parameters=True,
+                    broadcast_buffers=False,
+                )
 
             lambda_schedule = lambda epoch: 0.5 * (
                 1 + math.cos(math.pi * epoch / num_epochs)
@@ -137,15 +178,15 @@ def main():
             scheduler = LambdaLR(optimizer, lr_lambda=lambda_schedule)
 
             # Prepare run entry etc.
-            model_name = f"model_ds{dataset_size}_p{int(model.num_params)}"
-            checkpoint_path = f"checkpoints/{args.architecture}_ds{dataset_size}_p{int(model.num_params)}_{timestamp}.pth"
+            model_name = f"model_ds{dataset_size}_p{int(num_params)}"
+            checkpoint_path = f"checkpoints/{args.architecture}_ds{dataset_size}_p{int(num_params)}_{timestamp}.pth"
             run_entry = {
                 "model_name": model_name,
                 "config": {
                     "architecture": args.architecture,
-                    "embedding_dim": getattr(model, "embedding_dim", None),
-                    "depth": getattr(model, "depth", None),
-                    "num_params": model.num_params,
+                    "embedding_dim": embedding_dim,
+                    "depth": depth,
+                    "num_params": num_params,
                     "dataset_size": dataset_size,
                     "num_epochs": num_epochs,
                     "batch_size": batch_size,
@@ -163,23 +204,32 @@ def main():
                 with open(results_path, "w") as f:
                     json.dump(experiment_results, f, indent=4)
 
-            pbar = tqdm(range(num_epochs + 1))
+            # Create progress bar only on main process
+            if is_main_process:
+                progress_bar = tqdm(range(num_epochs + 1))
+            else:
+                progress_bar = range(num_epochs + 1)
+
             trained_model, losses = train(
                 model=model,
                 train_loader=train_loader,
                 val_loader=val_loader,
                 optimizer=optimizer,
                 scheduler=scheduler,
-                pbar=pbar,
+                pbar=progress_bar,
                 graph=graph,
                 device=DEVICE,
+                distributed=world_size is not None,
+                rank=rank,
                 patience=50,
                 factorize=use_factorize,
-                results_path=results_path if log else None,
-                experiment_results=experiment_results if log else None,
-                data_size_key=ds_key if log else None,
-                run_entry=run_entry if log else None,
-                writer=writer,
+                results_path=results_path if log and is_main_process else None,
+                experiment_results=(
+                    experiment_results if log and is_main_process else None
+                ),
+                data_size_key=ds_key if log and is_main_process else None,
+                run_entry=run_entry if log and is_main_process else None,
+                writer=writer if is_main_process else None,
                 tensorboard_prefix=model_name,
                 num_visualization_samples=args.num_visualization_samples,
                 gradient_clip=args.gradient_clip,
@@ -198,12 +248,17 @@ def main():
                 },
                 checkpoint_path,
             )
-            pbar.close()
+
+            if is_main_process:
+                progress_bar.close()
 
     writer.close()
     print(
         f"\nTraining completed. {'Results continuously saved to ' + str(results_path) if log else 'No experiment log was written.'}"
     )
+
+    if world_size is not None:
+        cleanup_ddp()
 
     if log:
         # Generate inference GIFs at different training stages
@@ -219,4 +274,13 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    import torch.multiprocessing as mp
+
+    args = get_args()
+    if args.distributed:
+        # Need to use spawn method for CUDA runtime initialization
+        mp.set_start_method("spawn")
+        world_size = torch.cuda.device_count()
+        mp.spawn(main, args=(world_size,), nprocs=world_size, join=True)
+    else:
+        main()

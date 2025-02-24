@@ -8,6 +8,7 @@ from torch.utils.data import DataLoader, Subset, Dataset, ConcatDataset
 from fairchem.core.datasets import AseDBDataset
 from torch_geometric.data import Data
 from torch_geometric.data import DataLoader as PyGDataLoader
+from torch.utils.data.distributed import DistributedSampler
 
 # Internal
 from matrix import compute_distance_matrix, factorize_matrix, random_rotate_atoms
@@ -50,6 +51,7 @@ def get_dataloaders(
     val_workers: int = 0,
     graph: bool = False,
     factorize: bool = False,
+    distributed: bool = False,
 ):
     """Creates training and validation DataLoaders from a list of dataset paths.
     Each dataset is loaded, split into training and validation subsets, and then
@@ -66,6 +68,7 @@ def get_dataloaders(
         val_workers (int, optional): Number of worker processes for the validation DataLoader.
         graph (bool, optional): Whether to create PyG DataLoaders for graph datasets.
         factorize (bool, optional): Whether to factorize the distance matrix into a low-rank matrix.
+        distributed (bool, optional): Whether to use distributed training.
 
     Returns:
         tuple: (train_loader, val_loader)
@@ -85,18 +88,30 @@ def get_dataloaders(
     train_dataset = ConcatDataset(train_subsets)
     val_dataset = ConcatDataset(val_subsets)
 
+    # Configure samplers for DDP
+    if distributed:
+        train_sampler = DistributedSampler(train_subset)
+        val_sampler = DistributedSampler(val_subset, shuffle=False)
+        shuffle = False  # Sampler handles shuffling
+    else:
+        train_sampler = None
+        val_sampler = None
+        shuffle = True
+
     if graph:
         # Create PyG DataLoaders
         train_loader = PyGDataLoader(
             train_dataset,
             batch_size=batch_size,
-            shuffle=True,
+            shuffle=shuffle and not distributed,
+            sampler=train_sampler,
             num_workers=train_workers,
         )
         val_loader = PyGDataLoader(
             val_dataset,
             batch_size=batch_size,
             shuffle=False,
+            sampler=val_sampler,
             num_workers=val_workers,
         )
     else:
@@ -117,7 +132,8 @@ def get_dataloaders(
         train_loader = DataLoader(
             train_dataset,
             batch_size=batch_size,
-            shuffle=True,
+            shuffle=shuffle and not distributed,
+            sampler=train_sampler,
             collate_fn=collate_fn,
             num_workers=train_workers,
             persistent_workers=train_workers > 0,
@@ -127,6 +143,7 @@ def get_dataloaders(
             val_dataset,
             batch_size=batch_size,
             shuffle=False,
+            sampler=val_sampler,
             collate_fn=collate_fn,
             num_workers=val_workers,
             persistent_workers=val_workers > 0,
