@@ -53,9 +53,7 @@ def forward_pass(
                     atomic_numbers, positions, factorized_distances, mask
                 )
             else:
-                distance_matrix = batch["distance_matrix"].to(
-                    device, non_blocking=True
-                )
+                distance_matrix = batch["distance_matrix"].to(device, non_blocking=True)
                 pred_forces, pred_energy, pred_stress = model(
                     atomic_numbers, positions, distance_matrix, mask
                 )

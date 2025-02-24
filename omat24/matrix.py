@@ -89,15 +89,14 @@ def factorize_matrix(D: torch.Tensor) -> torch.Tensor:
         raise ValueError("Distance matrix must be a square 2D tensor.")
 
     # Create inverse distance matrix with zeros on diagonal
-    D_inv = torch.zeros_like(D)
-    mask = ~torch.eye(D.shape[0], dtype=bool, device=D.device)
-    D_inv[mask] = 1.0 / D[mask]
+    EPS = 1e-8
+    D_inv = 1.0 / (D + EPS)
 
-    # Fix k=5 and compute SVD
-    k = min(2, D.size(0))
+    # Compute SVD
     U, s, Vt = torch.linalg.svd(D_inv)
 
     # Take first k components
+    k = min(1, D.size(0))
     U_k = U[:, :k]  # n x k matrix
     s_k = s[:k]  # k singular values
 
