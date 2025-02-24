@@ -3,7 +3,8 @@ from typing import List
 import torch
 import ase
 import random
-from torch.utils.data import DataLoader, Subset, Dataset
+from pathlib import Path
+from torch.utils.data import DataLoader, Subset, Dataset, ConcatDataset
 from fairchem.core.datasets import AseDBDataset
 from torch_geometric.data import Data
 from torch_geometric.data import DataLoader as PyGDataLoader
@@ -39,64 +40,80 @@ def split_dataset(dataset, train_data_fraction, val_data_fraction, seed):
 
 
 def get_dataloaders(
-    dataset: Dataset,
+    dataset_paths: List[str],
     train_data_fraction: float,
     batch_size: int,
     seed: int,
     batch_padded: bool = False,
-    return_indices: bool = False,
     val_data_fraction: float = 0.1,
     train_workers: int = 0,
     val_workers: int = 0,
     graph: bool = False,
 ):
-    """Creates training and validation DataLoaders from a given dataset.
-
-    This function splits the dataset into training and validation subsets based on the
-    specified fractions. It then creates DataLoaders for each subset, using either a custom
-    collate function that keeps variable-length tensors as lists or one that pads them to uniform sizes.
+    """Creates training and validation DataLoaders from a list of dataset paths.
+    Each dataset is loaded, split into training and validation subsets, and then
+    the splits are concatenated. This works for a single dataset path as well as multiple paths.
 
     Args:
-        dataset (Dataset): The dataset to create DataLoaders from.
-        train_data_fraction (float): Fraction of the remaining data (after validation split) to use for training.
+        dataset_paths (List[str]): List of dataset paths.
+        train_data_fraction (float): Fraction of each dataset (after validation split) to use for training.
         batch_size (int): Number of samples per batch.
-        seed (int): Seed for random number generators to ensure reproducibility.
+        seed (int): Seed for reproducibility.
         batch_padded (bool, optional): Whether to pad variable-length tensors.
-        return_indices (bool, optional): Whether to return dataset indices for debugging.
-        val_data_fraction (float, optional): Fraction of the dataset to use for validation.
+        val_data_fraction (float, optional): Fraction of each dataset to use for validation.
         train_workers (int, optional): Number of worker processes for the training DataLoader.
         val_workers (int, optional): Number of worker processes for the validation DataLoader.
         graph (bool, optional): Whether to create PyG DataLoaders for graph datasets.
 
     Returns:
-        tuple:
-            - train_loader (DataLoader): DataLoader for the training subset.
-            - val_loader (DataLoader): DataLoader for the validation subset.
+        tuple: (train_loader, val_loader)
     """
-    train_subset, val_subset, train_indices, val_indices = split_dataset(
-        dataset, train_data_fraction, val_data_fraction, seed
-    )
+    train_subsets = []
+    val_subsets = []
+
+    # Load each dataset from its path and split it individually
+    for path in dataset_paths:
+        dataset = OMat24Dataset(dataset_paths=[path], graph=graph)
+        train_subset, val_subset, _, _ = split_dataset(
+            dataset, train_data_fraction, val_data_fraction, seed
+        )
+        train_subsets.append(train_subset)
+        val_subsets.append(val_subset)
+
+    train_dataset = ConcatDataset(train_subsets)
+    val_dataset = ConcatDataset(val_subsets)
 
     if graph:
         # Create PyG DataLoaders
         train_loader = PyGDataLoader(
-            train_subset, batch_size=batch_size, shuffle=True, num_workers=train_workers
+            train_dataset,
+            batch_size=batch_size,
+            shuffle=True,
+            num_workers=train_workers,
         )
         val_loader = PyGDataLoader(
-            val_subset, batch_size=batch_size, shuffle=False, num_workers=val_workers
+            val_dataset,
+            batch_size=batch_size,
+            shuffle=False,
+            num_workers=val_workers,
         )
     else:
+        # Set maximum number of atoms for padding
+        if len(dataset_paths) > 1:
+            max_n_atoms = 180
+        else:
+            max_n_atoms = dataset.max_n_atoms
+
         # Select the appropriate collate function
         if batch_padded:
             collate_fn = custom_collate_fn_batch_padded
         else:
             collate_fn = lambda batch: custom_collate_fn_dataset_padded(
-                batch, dataset.max_n_atoms
+                batch, max_n_atoms
             )
 
-        # Create DataLoaders
         train_loader = DataLoader(
-            train_subset,
+            train_dataset,
             batch_size=batch_size,
             shuffle=True,
             collate_fn=collate_fn,
@@ -104,22 +121,17 @@ def get_dataloaders(
             persistent_workers=train_workers > 0,
             pin_memory=torch.cuda.is_available(),
         )
-
         val_loader = DataLoader(
-            val_subset,
+            val_dataset,
             batch_size=batch_size,
-            shuffle=False,  # Typically, shuffle=False for validation
+            shuffle=False,
             collate_fn=collate_fn,
             num_workers=val_workers,
             persistent_workers=val_workers > 0,
             pin_memory=torch.cuda.is_available(),
         )
 
-    if return_indices:
-        # For debugging
-        return train_loader, val_loader, train_indices, val_indices
-    else:
-        return train_loader, val_loader
+    return train_loader, val_loader
 
 
 class OMat24Dataset(Dataset):
@@ -133,7 +145,7 @@ class OMat24Dataset(Dataset):
 
     def __init__(
         self,
-        dataset_paths: List[str],
+        dataset_paths: List[Path],
         config_kwargs={},
         augment: bool = False,
         graph: bool = False,
