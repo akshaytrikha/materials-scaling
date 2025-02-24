@@ -246,13 +246,13 @@ class TestGetDataloaders(unittest.TestCase):
             seed=42,
             val_data_fraction=0.1,
             graph=False,
+            factorize=False,
         )
         batch = next(iter(train_loader))
         expected_keys = {
             "atomic_numbers",
             "positions",
             "distance_matrix",
-            "factorized_matrix",
             "energy",
             "forces",
             "stress",
