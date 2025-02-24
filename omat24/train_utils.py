@@ -244,7 +244,7 @@ def train(
     pbar,
     graph,
     device,
-    patience=50,
+    patience=3,
     results_path=None,
     experiment_results=None,
     data_size_key=None,
