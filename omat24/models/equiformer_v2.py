@@ -5,23 +5,18 @@ from fairchem.core.models.equiformer_v2.equiformer_v2 import EquiformerV2Backbon
 
 
 class MLPReadout(nn.Module):
-    """
-    A simple MLP readout: node_emb -> linear -> ReLU -> linear -> out_dim.
-    """
+    """A simple MLP readout: node_emb -> linear -> tanh -> linear -> out_dim."""
 
     def __init__(self, in_dim, out_dim):
         super().__init__()
         self.net = nn.Sequential(
             nn.Linear(in_dim, in_dim),
-            nn.ReLU(),
+            nn.Tanh(),
             nn.Linear(in_dim, out_dim),
         )
 
     def forward(self, node_emb):
         return self.net(node_emb)
-    
-
-self.energy_head = MLPReadout(self.in_dim, 1)
 
 
 class EquiformerS2EF(nn.Module):
@@ -30,7 +25,7 @@ class EquiformerS2EF(nn.Module):
 
     def __init__(self, backbone_config):
         super().__init__()
-        # 1) Create the backbone
+        # 1) Create backbone
         self.backbone = EquiformerV2Backbone(**backbone_config)
 
         # 2) Determine the embedding dimension based on the backbone configuration
@@ -43,7 +38,7 @@ class EquiformerS2EF(nn.Module):
         total_coeffs = sum((lmax + 1) ** 2 for lmax in self.lmax_list)
         self.in_dim = total_coeffs * self.sphere_channels
 
-        # 3) Define heads (MLPs)
+        # 3) Define output heads (MLPs)
         self.energy_head = MLPReadout(self.in_dim, 1)
         self.force_head = MLPReadout(self.in_dim, 3)
         self.stress_head = MLPReadout(self.in_dim, 6)
@@ -54,7 +49,7 @@ class EquiformerS2EF(nn.Module):
     def forward(self, batch):
         """
         Args:
-          batch: A PyG-like batch with .atomic_numbers, .pos, etc.
+          batch: A PyG batch with .atomic_numbers, .pos, etc.
         Returns:
           forces  -> [N_atoms, 3]
           energy  -> [N_structures]
