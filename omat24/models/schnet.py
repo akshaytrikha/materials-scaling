@@ -273,8 +273,8 @@ class SchNet(nn.Module):
         self.std = std
         self.device = device
 
-        # Embedding for atomic numbers (assumes atomic numbers < 100)
-        self.embedding = nn.Embedding(100, hidden_channels)
+        # Embedding for atomic numbers)
+        self.embedding = nn.Embedding(119, hidden_channels)
         self.embedding.to(device)
 
         # Radial basis function expansion for distances
