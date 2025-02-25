@@ -41,16 +41,13 @@ def get_dataset_url(dataset_name: str, split_name: str):
         raise ValueError(f"Invalid split name: {split_name}")
 
 
-def download_dataset(dataset_name: str, split_name: str):
-    """Downloads a compressed dataset from a predefined URL and extracts it to the specified directory.
+def download_dataset(dataset_name: str, split_name: str, base_path: str = "./datasets") -> None:
+    """Download and extract a dataset.
 
     Args:
-        dataset_name (str): The key corresponding to the dataset in the DATASETS dictionary.
-        split_name (str): The split to download ("train" or "val")
-
-    Raises:
-        ValueError: If the dataset_name is not valid or the split_name is not valid.
-        Exception: If there is an error during the extraction or deletion of the compressed file.
+        dataset_name (str): Name of the dataset to download
+        split_name (str): Split type ("train" or "val")
+        base_path (str): Base path for dataset storage
     """
     if split_name not in ["train", "val"]:
         raise ValueError(f"Invalid split name: {split_name}")
@@ -62,10 +59,12 @@ def download_dataset(dataset_name: str, split_name: str):
     url = get_dataset_url(dataset_name, split_name)
 
     # Create the necessary directories
-    os.makedirs("./datasets", exist_ok=True)
-    os.makedirs(f"./datasets/{split_name}", exist_ok=True)
-    dataset_path = Path(f"datasets/{split_name}/{dataset_name}")
-    compressed_path = dataset_path.with_suffix(".tar.gz")
+    os.makedirs(base_path, exist_ok=True)
+    os.makedirs(os.path.join(base_path, split_name), exist_ok=True)
+
+    # Construct paths
+    dataset_path = Path(base_path) / split_name / dataset_name
+    compressed_path = Path(base_path) / f"{dataset_name}.tar.gz"
 
     # Download the dataset
     print(f"Starting download from {url}...")
