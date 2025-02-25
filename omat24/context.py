@@ -4,6 +4,7 @@ filenames_to_include = [
     "data.py",
     "data_utils.py",
     "loss.py",
+    "models/equiformer_v2.py",
     "models/fcn.py",
     "models/transformer_models.py",
     "models/schnet.py",
