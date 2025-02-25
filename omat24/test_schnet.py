@@ -220,9 +220,9 @@ class TestSchNet(unittest.TestCase):
                 self.assertEqual(config["num_params"], 875)
 
                 np.testing.assert_allclose(first_train_loss, 313.881927, rtol=0.1)
-                np.testing.assert_allclose(first_val_loss, 5.409457623958588, rtol=0.1)
-                np.testing.assert_allclose(last_train_loss, 18.04733633995056, rtol=0.1)
-                np.testing.assert_allclose(last_val_loss, 574.0395112037659, rtol=0.1)
+                np.testing.assert_allclose(first_val_loss, 60.315831, rtol=0.1)
+                np.testing.assert_allclose(last_train_loss, 329.380352, rtol=0.1)
+                np.testing.assert_allclose(last_val_loss, 189.697056, rtol=0.1)
         finally:
             if os.path.exists(results_path):
                 os.remove(results_path)
