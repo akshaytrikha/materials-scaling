@@ -17,6 +17,8 @@ class MetaFCNModels:
             {"embedding_dim": 128, "hidden_dim": 256, "depth": 15},
             # 4.3M parameters (includes embedding layer)
             # {"embedding_dim": 256, "hidden_dim": 512, "depth": 16},
+            # 10.9M parameters (includes embedding layer)
+            # {"embedding_dim": 384, "hidden_dim": 768, "depth": 18},
         ]
         self.vocab_size = vocab_size
         self.use_factorized = use_factorized
