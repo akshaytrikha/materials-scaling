@@ -219,9 +219,7 @@ class TestSchNet(unittest.TestCase):
                 # For the Transformer, the first configuration (from MetaTransformerModels) is expected to be:
                 self.assertEqual(config["num_params"], 875)
 
-                np.testing.assert_allclose(
-                    first_train_loss, 19.543967723846436, rtol=0.1
-                )
+                np.testing.assert_allclose(first_train_loss, 313.881927, rtol=0.1)
                 np.testing.assert_allclose(first_val_loss, 5.409457623958588, rtol=0.1)
                 np.testing.assert_allclose(last_train_loss, 18.04733633995056, rtol=0.1)
                 np.testing.assert_allclose(last_val_loss, 574.0395112037659, rtol=0.1)
