@@ -49,9 +49,11 @@ def main():
     # Download datasets if not present
     dataset_paths = []
     for dataset_name in args.datasets:
-        dataset_path = Path(f"datasets/{args.split_name}/{dataset_name}")
+        dataset_path = Path(
+            f"{args.datasets_base_path}/{args.split_name}/{dataset_name}"
+        )
         if not dataset_path.exists():
-            download_dataset(dataset_name, args.split_name)
+            download_dataset(dataset_name, args.split_name, args.datasets_base_path)
         dataset_paths.append(dataset_path)
 
     # User Hyperparam Feedback
@@ -74,9 +76,14 @@ def main():
             vocab_size=args.n_elements, use_factorized=use_factorize
         )
     elif args.architecture == "Transformer":
+        if args.split_name == "train":
+            max_n_atoms = 236
+        elif args.split_name == "val":
+            max_n_atoms = 168
+
         meta_models = MetaTransformerModels(
             vocab_size=args.n_elements,
-            max_seq_len=180,  # TODO: this should be calculated across all datasets
+            max_seq_len=max_n_atoms,
             concatenated=True,
             use_factorized=use_factorize,
         )
@@ -113,6 +120,7 @@ def main():
             train_workers=args.train_workers,
             val_workers=args.val_workers,
             graph=graph,
+            factorize=use_factorize,
         )
         dataset_size = len(train_loader.dataset)
         print(
@@ -168,6 +176,7 @@ def main():
                 graph=graph,
                 device=DEVICE,
                 patience=50,
+                factorize=use_factorize,
                 results_path=results_path if log else None,
                 experiment_results=experiment_results if log else None,
                 data_size_key=ds_key if log else None,
