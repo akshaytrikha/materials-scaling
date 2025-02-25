@@ -175,7 +175,7 @@ def main():
                 pbar=pbar,
                 graph=graph,
                 device=DEVICE,
-                patience=50,
+                patience=5,
                 factorize=use_factorize,
                 results_path=results_path if log else None,
                 experiment_results=experiment_results if log else None,
