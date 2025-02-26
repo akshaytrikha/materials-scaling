@@ -178,7 +178,7 @@ def compute_loss(
     stress_anisotropic_loss = torch.mean(stress_anisotropic_loss)  # Mean over batch
 
     total_loss = (
-        2.5 * energy_loss + 20 * force_loss + 5 * stress_isotropic_loss + 5 * stress_anisotropic_loss
+        2.5 * energy_loss + 200 * force_loss + 5 * stress_isotropic_loss + 5 * stress_anisotropic_loss
     )
 
     loss_dict = {
