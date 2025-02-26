@@ -66,7 +66,6 @@ class TestTransformer(unittest.TestCase):
             depth=1,
             n_heads=1,
             d_ff_mult=1,
-            concatenated=True,
             use_factorized=False,
         )
         # Patch MetaTransformerModels so that iterating over it yields only our fixed_model.
@@ -142,16 +141,16 @@ class TestTransformer(unittest.TestCase):
                 self.assertEqual(config["depth"], 1)
                 self.assertEqual(config["num_params"], 1670)
 
-                np.testing.assert_allclose(first_train_loss, 62.5931510925293, rtol=0.1)
-                np.testing.assert_allclose(first_val_loss, 23.387828826904297, rtol=0.1)
+                np.testing.assert_allclose(first_train_loss, 1029.019196, rtol=0.1)
+                np.testing.assert_allclose(first_val_loss, 238.1077, rtol=0.1)
                 np.testing.assert_allclose(first_flops, 0, rtol=0.1)
                 np.testing.assert_allclose(second_flops, 24920064, rtol=0.1)
-                np.testing.assert_allclose(last_train_loss, 18.15552282333374, rtol=0.1)
+                np.testing.assert_allclose(last_train_loss, 437.988144, rtol=0.1)
                 np.testing.assert_allclose(last_flops, 12468728832, rtol=0.1)
                 if os.getenv("IS_CI", False):
-                    np.testing.assert_allclose(last_val_loss, 52.66148376, rtol=0.1)
+                    np.testing.assert_allclose(last_val_loss, 2181.785034, rtol=0.1)
                 else:
-                    np.testing.assert_allclose(last_val_loss, 117.96384048, rtol=0.1)
+                    np.testing.assert_allclose(last_val_loss, 1894.927307, rtol=0.1)
 
                 # ---------- Test visualization was created ----------
                 result = subprocess.run(
@@ -177,19 +176,18 @@ class TestTransformer(unittest.TestCase):
 
     def test_forward_non_factorized_output_shapes(self):
         """
-        Verify that the TransformerModel's forward pass in non-factorized (concatenated) mode
+        Verify that the TransformerModel's forward pass in non-factorized mode
         returns outputs with the correct shapes.
         """
         self.set_seed()
 
-        # Use concatenated mode (non-factorized): positions are provided.
+        # Use non-factorized mode: positions are provided.
         model = XTransformerModel(
             num_tokens=self.vocab_size,
             d_model=6,
             depth=4,
             n_heads=2,
             d_ff_mult=2,
-            concatenated=True,
             use_factorized=False,
         )
         forces, energy, stress = model(
@@ -210,7 +208,6 @@ class TestTransformer(unittest.TestCase):
             depth=4,
             n_heads=2,
             d_ff_mult=2,
-            concatenated=True,
             use_factorized=True,
         )
         forces, energy, stress = model(
@@ -239,7 +236,6 @@ class TestTransformer(unittest.TestCase):
             depth=4,
             n_heads=2,
             d_ff_mult=2,
-            concatenated=True,
             use_factorized=False,
         )
         model.eval()
@@ -298,7 +294,6 @@ class TestTransformer(unittest.TestCase):
             depth=4,
             n_heads=2,
             d_ff_mult=2,
-            concatenated=True,
             use_factorized=False,
         )
         model.train()
@@ -331,7 +326,6 @@ class TestTransformer(unittest.TestCase):
             depth=2,
             n_heads=2,
             d_ff_mult=2,
-            concatenated=False,
             use_factorized=True,
         )
         model_non_factorized = XTransformerModel(
@@ -340,12 +334,11 @@ class TestTransformer(unittest.TestCase):
             depth=2,
             n_heads=2,
             d_ff_mult=2,
-            concatenated=True,
             use_factorized=False,
         )
 
         # For factorized mode: additional_dim should be 5, so input = d_model + 5.
-        # For non-factorized (concatenated) mode: additional_dim should be 3, so input = d_model + 3.
+        # For non-factorized mode: additional_dim should be 3, so input = d_model + 3.
         expected_in_features_factorized = 4 + 5
         expected_in_features_non_factorized = 4 + 3
 

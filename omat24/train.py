@@ -84,7 +84,6 @@ def main():
         meta_models = MetaTransformerModels(
             vocab_size=args.n_elements,
             max_seq_len=max_n_atoms,
-            concatenated=True,
             use_factorized=use_factorize,
         )
     elif args.architecture == "SchNet":
