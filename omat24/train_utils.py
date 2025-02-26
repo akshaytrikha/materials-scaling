@@ -1,4 +1,5 @@
 # External
+import copy
 import torch
 import torch.nn as nn
 from typing import Union
@@ -269,7 +270,7 @@ def train(
     device,
     distributed=False,
     rank=0,
-    patience=50,
+    patience=5,
     factorize=False,
     results_path=None,
     experiment_results=None,
@@ -360,8 +361,10 @@ def train(
 
     # Early stopping setup
     best_val_loss = val_loss
+    best_val_model = copy.deepcopy(model)
+    best_val_loss_dict = copy.deepcopy(losses)
     epochs_since_improvement = 0
-    last_val_loss = val_loss
+
     samples = None
     n_train_batches = len(train_loader)
 
@@ -439,7 +442,7 @@ def train(
 
                 if is_main_process:
                     pbar.set_description(
-                        f"train_loss={current_avg_loss:.2f} val_loss={last_val_loss:.2f}"
+                        f"train_loss={current_avg_loss:.2f} val_loss={val_loss:.2f}"
                     )
         if epoch == 1:
             flops_per_epoch = flop_counter.get_total_flops()
@@ -537,18 +540,19 @@ def train(
                     tensorboard_prefix,
                     train=False,
                 )
-            last_val_loss = val_loss
-            losses[epoch]["val_loss"] = float(val_loss)
+            losses[epoch]["val_loss"] = val_loss
 
             # Early stopping check
             if val_loss < best_val_loss:
                 best_val_loss = val_loss
                 epochs_since_improvement = 0
+                best_val_model = copy.deepcopy(model)
+                best_val_loss_dict = copy.deepcopy(losses)
             else:
                 epochs_since_improvement += 1
                 if epochs_since_improvement >= patience:
                     print(f"Early stopping triggered at epoch {epoch}")
-                    return model, losses
+                    return best_val_model, best_val_loss_dict
 
         # Visualization samples every 'visualize_every' epochs
         if epoch % visualize_every == 0:

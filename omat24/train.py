@@ -108,7 +108,6 @@ def main(rank=None, world_size=None):
         meta_models = MetaTransformerModels(
             vocab_size=args.n_elements,
             max_seq_len=max_n_atoms,
-            concatenated=True,
             use_factorized=use_factorize,
         )
     elif args.architecture == "SchNet":
@@ -223,7 +222,7 @@ def main(rank=None, world_size=None):
                 device=DEVICE,
                 distributed=world_size is not None,
                 rank=rank,
-                patience=50,
+                patience=5,
                 factorize=use_factorize,
                 results_path=results_path if log and is_main_process else None,
                 experiment_results=(
