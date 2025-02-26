@@ -14,7 +14,7 @@ dataset_path = Path(f"datasets/{split_name}/{dataset_name}")
 if not dataset_path.exists():
     download_dataset(dataset_name, split_name)
 # Create dataset using a list with a single path (as a string)
-dataset = OMat24Dataset(dataset_paths=[dataset_path])
+dataset = OMat24Dataset(dataset_paths=[dataset_path], architecture="Transformer")
 
 
 class TestGetDataloaders(unittest.TestCase):
@@ -33,6 +33,7 @@ class TestGetDataloaders(unittest.TestCase):
             train_data_fraction=train_data_fraction,
             batch_size=10,
             seed=42,
+            architecture="Transformer",
             batch_padded=True,
             val_data_fraction=val_data_fraction,
         )
@@ -69,6 +70,7 @@ class TestGetDataloaders(unittest.TestCase):
             batch_size=10,
             batch_padded=True,
             seed=seed,
+            architecture="FCN",
             val_data_fraction=0.1,
         )
 
@@ -78,6 +80,7 @@ class TestGetDataloaders(unittest.TestCase):
             batch_size=10,
             batch_padded=True,
             seed=seed,
+            architecture="Transformer",
             val_data_fraction=0.1,
         )
 
@@ -150,6 +153,7 @@ class TestGetDataloaders(unittest.TestCase):
             batch_size=10,
             batch_padded=True,
             seed=seed1,
+            architecture="FCN",
             val_data_fraction=0.1,
         )
 
@@ -159,6 +163,7 @@ class TestGetDataloaders(unittest.TestCase):
             batch_size=10,
             batch_padded=True,
             seed=seed2,
+            architecture="Transformer",
             val_data_fraction=0.1,
         )
 
@@ -219,6 +224,7 @@ class TestGetDataloaders(unittest.TestCase):
             batch_size=10,
             batch_padded=False,
             seed=seed,
+            architecture="FCN",
             val_data_fraction=0.1,
         )
 
@@ -244,6 +250,7 @@ class TestGetDataloaders(unittest.TestCase):
             batch_size=10,
             batch_padded=False,
             seed=42,
+            architecture="FCN",
             val_data_fraction=0.1,
             graph=False,
             factorize=False,
@@ -272,12 +279,12 @@ class TestGetDataloaders(unittest.TestCase):
 
     def test_batch_keys_graph_true(self):
         """Test that the PyG Data object contains all expected attributes when graph=True."""
-        dataset_graph = OMat24Dataset(dataset_paths=[dataset_path], graph=True)
         train_loader, _ = get_dataloaders(
             [dataset_path],
             train_data_fraction=0.01,
             batch_size=10,
             seed=42,
+            architecture="SchNet",
             val_data_fraction=0.1,
             graph=True,
         )
@@ -311,8 +318,12 @@ class TestGetDataloaders(unittest.TestCase):
         if not dataset_path_2.exists():
             download_dataset(dataset_name_2, split_name)
 
-        dataset_1 = OMat24Dataset(dataset_paths=[dataset_path], debug=True)
-        dataset_2 = OMat24Dataset(dataset_paths=[dataset_path_2], debug=True)
+        dataset_1 = OMat24Dataset(
+            dataset_paths=[dataset_path], architecture="FCN", debug=True
+        )
+        dataset_2 = OMat24Dataset(
+            dataset_paths=[dataset_path_2], architecture="FCN", debug=True
+        )
 
         # Set fractions: 1% from each dataset (after reserving 10% for validation)
         train_data_fraction = 0.01
@@ -328,6 +339,7 @@ class TestGetDataloaders(unittest.TestCase):
             train_data_fraction=train_data_fraction,
             batch_size=10,
             seed=42,
+            architecture="FCN",
             val_data_fraction=val_data_fraction,
             graph=False,
             batch_padded=True,

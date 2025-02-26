@@ -58,6 +58,7 @@ class FCNModel(nn.Module):
         self.hidden_dim = hidden_dim
         self.depth = depth
         self.use_factorized = use_factorized
+        self.name = "FCN"
 
         # Embedding for atomic numbers
         self.embedding = nn.Embedding(
