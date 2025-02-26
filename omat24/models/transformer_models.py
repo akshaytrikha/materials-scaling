@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from x_transformers import TransformerWrapper, Encoder
 
 
@@ -210,19 +211,19 @@ class XTransformerModel(TransformerWrapper):
         output = self.attn_layers(x=concatenated_emb, mask=mask)  # [M, A, d_model]
 
         # Predict forces
-        forces = self.force_2(torch.leaky_relu(self.force_1(output)), negative_slope=0.01)  # [M, A, 3]
+        forces = self.force_2(F.leaky_relu(self.force_1(output)), negative_slope=0.01)  # [M, A, 3]
         expanded_mask = mask.unsqueeze(-1).expand(-1, -1, 3)
         forces = forces * expanded_mask.float()  # Mask padded atoms
 
         # Predict per-atom energy contributions and sum
-        energy_contrib = self.energy_2(torch.leaky_relu(self.energy_1(output)), negative_slope=0.01).squeeze(
+        energy_contrib = self.energy_2(F.leaky_relu(self.energy_1(output)), negative_slope=0.01).squeeze(
             -1
         )  # [M, A]
         energy_contrib = energy_contrib * mask.squeeze(-1).float()
         energy = energy_contrib.sum(dim=1)  # [batch_size]
 
         # Predict per-atom stress contributions and sum
-        stress_contrib = self.stress_2(torch.leaky_relu(self.stress_1(output)), negative_slope=0.01)  # [M, A, 6]
+        stress_contrib = self.stress_2(F.leaky_relu(self.stress_1(output)), negative_slope=0.01)  # [M, A, 6]
         expanded_mask = mask.unsqueeze(-1).expand(-1, -1, 6)
         stress_contrib = stress_contrib * expanded_mask.float()
         stress = stress_contrib.sum(dim=1)  # [batch_size, 6]
