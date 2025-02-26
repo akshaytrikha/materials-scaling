@@ -171,6 +171,7 @@ def main(rank=None, world_size=None):
                 model = DDP(
                     model,
                     device_ids=[rank],
+                    find_unused_parameters=True,
                     broadcast_buffers=False,
                 )
 
