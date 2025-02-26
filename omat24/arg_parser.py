@@ -123,6 +123,13 @@ def get_args():
         default="./datasets",
         help="Base path for dataset storage",
     )
+    parser.add_argument(
+        "--checkpoint",
+        type=str,
+        help="Path to the model checkpoint file FOR INFERENCE ONLY"
+    )
+    return parser.parse_args()
+
 
     return parser.parse_args()
 
