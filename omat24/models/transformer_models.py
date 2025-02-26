@@ -36,6 +36,7 @@ class MetaTransformerModels:
             vocab_size (int): Number of unique tokens (atomic numbers).
             max_seq_len (int): Maximum sequence length for the transformer.
         """
+        # fmt: off
         self.configurations = [
             {"d_model": 1, "depth": 1, "n_heads": 1, "d_ff_mult": 1},  # 1,670 params
             {"d_model": 4, "depth": 2, "n_heads": 2, "d_ff_mult": 2},  # 8,753 params
@@ -58,7 +59,7 @@ class MetaTransformerModels:
             {"d_model": 384, "depth": 8, "n_heads": 16, "d_ff_mult": 48},  # 128,511,487 params
             {"d_model": 512, "depth": 8, "n_heads": 16, "d_ff_mult": 32},  # 153,943,295 params
         ]
-
+        # fmt: on
 
         self.vocab_size = vocab_size
         self.max_seq_len = max_seq_len
@@ -123,9 +124,8 @@ class XTransformerModel(TransformerWrapper):
         self.n_heads = n_heads
         self.d_ff_mult = d_ff_mult
         self.use_factorized = use_factorized
-        self.additional_dim = (
-            5 if use_factorized else 3
-        )  # For concatenated positions
+        self.additional_dim = 5 if use_factorized else 3  # For concatenated positions
+        self.name = "Transformer"
 
         # Initialize base TransformerWrapper without its own embedding
         super().__init__(
@@ -184,7 +184,6 @@ class XTransformerModel(TransformerWrapper):
         self.num_params = sum(
             p.numel() for name, p in self.named_parameters() if "token_emb" not in name
         )
-
 
     def forward(self, x, positions, distance_matrix=None, mask=None):
         """Forward pass of the transformer model.

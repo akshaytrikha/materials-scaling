@@ -27,6 +27,7 @@ class EquiformerS2EF(nn.Module):
         super().__init__()
         # 1) Create backbone
         self.backbone = EquiformerV2Backbone(**backbone_config)
+        self.name = "EquiformerV2"
 
         # 2) Determine the embedding dimension based on the backbone configuration
         # For EquiformerV2, the node embedding dimension depends on the configuration
