@@ -419,6 +419,14 @@ def train(
                 )
                 total_train_loss = train_loss_dict["total_loss"]
                 total_train_loss.backward()
+                
+                if distributed:
+                    # Synchronize gradients across processes
+                    for param in model.parameters():
+                        if param.grad is not None:
+                            dist.all_reduce(param.grad.data, op=dist.ReduceOp.SUM)
+                            param.grad.data /= dist.get_world_size()
+                
                 torch.nn.utils.clip_grad_norm_(model.parameters(), gradient_clip)
                 optimizer.step()
 
@@ -442,7 +450,16 @@ def train(
 
         if distributed:
             train_loss_tensor = torch.tensor(train_loss_sum, device=device)
+            energy_loss_tensor = torch.tensor(energy_loss_sum, device=device)
+            force_loss_tensor = torch.tensor(force_loss_sum, device=device)
+            stress_iso_loss_tensor = torch.tensor(stress_iso_loss_sum, device=device)
+            stress_aniso_loss_tensor = torch.tensor(stress_aniso_loss_sum, device=device)
+            
             train_loss_sum = reduce_tensor(train_loss_tensor, average=True).item()
+            energy_loss_sum = reduce_tensor(energy_loss_tensor, average=True).item()
+            force_loss_sum = reduce_tensor(force_loss_tensor, average=True).item()
+            stress_iso_loss_sum = reduce_tensor(stress_iso_loss_tensor, average=True).item()
+            stress_aniso_loss_sum = reduce_tensor(stress_aniso_loss_tensor, average=True).item()
 
         avg_epoch_train_loss = train_loss_sum / n_train_batches
         avg_epoch_energy_loss = energy_loss_sum / n_train_batches

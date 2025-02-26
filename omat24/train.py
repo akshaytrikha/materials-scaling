@@ -64,6 +64,7 @@ def main(rank=None, world_size=None):
     if world_size is not None:
         setup_ddp(rank, world_size)
         DEVICE = torch.device(f"cuda:{rank}")
+        dist.barrier()
 
     # Convinience for running all datasets
     if args.datasets[0] == "all":
@@ -170,7 +171,6 @@ def main(rank=None, world_size=None):
                 model = DDP(
                     model,
                     device_ids=[rank],
-                    find_unused_parameters=True,
                     broadcast_buffers=False,
                 )
 
@@ -240,16 +240,22 @@ def main(rank=None, world_size=None):
             )
 
             # Save checkpoint
-            Path("checkpoints").mkdir(exist_ok=True)
-            torch.save(
-                {
-                    "model_state_dict": trained_model.state_dict(),
-                    "losses": losses,
-                    "batch_size": batch_size,
-                    "lr": lr,
-                },
-                checkpoint_path,
-            )
+            if is_main_process:  # Only save on main process
+                Path("checkpoints").mkdir(exist_ok=True)
+                model_state = (
+                    trained_model.module.state_dict()
+                    if isinstance(trained_model, DDP)
+                    else trained_model.state_dict()
+                )
+                torch.save(
+                    {
+                        "model_state_dict": model_state,
+                        "losses": losses,
+                        "batch_size": batch_size,
+                        "lr": lr,
+                    },
+                    checkpoint_path,
+                )
 
             if is_main_process:
                 progress_bar.close()
@@ -259,7 +265,9 @@ def main(rank=None, world_size=None):
         f"\nTraining completed. {'Results continuously saved to ' + str(results_path) if log else 'No experiment log was written.'}"
     )
 
+    # Add barrier before cleanup
     if world_size is not None:
+        dist.barrier()
         cleanup_ddp()
 
     if log:

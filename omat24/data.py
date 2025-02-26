@@ -90,8 +90,8 @@ def get_dataloaders(
 
     # Configure samplers for DDP
     if distributed:
-        train_sampler = DistributedSampler(train_subset)
-        val_sampler = DistributedSampler(val_subset, shuffle=False)
+        train_sampler = DistributedSampler(train_dataset)
+        val_sampler = DistributedSampler(val_dataset, shuffle=False)
         shuffle = False  # Sampler handles shuffling
     else:
         train_sampler = None
