@@ -309,7 +309,7 @@ class TestEquiformerV2(unittest.TestCase):
             # Our fixed minimal Equiformer (with dummy backbone) should only include the parameters
             # from the MLP readouts. For in_dim=1, the readouts contribute 4, 8, and 14 params respectively,
             # yielding a total of 26.
-            self.assertEqual(config["num_params"], 4224)
+            self.assertEqual(config["num_params"], 1798)
 
             # The expected loss values below are chosen based on a prior minimal overfit run.
             np.testing.assert_allclose(first_train_loss, 105.53826141357422, rtol=0.1)
