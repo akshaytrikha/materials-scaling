@@ -106,6 +106,7 @@ def get_dataloaders(
             shuffle=shuffle and not distributed,
             sampler=train_sampler,
             num_workers=train_workers,
+            pin_memory=True,
         )
         val_loader = PyGDataLoader(
             val_dataset,
@@ -113,6 +114,7 @@ def get_dataloaders(
             shuffle=False,
             sampler=val_sampler,
             num_workers=val_workers,
+            pin_memory=True,
         )
     else:
         # Set maximum number of atoms for padding
@@ -137,7 +139,7 @@ def get_dataloaders(
             collate_fn=collate_fn,
             num_workers=train_workers,
             persistent_workers=train_workers > 0,
-            pin_memory=torch.cuda.is_available(),
+            pin_memory=True,
         )
         val_loader = DataLoader(
             val_dataset,
@@ -147,7 +149,7 @@ def get_dataloaders(
             collate_fn=collate_fn,
             num_workers=val_workers,
             persistent_workers=val_workers > 0,
-            pin_memory=torch.cuda.is_available(),
+            pin_memory=True,
         )
 
     return train_loader, val_loader

@@ -372,7 +372,7 @@ def train(
     flop_counter = FlopCounterMode(display=False)
     flops_per_epoch = 0
     for epoch in range(1, total_epochs):
-        if distributed:
+        if distributed and hasattr(train_loader, 'sampler') and hasattr(train_loader.sampler, 'set_epoch'):
             train_loader.sampler.set_epoch(epoch)
 
         model.train()

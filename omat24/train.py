@@ -145,6 +145,7 @@ def main(rank=None, world_size=None):
             val_workers=args.val_workers,
             graph=graph,
             factorize=use_factorize,
+            distributed=world_size is not None,
         )
         dataset_size = len(train_loader.dataset)
         if is_main_process:
