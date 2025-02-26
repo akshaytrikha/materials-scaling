@@ -3,29 +3,6 @@ import torch.nn as nn
 from x_transformers import TransformerWrapper, Encoder
 
 
-class CombinedEmbedding(nn.Module):
-    def __init__(self, num_tokens, d_model, additional_dim=3):
-        super().__init__()
-        self.token_emb = nn.Embedding(num_tokens, d_model)
-        self.position_proj = nn.Linear(
-            additional_dim, d_model
-        )  # Project 3D positions to d_model
-
-    def forward(self, x, positions):
-        """
-        Args:
-            x: Tensor of shape [M, A] containing atomic numbers.
-            positions: Tensor of shape [M, A, 3] containing 3D atomic positions.
-        Returns:
-            combined_emb: Tensor of shape [M, A, d_model]
-        """
-        token_embeddings = self.token_emb(x)
-        pos_embeddings = self.position_proj(positions)
-        combined_emb = token_embeddings + pos_embeddings  # [M, A, d_model]
-
-        return combined_emb
-
-
 class ConcatenatedEmbedding(nn.Module):
     def __init__(self, num_tokens, d_model):
         super().__init__()
@@ -37,13 +14,13 @@ class ConcatenatedEmbedding(nn.Module):
             x: Tensor of shape [M, A] containing atomic numbers.
             positions: Tensor of shape [M, A, 3] containing 3D atomic positions.
         Returns:
-            combined_emb: Tensor of shape [M, A, d_model + 3]
+            concatenated_emb: Tensor of shape [M, A, d_model + 3]
         """
         token_embeddings = self.token_emb(x)
-        combined_emb = torch.cat(
+        concatenated_emb = torch.cat(
             [token_embeddings, positions], dim=-1
         )  # [M, A, d_model + 3 or 5]
-        return combined_emb
+        return concatenated_emb
 
 
 class MetaTransformerModels:
@@ -51,7 +28,6 @@ class MetaTransformerModels:
         self,
         vocab_size,
         max_seq_len,
-        concatenated=False,
         use_factorized=False,
     ):
         """Initializes TransformerModels with a list of configurations.
@@ -61,39 +37,28 @@ class MetaTransformerModels:
             max_seq_len (int): Maximum sequence length for the transformer.
         """
         self.configurations = [
-            # 1,670 parameters
-            {
-                "d_model": 1,
-                "depth": 1,
-                "n_heads": 1,
-                "d_ff_mult": 1,
-                "concatenated": concatenated,
-            },
-            # 8,753 params
-            {
-                "d_model": 4,
-                "depth": 2,
-                "n_heads": 2,
-                "d_ff_mult": 2,
-                "concatenated": concatenated,
-            },
-            # 108,503 params
-            {
-                "d_model": 8,
-                "depth": 8,
-                "n_heads": 4,
-                "d_ff_mult": 8,
-                "concatenated": concatenated,
-            },
-            # 1,720,771 parameters
-            {
-                "d_model": 64,
-                "depth": 12,
-                "n_heads": 4,
-                "d_ff_mult": 8,
-                "concatenated": concatenated,
-            },
+            {"d_model": 1, "depth": 1, "n_heads": 1, "d_ff_mult": 1},  # 1,670 params
+            {"d_model": 4, "depth": 2, "n_heads": 2, "d_ff_mult": 2},  # 8,753 params
+            {"d_model": 8, "depth": 2, "n_heads": 4, "d_ff_mult": 2},  # 25,541 params
+            {"d_model": 8, "depth": 4, "n_heads": 4, "d_ff_mult": 4},  # 51,171 params
+            {"d_model": 16, "depth": 4, "n_heads": 4, "d_ff_mult": 4},  # 93,851 params
+            {"d_model": 16, "depth": 6, "n_heads": 4, "d_ff_mult": 8},  # 156,589 params
+            {"d_model": 24, "depth": 6, "n_heads": 6, "d_ff_mult": 8},  # 327,061 params
+            {"d_model": 32, "depth": 8, "n_heads": 8, "d_ff_mult": 8},  # 742,815 params
+            {"d_model": 32, "depth": 12, "n_heads": 8, "d_ff_mult": 8},  # 1,109,475 params
+            {"d_model": 64, "depth": 6, "n_heads": 8, "d_ff_mult": 16},  # 1,719,565 params
+            {"d_model": 48, "depth": 12, "n_heads": 8, "d_ff_mult": 12},  # 2,028,739 params
+            {"d_model": 64, "depth": 8, "n_heads": 8, "d_ff_mult": 16},  # 2,283,839 params
+            {"d_model": 96, "depth": 8, "n_heads": 8, "d_ff_mult": 16},  # 4,198,303 params
+            {"d_model": 128, "depth": 8, "n_heads": 8, "d_ff_mult": 16},  # 6,645,247 params
+            {"d_model": 128, "depth": 10, "n_heads": 16, "d_ff_mult": 16},  # 10,967,985 params
+            {"d_model": 192, "depth": 8, "n_heads": 12, "d_ff_mult": 24},  # 19,613,695 params
+            {"d_model": 256, "depth": 6, "n_heads": 8, "d_ff_mult": 32},  # 29,298,349 params
+            {"d_model": 256, "depth": 8, "n_heads": 16, "d_ff_mult": 32},  # 43,207,167 params
+            {"d_model": 384, "depth": 8, "n_heads": 16, "d_ff_mult": 48},  # 128,511,487 params
+            {"d_model": 512, "depth": 8, "n_heads": 16, "d_ff_mult": 32},  # 153,943,295 params
         ]
+
 
         self.vocab_size = vocab_size
         self.max_seq_len = max_seq_len
@@ -120,7 +85,6 @@ class MetaTransformerModels:
             depth=config["depth"],
             n_heads=config["n_heads"],
             d_ff_mult=config["d_ff_mult"],
-            concatenated=config["concatenated"],
             use_factorized=self.use_factorized,
         )
 
@@ -142,7 +106,6 @@ class XTransformerModel(TransformerWrapper):
         depth,
         n_heads,
         d_ff_mult,
-        concatenated,
         use_factorized,
     ):
         """Initializes XTransformerModel with specified configurations.
@@ -153,7 +116,6 @@ class XTransformerModel(TransformerWrapper):
             depth (int): Number of transformer layers.
             n_heads (int): Number of attention heads.
             d_ff_mult (int): Multiplier for the feed-forward network dimension.
-            concatenated (bool): Whether to concatenate positional information.
             use_factorized (bool): Whether to use factorized distances instead of positions.
         """
         self.embedding_dim = d_model
@@ -162,7 +124,7 @@ class XTransformerModel(TransformerWrapper):
         self.d_ff_mult = d_ff_mult
         self.use_factorized = use_factorized
         self.additional_dim = (
-            5 if use_factorized else 3 if concatenated else 0
+            5 if use_factorized else 3
         )  # For concatenated positions
 
         # Initialize base TransformerWrapper without its own embedding
@@ -180,10 +142,7 @@ class XTransformerModel(TransformerWrapper):
             use_abs_pos_emb=False,  # Disable internal positional embeddings
         )
 
-        if concatenated:
-            self.token_emb = ConcatenatedEmbedding(num_tokens, d_model)
-        else:
-            self.token_emb = CombinedEmbedding(num_tokens, d_model, self.additional_dim)
+        self.token_emb = ConcatenatedEmbedding(num_tokens, d_model)
 
         # Predictors for Energy, Forces, and Stresses
         self.energy_1 = nn.Linear(
@@ -226,6 +185,7 @@ class XTransformerModel(TransformerWrapper):
             p.numel() for name, p in self.named_parameters() if "token_emb" not in name
         )
 
+
     def forward(self, x, positions, distance_matrix=None, mask=None):
         """Forward pass of the transformer model.
 
@@ -240,14 +200,14 @@ class XTransformerModel(TransformerWrapper):
                 - energy (Tensor): [M]
                 - stresses (Tensor): [M, 6]
         """
-        # Obtain combined embeddings
+        # Obtain concatenated embeddings
         if self.use_factorized:
-            combined_emb = self.token_emb(x, distance_matrix)  # [M, A, d_model]
+            concatenated_emb = self.token_emb(x, distance_matrix)  # [M, A, d_model]
         else:
-            combined_emb = self.token_emb(x, positions)  # [M, A, d_model]
+            concatenated_emb = self.token_emb(x, positions)  # [M, A, d_model]
 
-        # Pass combined embeddings to the transformer
-        output = self.attn_layers(x=combined_emb, mask=mask)  # [M, A, d_model]
+        # Pass embeddings to the transformer
+        output = self.attn_layers(x=concatenated_emb, mask=mask)  # [M, A, d_model]
 
         # Predict forces
         forces = self.force_2(torch.tanh(self.force_1(output)))  # [M, A, 3]

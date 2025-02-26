@@ -50,6 +50,7 @@ def get_dataloaders(
     train_workers: int = 0,
     val_workers: int = 0,
     graph: bool = False,
+    factorize: bool = False,
 ):
     """Creates training and validation DataLoaders from a list of dataset paths.
     Each dataset is loaded, split into training and validation subsets, and then
@@ -66,6 +67,7 @@ def get_dataloaders(
         train_workers (int, optional): Number of worker processes for the training DataLoader.
         val_workers (int, optional): Number of worker processes for the validation DataLoader.
         graph (bool, optional): Whether to create PyG DataLoaders for graph datasets.
+        factorize (bool, optional): Whether to factorize the distance matrix into a low-rank matrix.
 
     Returns:
         tuple: (train_loader, val_loader)
@@ -110,10 +112,10 @@ def get_dataloaders(
 
         # Select the appropriate collate function
         if batch_padded:
-            collate_fn = custom_collate_fn_batch_padded
+            collate_fn = lambda batch: custom_collate_fn_batch_padded(batch, factorize)
         else:
             collate_fn = lambda batch: custom_collate_fn_dataset_padded(
-                batch, max_n_atoms
+                batch, max_n_atoms, factorize
             )
 
         train_loader = DataLoader(

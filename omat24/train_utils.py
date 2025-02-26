@@ -1,4 +1,5 @@
 # External
+import copy
 import torch
 import torch.nn as nn
 from typing import Union
@@ -17,6 +18,7 @@ def forward_pass(
     graph: bool,
     training: bool,
     device: torch.device,
+    factorize: bool,
 ):
     """A common forward pass function for inference across different architectures & dataloaders.
 
@@ -26,6 +28,7 @@ def forward_pass(
         graph (bool): Whether the model is a graph-based model.
         training (bool): Whether the model is in training mode.
         device (torch.device): The device to run the model on.
+        factorize (bool): Whether to factorize the distance matrix.
     """
     if training or graph:
         context_manager = torch.enable_grad()
@@ -37,18 +40,24 @@ def forward_pass(
 
             atomic_numbers = batch["atomic_numbers"].to(device, non_blocking=True)
             positions = batch["positions"].to(device, non_blocking=True)
-            factorized_distances = batch["factorized_matrix"].to(
-                device, non_blocking=True
-            )
             true_forces = batch["forces"].to(device, non_blocking=True)
             true_energy = batch["energy"].to(device, non_blocking=True)
             true_stress = batch["stress"].to(device, non_blocking=True)
             mask = atomic_numbers != 0
             natoms = mask.sum(dim=1)
 
-            pred_forces, pred_energy, pred_stress = model(
-                atomic_numbers, positions, factorized_distances, mask
-            )
+            if factorize:
+                factorized_distances = batch["factorized_matrix"].to(
+                    device, non_blocking=True
+                )
+                pred_forces, pred_energy, pred_stress = model(
+                    atomic_numbers, positions, factorized_distances, mask
+                )
+            else:
+                distance_matrix = batch["distance_matrix"].to(device, non_blocking=True)
+                pred_forces, pred_energy, pred_stress = model(
+                    atomic_numbers, positions, distance_matrix, mask
+                )
 
         elif isinstance(batch, Batch):
             # PyG Batch
@@ -110,7 +119,7 @@ def collect_samples_helper(num_visualization_samples, dataset, model, graph, dev
             true_stress,
             _,
             _,
-        ) = forward_pass(model, batch, graph, False, device)
+        ) = forward_pass(model, batch, graph, False, device, False)
 
         if not graph:
             pred_forces = pred_forces.squeeze(0)
@@ -169,7 +178,7 @@ def collect_samples_for_visualizing(
     }
 
 
-def run_validation(model, val_loader, graph, device):
+def run_validation(model, val_loader, graph, device, factorize):
     """
     Compute and return the average validation loss.
 
@@ -201,7 +210,12 @@ def run_validation(model, val_loader, graph, device):
             mask,
             natoms,
         ) = forward_pass(
-            model=model, batch=batch, graph=graph, training=False, device=device
+            model=model,
+            batch=batch,
+            graph=graph,
+            training=False,
+            device=device,
+            factorize=factorize,
         )
 
         # Mapping atoms to their respective structures (for graphs)
@@ -245,7 +259,8 @@ def train(
     pbar,
     graph,
     device,
-    patience=50,
+    patience=5,
+    factorize=False,
     results_path=None,
     experiment_results=None,
     data_size_key=None,
@@ -297,7 +312,7 @@ def train(
         val_force_loss,
         val_stress_iso_loss,
         val_stress_aniso_loss,
-    ) = run_validation(model, val_loader, graph, device)
+    ) = run_validation(model, val_loader, graph, device, factorize)
     losses[0] = {"val_loss": float(val_loss)}
     if writer is not None:
         # Logging each metric individually using log_tb_metrics
@@ -329,8 +344,10 @@ def train(
 
     # Early stopping setup
     best_val_loss = val_loss
+    best_val_model = copy.deepcopy(model)
+    best_val_loss_dict = copy.deepcopy(losses)
     epochs_since_improvement = 0
-    last_val_loss = val_loss
+
     samples = None
 
     # Training loop
@@ -359,7 +376,12 @@ def train(
                     mask,
                     natoms,
                 ) = forward_pass(
-                    model=model, batch=batch, graph=graph, training=True, device=device
+                    model=model,
+                    batch=batch,
+                    graph=graph,
+                    training=True,
+                    device=device,
+                    factorize=factorize,
                 )
                 # Mapping atoms to their respective structures (for graphs)
                 structure_index = (
@@ -391,7 +413,7 @@ def train(
                 current_avg_loss = train_loss_sum / (batch_idx + 1)
 
                 pbar.set_description(
-                    f"train_loss={current_avg_loss:.2f} val_loss={last_val_loss:.2f}"
+                    f"train_loss={current_avg_loss:.2f} val_loss={val_loss:.2f}"
                 )
         if epoch == 1:
             flops_per_epoch = flop_counter.get_total_flops()
@@ -456,7 +478,7 @@ def train(
                 val_force_loss,
                 val_stress_iso_loss,
                 val_stress_aniso_loss,
-            ) = run_validation(model, val_loader, graph, device)
+            ) = run_validation(model, val_loader, graph, device, factorize)
             if writer is not None:
                 log_tb_metrics(
                     {
@@ -471,18 +493,19 @@ def train(
                     tensorboard_prefix,
                     train=False,
                 )
-            last_val_loss = val_loss
-            losses[epoch]["val_loss"] = float(val_loss)
+            losses[epoch]["val_loss"] = val_loss
 
             # Early stopping check
             if val_loss < best_val_loss:
                 best_val_loss = val_loss
                 epochs_since_improvement = 0
+                best_val_model = copy.deepcopy(model)
+                best_val_loss_dict = copy.deepcopy(losses)
             else:
                 epochs_since_improvement += 1
                 if epochs_since_improvement >= patience:
                     print(f"Early stopping triggered at epoch {epoch}")
-                    return model, losses
+                    return best_val_model, best_val_loss_dict
 
         # Visualization samples every 'visualize_every' epochs
         if epoch % visualize_every == 0:
