@@ -60,7 +60,6 @@ def main():
     # User Hyperparam Feedback
     params = vars(args) | {
         "dataset_split": args.split_name,
-        "dataset_paths": dataset_paths,
     }
     pprint.pprint(params)
     print()
@@ -117,6 +116,7 @@ def main():
             train_data_fraction=data_fraction,
             batch_size=batch_size,
             seed=SEED,
+            architecture=args.architecture,
             batch_padded=False,
             val_data_fraction=args.val_data_fraction,
             train_workers=args.train_workers,
