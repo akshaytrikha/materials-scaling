@@ -78,6 +78,7 @@ def get_dataloaders(
 
     # Load each dataset from its path and split it individually
     for path in dataset_paths:
+        print("Loading dataset from", path)
         dataset = OMat24Dataset(dataset_paths=[path], graph=graph)
         train_subset, val_subset, _, _ = split_dataset(
             dataset, train_data_fraction, val_data_fraction, seed
@@ -172,17 +173,40 @@ class OMat24Dataset(Dataset):
         graph: bool = False,
         debug: bool = False,
     ):
-        self.dataset = AseDBDataset(config=dict(src=dataset_paths, **config_kwargs))
+        self.dataset_paths = dataset_paths  # Store paths instead of dataset
+        self.config_kwargs = config_kwargs
         self.augment = augment
         self.graph = graph
         self.debug = debug
 
+        # Initialize the dataset
+        self._init_dataset()
+
         if len(dataset_paths) > 1:
             self.max_n_atoms = 180
         else:
-            split_name = dataset_paths[0].parent.name  # Parent directory's name
+            split_name = dataset_paths[0].parent.name
             dataset_name = dataset_paths[0].name
             self.max_n_atoms = DATASET_INFO[split_name][dataset_name]["max_n_atoms"]
+
+    def _init_dataset(self):
+        """Initialize the ASE dataset"""
+        self.dataset = AseDBDataset(
+            config=dict(src=self.dataset_paths, **self.config_kwargs)
+        )
+
+    def __getstate__(self):
+        """Custom pickling method"""
+        state = self.__dict__.copy()
+        # Don't pickle the ASE dataset
+        state["dataset"] = None
+        return state
+
+    def __setstate__(self, state):
+        """Custom unpickling method"""
+        self.__dict__.update(state)
+        # Reinitialize the dataset when unpickling
+        self._init_dataset()
 
     def __len__(self):
         return len(self.dataset)
