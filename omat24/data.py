@@ -244,7 +244,6 @@ class OMat24Dataset(Dataset):
             # Create PyG Data object
             sample = PyGData(**pyg_args)
             sample.natoms = torch.tensor(len(atoms))
-            sample.postiions = positions
             sample.idx = idx
             sample.symbols = symbols
 
