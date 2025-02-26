@@ -45,7 +45,9 @@ class EquiformerS2EF(nn.Module):
         self.stress_head = MLPReadout(self.in_dim, 6)
 
         # Calculate number of parameters
-        self.num_params = sum(p.numel() for name, p in self.named_parameters())
+        self.num_params = sum(
+            p.numel() for name, p in self.named_parameters() if "embedding" not in name
+        )
 
     def forward(self, batch):
         """
@@ -99,7 +101,7 @@ class MetaEquiformerV2Models:
         ),
     ):
         self.configurations = [
-            # # 1306 params
+            # # Minimal
             # {
             #     "regress_forces": True,
             #     "num_layers": 2,
@@ -117,78 +119,126 @@ class MetaEquiformerV2Models:
             #     "edge_channels": 1,
             #     "max_num_elements": 119,
             # },
-            # Luis 31M params
+            # Luis 31M (ours 58M)
             {
+                "regress_forces": True,
+                "use_pbc": True,
+                "use_pbc_single": True,
+                "otf_graph": True,
+                "enforce_max_neighbors_strictly": False,
+                "max_neighbors": 20,
+                "max_radius": 12.0,
+                "max_num_elements": 96,
                 "num_layers": 8,
-                "sphere_channels": 32,
-                "attn_hidden_channels": 16,
+                "sphere_channels": 128,
+                "attn_hidden_channels": 64,
                 "num_heads": 8,
-                "attn_alpha_channels": 16,
-                "attn_value_channels": 4,
-                "ffn_hidden_channels": 32,
+                "attn_alpha_channels": 64,
+                "attn_value_channels": 16,
+                "ffn_hidden_channels": 128,
                 "norm_type": "layer_norm_sh",
                 "lmax_list": [4],
                 "mmax_list": [2],
                 "grid_resolution": 18,
-                "num_sphere_samples": 32,
-                "edge_channels": 32,
-                "max_num_elements": 119,
-                "activation_checkpoint": True,  # for memory optimization
+                "num_sphere_samples": 128,
+                "edge_channels": 128,
+                "use_atom_edge_embedding": True,
+                "share_atom_edge_embedding": False,
+                "use_m_share_rad": False,
+                "distance_function": "gaussian",
+                "num_distance_basis": 512,
+                "attn_activation": "silu",
+                "use_s2_act_attn": False,
+                "use_attn_renorm": True,
+                "ffn_activation": "silu",
+                "use_gate_act": False,
+                "use_grid_mlp": True,
+                "use_sep_s2_act": True,
+                "alpha_drop": 0.1,
+                "drop_path_rate": 0.1,
+                "proj_drop": 0.0,
+                "weight_init": "uniform",
             },
-            # # Luis 31M params
-            # {
-            #     "num_layers": 8,
-            #     "sphere_channels": 128,
-            #     "attn_hidden_channels": 64,
-            #     "num_heads": 8,
-            #     "attn_alpha_channels": 64,
-            #     "attn_value_channels": 16,
-            #     "ffn_hidden_channels": 128,
-            #     "norm_type": "layer_norm_sh",
-            #     "lmax_list": [4],
-            #     "mmax_list": [2],
-            #     "grid_resolution": 18,
-            #     "num_sphere_samples": 128,
-            #     "edge_channels": 128,
-            #     "max_num_elements": 119,
-            #     "activation_checkpoint": True,  # for memory optimization
-            # },
-            # # Luis 86M params
-            # {
-            #     "num_layers": 10,
-            #     "sphere_channels": 128,
-            #     "attn_hidden_channels": 64,
-            #     "num_heads": 8,
-            #     "attn_alpha_channels": 64,
-            #     "attn_value_channels": 16,
-            #     "ffn_hidden_channels": 128,
-            #     "norm_type": "layer_norm_sh",
-            #     "lmax_list": [6],
-            #     "mmax_list": [4],
-            #     "grid_resolution": 18,
-            #     "num_sphere_samples": 128,
-            #     "edge_channels": 128,
-            #     "max_num_elements": 119,
-            #     "activation_checkpoint": True,  # for memory optimization
-            # },
-            # # Luis 153M params
-            # {
-            #     "num_layers": 20,
-            #     "sphere_channels": 128,
-            #     "attn_hidden_channels": 64,
-            #     "num_heads": 8,
-            #     "attn_alpha_channels": 64,
-            #     "attn_value_channels": 16,
-            #     "ffn_hidden_channels": 128,
-            #     "norm_type": "layer_norm_sh",
-            #     "lmax_list": [6],
-            #     "mmax_list": [3],
-            #     "grid_resolution": 18,
-            #     "num_sphere_samples": 128,
-            #     "edge_channels": 128,
-            #     "max_num_elements": 119,
-            #     "activation_checkpoint": True,  # for memory optimization
-            # },
+            # Luis 86M (ours 196M)
+            {
+                "regress_forces": True,
+                "use_pbc": True,
+                "use_pbc_single": True,
+                "otf_graph": True,
+                "enforce_max_neighbors_strictly": False,
+                "max_neighbors": 20,
+                "max_radius": 12.0,
+                "max_num_elements": 96,
+                "avg_num_nodes": 31.17,
+                "avg_degree": 61.95,
+                "num_layers": 10,  # Updated from 8 to 10
+                "sphere_channels": 128,
+                "attn_hidden_channels": 64,
+                "num_heads": 8,
+                "attn_alpha_channels": 64,
+                "attn_value_channels": 16,
+                "ffn_hidden_channels": 128,
+                "norm_type": "layer_norm_sh",
+                "lmax_list": [6],  # Updated from 4 to 6
+                "mmax_list": [4],  # Updated from 2 to 4
+                "grid_resolution": 18,
+                "num_sphere_samples": 128,
+                "edge_channels": 128,
+                "use_atom_edge_embedding": True,
+                "share_atom_edge_embedding": False,
+                "use_m_share_rad": False,
+                "distance_function": "gaussian",
+                "num_distance_basis": 512,
+                "attn_activation": "silu",
+                "use_s2_act_attn": False,
+                "use_attn_renorm": True,
+                "ffn_activation": "silu",
+                "use_gate_act": False,
+                "use_grid_mlp": True,
+                "use_sep_s2_act": True,
+                "alpha_drop": 0.1,
+                "drop_path_rate": 0.1,
+                "proj_drop": 0.0,
+                "weight_init": "uniform",
+            },
+            # Luis 153M (ours 263M)
+            {
+                "regress_forces": True,
+                "use_pbc": True,
+                "use_pbc_single": True,
+                "otf_graph": True,
+                "enforce_max_neighbors_strictly": False,
+                "max_neighbors": 20,
+                "max_radius": 12.0,
+                "max_num_elements": 96,
+                "avg_num_nodes": 31.17,
+                "avg_degree": 61.95,
+                "num_layers": 20,  # Increased to 20 from previous 10
+                "sphere_channels": 128,
+                "attn_hidden_channels": 64,
+                "num_heads": 8,
+                "attn_alpha_channels": 64,
+                "attn_value_channels": 16,
+                "ffn_hidden_channels": 128,
+                "norm_type": "layer_norm_sh",
+                "lmax_list": [6],  # Same as previous
+                "mmax_list": [3],  # Changed from 4 to 3
+                "grid_resolution": 18,
+                "num_sphere_samples": 128,
+                "edge_channels": 128,
+                "use_atom_edge_embedding": True,
+                "distance_function": "gaussian",
+                "num_distance_basis": 512,
+                "attn_activation": "silu",
+                "use_s2_act_attn": False,
+                "ffn_activation": "silu",
+                "use_gate_act": False,
+                "use_grid_mlp": True,
+                "alpha_drop": 0.1,
+                "drop_path_rate": 0.1,
+                "proj_drop": 0.0,
+                "weight_init": "uniform",
+            },
         ]
         self.device = device
 
