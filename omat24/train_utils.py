@@ -79,7 +79,7 @@ def forward_pass(
                     edge_index,
                     structure_index,
                 )
-            elif model.name == "EquiformerV2":
+            elif model.name in ["GemNetGP", "EquiformerV2"]:
                 # equiformer constructs graphs internally
                 pred_forces, pred_energy, pred_stress = model(batch)
 

@@ -20,6 +20,7 @@ from models.fcn import MetaFCNModels
 from models.transformer_models import MetaTransformerModels
 from models.schnet import MetaSchNetModels
 from models.equiformer_v2 import MetaEquiformerV2Models
+from models.gemnet_gp import MetaGemNetGPModels
 from train_utils import train
 
 # Set seed & device
@@ -68,7 +69,7 @@ def main():
     lr = args.lr[0]
     num_epochs = args.epochs
     use_factorize = args.factorize
-    graph = args.architecture in ["SchNet", "EquiformerV2"]
+    graph = args.architecture in ["GemNetGP", "SchNet", "EquiformerV2"]
 
     # Initialize meta model class based on architecture choice
     if args.architecture == "FCN":
@@ -93,6 +94,8 @@ def main():
         meta_models = MetaSchNetModels(device=DEVICE)
     elif args.architecture == "EquiformerV2":
         meta_models = MetaEquiformerV2Models(device=DEVICE)
+    elif args.architecture == "GemNetGP":
+        meta_models = MetaGemNetGPModels(device=DEVICE)
 
     # Create results path and initialize file if logging is enabled
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
