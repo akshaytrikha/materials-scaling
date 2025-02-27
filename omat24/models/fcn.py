@@ -5,20 +5,20 @@ import torch.nn as nn
 class MetaFCNModels:
     def __init__(self, vocab_size=119, use_factorized=False):
         self.configurations = [
-            # 29 params
-            # {"embedding_dim": 1, "hidden_dim": 1, "depth": 1},
-            # 138 params
-            {"embedding_dim": 4, "hidden_dim": 4, "depth": 2},
-            # 346 params
-            # {"embedding_dim": 6, "hidden_dim": 6, "depth": 4},
-            # 1274 params
-            {"embedding_dim": 8, "hidden_dim": 16, "depth": 3},
-            # 4330 params
-            # {"embedding_dim": 16, "hidden_dim": 32, "depth": 3},
-            # 5962 params
-            # {"embedding_dim": 32, "hidden_dim": 32, "depth": 4},
-            # 99338 params
-            {"embedding_dim": 64, "hidden_dim": 64, "depth": 22},
+            # 970 params (includes embedding layer)
+            {"embedding_dim": 8, "hidden_dim": 16, "depth": 2},
+            # 11.6k parameters (includes embedding layer)
+            {"embedding_dim": 24, "hidden_dim": 48, "depth": 4},
+            # 104k parameters (includes embedding layer)
+            {"embedding_dim": 60, "hidden_dim": 108, "depth": 8},
+            # 470k parameters (includes embedding layer)
+            {"embedding_dim": 96, "hidden_dim": 192, "depth": 12},
+            # 1M parameters (includes embedding layer)
+            {"embedding_dim": 128, "hidden_dim": 256, "depth": 15},
+            # # 4.3M parameters (includes embedding layer)
+            # {"embedding_dim": 256, "hidden_dim": 512, "depth": 16},
+            # # 10.9M parameters (includes embedding layer)
+            # {"embedding_dim": 384, "hidden_dim": 768, "depth": 18},
         ]
         self.vocab_size = vocab_size
         self.use_factorized = use_factorized
@@ -58,6 +58,7 @@ class FCNModel(nn.Module):
         self.hidden_dim = hidden_dim
         self.depth = depth
         self.use_factorized = use_factorized
+        self.name = "FCN"
 
         # Embedding for atomic numbers
         self.embedding = nn.Embedding(

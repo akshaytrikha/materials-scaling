@@ -19,6 +19,7 @@ from arg_parser import get_args
 from models.fcn import MetaFCNModels
 from models.transformer_models import MetaTransformerModels
 from models.schnet import MetaSchNetModels
+from models.equiformer_v2 import MetaEquiformerV2Models
 from train_utils import train
 
 # Set seed & device
@@ -49,15 +50,16 @@ def main():
     # Download datasets if not present
     dataset_paths = []
     for dataset_name in args.datasets:
-        dataset_path = Path(f"datasets/{args.split_name}/{dataset_name}")
+        dataset_path = Path(
+            f"{args.datasets_base_path}/{args.split_name}/{dataset_name}"
+        )
         if not dataset_path.exists():
-            download_dataset(dataset_name, args.split_name)
+            download_dataset(dataset_name, args.split_name, args.datasets_base_path)
         dataset_paths.append(dataset_path)
 
     # User Hyperparam Feedback
     params = vars(args) | {
         "dataset_split": args.split_name,
-        "dataset_paths": dataset_paths,
     }
     pprint.pprint(params)
     print()
@@ -66,7 +68,7 @@ def main():
     lr = args.lr[0]
     num_epochs = args.epochs
     use_factorize = args.factorize
-    graph = args.architecture == "SchNet"
+    graph = args.architecture in ["SchNet", "EquiformerV2"]
 
     # Initialize meta model class based on architecture choice
     if args.architecture == "FCN":
@@ -82,7 +84,6 @@ def main():
         meta_models = MetaTransformerModels(
             vocab_size=args.n_elements,
             max_seq_len=max_n_atoms,
-            concatenated=True,
             use_factorized=use_factorize,
         )
     elif args.architecture == "SchNet":
@@ -90,6 +91,8 @@ def main():
             print("MPS is not supported for SchNet. Switching to CPU.")
             DEVICE = torch.device("cpu")
         meta_models = MetaSchNetModels(device=DEVICE)
+    elif args.architecture == "EquiformerV2":
+        meta_models = MetaEquiformerV2Models(device=DEVICE)
 
     # Create results path and initialize file if logging is enabled
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -113,6 +116,7 @@ def main():
             train_data_fraction=data_fraction,
             batch_size=batch_size,
             seed=SEED,
+            architecture=args.architecture,
             batch_padded=False,
             val_data_fraction=args.val_data_fraction,
             train_workers=args.train_workers,
@@ -128,6 +132,7 @@ def main():
             print(
                 f"\nModel {model_idx + 1}/{len(meta_models)} is on device {DEVICE} and has {model.num_params} parameters"
             )
+
             model.to(DEVICE)
             optimizer = optim.AdamW(model.parameters(), lr=lr)
 
@@ -173,7 +178,7 @@ def main():
                 pbar=pbar,
                 graph=graph,
                 device=DEVICE,
-                patience=50,
+                patience=5,
                 factorize=use_factorize,
                 results_path=results_path if log else None,
                 experiment_results=experiment_results if log else None,
