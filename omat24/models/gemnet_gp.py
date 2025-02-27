@@ -2,17 +2,16 @@ import torch
 import torch.nn as nn
 from torch_scatter import scatter
 from fairchem.core.models.gemnet_gp import GraphParallelGemNetT
-import warnings
 
 
 class MLPReadout(nn.Module):
-    """A simple MLP readout: node_emb -> linear -> silu -> linear -> out_dim."""
+    """A simple MLP readout: node_emb -> linear -> tanh -> linear -> out_dim."""
 
     def __init__(self, in_dim, out_dim):
         super().__init__()
         self.net = nn.Sequential(
             nn.Linear(in_dim, in_dim),
-            nn.SiLU(),
+            nn.Tanh(),
             nn.Linear(in_dim, out_dim),
         )
 
@@ -40,42 +39,6 @@ class GemNetS2EF(nn.Module):
         # Calculate number of parameters
         self.num_params = sum(p.numel() for p in self.parameters())
 
-    def prepare_batch_for_gemnet(self, batch):
-        """
-        Prepare PyG batch for GemNet model by adding required attributes
-        for periodic boundary conditions if they don't exist.
-        """
-        # Make a copy so we don't modify the original
-        batch_copy = batch.clone()
-
-        # Add cell information if not present
-        if not hasattr(batch_copy, "cell"):
-            # Create a default cubic box with large dimensions
-            num_graphs = (
-                batch_copy.natoms.shape[0]
-                if hasattr(batch_copy, "natoms")
-                else int(batch_copy.batch.max()) + 1
-            )
-            batch_copy.cell = (
-                torch.eye(3, device=batch.pos.device)
-                .unsqueeze(0)
-                .expand(num_graphs, -1, -1)
-            )
-
-        # Add periodic boundary condition flags if not present
-        if not hasattr(batch_copy, "pbc"):
-            num_graphs = (
-                batch_copy.natoms.shape[0]
-                if hasattr(batch_copy, "natoms")
-                else int(batch_copy.batch.max()) + 1
-            )
-            # Default to non-periodic
-            batch_copy.pbc = torch.zeros(
-                num_graphs, 3, dtype=torch.bool, device=batch.pos.device
-            )
-
-        return batch_copy
-
     def forward(self, batch):
         """
         Args:
@@ -85,25 +48,26 @@ class GemNetS2EF(nn.Module):
           energy  -> [N_structures]
           stress  -> [N_structures, 6]
         """
-        # Prepare the batch with necessary attributes
-        batch_prepared = self.prepare_batch_for_gemnet(batch)
+        # Create a copy of the batch to avoid modifying the original
+        batch_dict = {}
+        for key in batch.keys():
+            batch_dict[key] = getattr(batch, key)
 
-        try:
-            # The GraphParallelGemNetT backbone returns a dict with 'energy' and 'forces'
-            outputs = self.backbone(batch_prepared)
-            energy = outputs["energy"].squeeze(-1)  # [N_structures]
-            forces = outputs["forces"]  # [N_atoms, 3]
-        except Exception as e:
-            # If the model encounters an error, use fallback values
-            warnings.warn(
-                f"Error in GemNetGP backbone: {str(e)}. Using fallback values."
-            )
-            num_atoms = batch.pos.size(0)
-            num_molecules = batch.batch.max().item() + 1
+        # Ensure the distance_vec is directly accessible via dict item
+        if "edge_distance_vec" in batch_dict and "distance_vec" not in batch_dict:
+            batch_dict["distance_vec"] = batch_dict["edge_distance_vec"]
 
-            # Generate random predictions for demonstration
-            energy = torch.zeros(num_molecules, device=batch.pos.device)
-            forces = torch.zeros(num_atoms, 3, device=batch.pos.device)
+        # Create new batch with correct attributes
+        for key, value in batch_dict.items():
+            setattr(batch, key, value)
+            # Make sure it's also in the _store if using PyG Data objects
+            if hasattr(batch, "_store"):
+                batch._store[key] = value
+
+        # The GraphParallelGemNetT backbone returns a dict with 'energy' and 'forces'
+        outputs = self.backbone(batch)
+        energy = outputs["energy"].squeeze(-1)  # [N_structures]
+        forces = outputs["forces"]  # [N_atoms, 3]
 
         # For the stress prediction, create a placeholder for atom embeddings
         # In a full implementation, we would modify the backbone to return node embeddings
@@ -130,9 +94,7 @@ class MetaGemNetGPModels:
 
     def __init__(
         self,
-        device: torch.device = torch.device(
-            "cuda" if torch.cuda.is_available() else "cpu"
-        ),
+        device: torch.device,
     ):
         self.configurations = [
             # Small model (~1M params) with relaxed requirements

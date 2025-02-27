@@ -3,18 +3,19 @@ from typing import List
 import torch
 import ase
 import random
+import numpy as np
 from pathlib import Path
 from torch.utils.data import DataLoader, Subset, Dataset, ConcatDataset
 from fairchem.core.datasets import AseDBDataset
 from torch_geometric.data import Data
-from torch_geometric.data import DataLoader as PyGDataLoader
+from torch_geometric.loader import DataLoader as PyGDataLoader
+from data_utils import generate_graph
 
 # Internal
 from matrix import compute_distance_matrix, factorize_matrix, random_rotate_atoms
 from data_utils import (
     custom_collate_fn_batch_padded,
     custom_collate_fn_dataset_padded,
-    generate_graph,
     DATASET_INFO,
 )
 
@@ -61,7 +62,7 @@ def get_dataloaders(
         train_data_fraction (float): Fraction of each dataset (after validation split) to use for training.
         batch_size (int): Number of samples per batch.
         seed (int): Seed for reproducibility.
-        architecture (str): Model architecture name (e.g., "FCN", "Transformer", "SchNet", "EquiformerV2").
+        architecture (str): Model architecture name (e.g., "FCN", "Transformer", "SchNet", "EquiformerV2", "GemNetGP").
         batch_padded (bool, optional): Whether to pad variable-length tensors.
         val_data_fraction (float, optional): Fraction of each dataset to use for validation.
         train_workers (int, optional): Number of worker processes for the training DataLoader.
@@ -74,6 +75,10 @@ def get_dataloaders(
     """
     train_subsets = []
     val_subsets = []
+
+    # Set graph=True if architecture is SchNet or GemNetGP
+    if architecture in ["SchNet", "GemNetGP"]:
+        graph = True
 
     # Load each dataset from its path and split it individually
     for path in dataset_paths:
@@ -161,7 +166,7 @@ class OMat24Dataset(Dataset):
 
     Args:
         dataset_path (Path): Path to the extracted dataset directory.
-        architecture (str): Model architecture name (e.g., "FCN", "Transformer", "SchNet", "EquiformerV2").
+        architecture (str): Model architecture name (e.g., "FCN", "Transformer", "SchNet", "EquiformerV2", "GemNetGP").
         config_kwargs (dict, optional): Additional configuration parameters for AseDBDataset. Defaults to {}.
         augment (bool, optional): Whether to apply data augmentation (random rotations). Defaults to True.
         graph (bool, optional): Whether to generate graph data for PyG. Defaults to False.
@@ -207,7 +212,7 @@ class OMat24Dataset(Dataset):
         # Convert to tensors
         atomic_numbers = torch.tensor(atomic_numbers, dtype=torch.long)
         positions = torch.tensor(positions, dtype=torch.float)
-        cell = torch.tensor(cell, dtype=torch.float)
+        cell = torch.tensor(np.array(cell), dtype=torch.float)
 
         # Extract target properties (e.g., energy, forces, stress)
         energy = torch.tensor(atoms.get_potential_energy(), dtype=torch.float)
@@ -233,10 +238,30 @@ class OMat24Dataset(Dataset):
             }
 
             if self.architecture == "SchNet":
-                # Generate graph connectivity (edge_index) and edge attributes (edge_attr)
-                edge_index, edge_attr = generate_graph(positions)
+                # Generate graph connectivity (edge_index), edge attributes (edge_attr)
+                edge_index, edge_attr = generate_graph(
+                    positions,
+                    use_pbc=False,
+                    cell=None,
+                    architecture=self.architecture,
+                )
                 pyg_args["edge_index"] = edge_index
                 pyg_args["edge_attr"] = edge_attr
+
+            # elif self.architecture == "GemNetGP":
+            #     # Also generate distance vectors
+            #     edge_index, edge_attr, edge_distance_vec = generate_graph(
+            #         positions,
+            #         use_pbc=False,
+            #         cell=None,
+            #         architecture=self.architecture,
+            #     )
+            #     pyg_args["edge_index"] = edge_index
+            #     pyg_args["edge_attr"] = edge_attr
+            #     pyg_args["edge_distance_vec"] = edge_distance_vec  # Add the distance vectors
+            #     # GemNetGP compatibility: It accesses distance_vec directly as an attribute
+            #     pyg_args["distance_vec"] = edge_distance_vec
+
             elif self.architecture == "EquiformerV2":
                 pyg_args["cell"] = cell
                 pyg_args["pbc"] = torch.tensor(atoms.get_pbc(), dtype=torch.float)

@@ -41,7 +41,9 @@ def get_dataset_url(dataset_name: str, split_name: str):
         raise ValueError(f"Invalid split name: {split_name}")
 
 
-def download_dataset(dataset_name: str, split_name: str, base_path: str = "./datasets") -> None:
+def download_dataset(
+    dataset_name: str, split_name: str, base_path: str = "./datasets"
+) -> None:
     """Download and extract a dataset.
 
     Args:
@@ -352,31 +354,61 @@ def custom_collate_fn_batch_padded(
     return output
 
 
-def generate_graph(positions):
+def generate_graph(
+    positions,
+    cutoff=5.0,
+    use_pbc=False,
+    cell=None,
+    add_self_loops=False,
+    architecture=None,
+    max_neighbors=20,
+):
     """
-    Generate graph connectivity and edge attributes based on positions or distance matrix.
-    Customize this method based on how you want to define edges.
+    Generate graph connectivity and edge attributes based on positions.
 
     Args:
-        positions (torch.Tensor): [N_atoms, 3]
-        distance_matrix (torch.Tensor): [N_atoms, N_atoms]
+        positions (torch.Tensor): [N_atoms, 3] atomic coordinates
+        cutoff (float): Cutoff distance for edges
+        use_pbc (bool): Whether to use periodic boundary conditions
+        cell (torch.Tensor, optional): [3, 3] cell vectors if using PBC
+        add_self_loops (bool): Whether to include self-loops
+        architecture (str, optional): Model architecture name to use specific graph generation logic
+        max_neighbors (int, optional): Maximum number of neighbors per atom
 
     Returns:
         edge_index (torch.LongTensor): [2, num_edges]
         edge_attr (torch.Tensor): [num_edges, feature_dim]
+        (edge_vec) (torch.Tensor, optional): [num_edges, 3] returned for GemNetT
     """
-    # Example: Using radius graph with cutoff 6.0
-    cutoff = 6.0
-    edge_index = radius_graph(positions, r=cutoff, loop=False)
+    # Default graph construction using radius graph
+    if use_pbc and cell is not None:
+        # For periodic systems, we need specialized graph construction
+        # This would need to be implemented with a PBC-aware radius graph
+        raise NotImplementedError("PBC graph construction not yet implemented")
+    else:
+        # Standard radius graph construction
+        # Import here to avoid circular imports
+        from torch_geometric.nn import radius_graph
 
-    # Compute edge attributes based on distance or other features
-    # Example: Compute distance for each edge
+        # Use radius_graph with specific max_num_neighbors for consistent graph structure
+        edge_index = radius_graph(
+            positions, r=cutoff, loop=add_self_loops, max_num_neighbors=max_neighbors
+        )
+
+    # Extract source and target nodes
     row, col = edge_index
-    edge_distances = torch.norm(positions[row] - positions[col], dim=1).unsqueeze(
-        1
-    )  # [num_edges, 1]
 
-    # Example: Include distance as edge attribute
-    edge_attr = edge_distances  # You can add more features as needed
+    # Compute edge vectors and distances
+    edge_vec = positions[col] - positions[row]  # [num_edges, 3]
+    edge_dist = torch.norm(edge_vec, dim=1).unsqueeze(1)  # [num_edges, 1]
 
-    return edge_index, edge_attr
+    # Model-specific edge attribute computation
+    if architecture == "GemNetT":
+        # For GemNet, return edge vectors as both distance_vec and edge_distance_vec
+        # to ensure compatibility with GraphParallelGemNetT
+        edge_attr = edge_dist  # Could be extended with more features
+        return edge_index, edge_attr, edge_vec
+    else:
+        # Default behavior (SchNet, EquiformerV2 etc.)
+        edge_attr = edge_dist
+        return edge_index, edge_attr

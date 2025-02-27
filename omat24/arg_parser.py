@@ -13,7 +13,7 @@ def get_args():
     parser.add_argument(
         "--architecture",
         type=str,
-        choices=["FCN", "Transformer", "GemNetGP", "SchNet", "EquiformerV2"],
+        choices=["FCN", "Transformer", "GemNetT", "SchNet", "EquiformerV2"],
         default="FCN",
         help="Model architecture to use",
     )
