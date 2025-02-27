@@ -4,11 +4,21 @@ filenames_to_include = [
     "data.py",
     "data_utils.py",
     "loss.py",
+    "models/equiformer_v2.py",
     "models/fcn.py",
     "models/transformer_models.py",
+    "models/schnet.py",
     "train.py",
     "train_utils.py",
+    "log_utils.py",
     "arg_parser.py",
+    "test_dataloader.py",
+    "test_fcn.py",
+    "test_transformer.py",
+    "test_schnet.py",
+    "test_equiformer_v2.py",
+    "model_prediction_evolution.py",
+    "test_collect_samples_for_visualizing.py",
 ]
 directory_path = "."
 output_file = "context.txt"

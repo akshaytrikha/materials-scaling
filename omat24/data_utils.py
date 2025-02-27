@@ -2,54 +2,92 @@
 from pathlib import Path
 import torch
 import tarfile
-import gdown
+import requests
 import os
 from typing import Dict
+from tqdm.auto import tqdm
+import json
 from torch_geometric.nn import radius_graph
 
-
-DATASETS = {
-    "val": {
-        "rattled-300-subsampled": {
-            "url": "https://drive.google.com/uc?id=1vZE0J9ccC-SkoBYn3K0H0P3PUlpPy_NC",
-            "max_n_atoms": 104,
-        },
-        "rattled-1000": {
-            "url": "https://drive.google.com/uc?id=1XoqQc_5POqLgDQQ0Z-oGCVW72Ohtkv2O",
-            "max_n_atoms": 152,
-        },
-    },
-    "train": {
-        "rattled-500-subsampled": {
-            "url": "https://drive.google.com/uc?id=1gP_p2uIgNGFpfm-eAR-FoRMh-Sf-wrAd",
-            "max_n_atoms": 160,
-        },
-    },
-}
+BASE_URL = "https://dl.fbaipublicfiles.com/opencatalystproject/data/omat/"
+TRAIN_BASE_URL = BASE_URL + "241018/omat/train"
+VAL_BASE_URL = BASE_URL + "241220/omat/val"
 
 
-def download_dataset(dataset_name: str, split_name: str):
-    """Downloads a compressed dataset from a predefined URL and extracts it to the specified directory.
+VALID_DATASETS = [
+    "rattled-1000",
+    "rattled-1000-subsampled",
+    "rattled-500",
+    "rattled-500-subsampled",
+    "rattled-300",
+    "rattled-300-subsampled",
+    "aimd-from-PBE-3000-npt",
+    "aimd-from-PBE-3000-nvt",
+    "aimd-from-PBE-1000-npt",
+    "aimd-from-PBE-1000-nvt",
+    "rattled-relax",
+]
+
+with open("dataset_stats.json", "r") as f:
+    DATASET_INFO = json.load(f)
+
+
+def get_dataset_url(dataset_name: str, split_name: str):
+    if split_name == "train":
+        return f"{TRAIN_BASE_URL}/{dataset_name}.tar.gz"
+    elif split_name == "val":
+        return f"{VAL_BASE_URL}/{dataset_name}.tar.gz"
+    else:
+        raise ValueError(f"Invalid split name: {split_name}")
+
+
+def download_dataset(
+    dataset_name: str, split_name: str, base_path: str = "./datasets"
+) -> None:
+    """Download and extract a dataset.
 
     Args:
-        dataset_name (str): The key corresponding to the dataset in the DATASETS dictionary.
-
-    Raises:
-        KeyError: If the dataset_name is not found in the DATASETS dictionary.
-        Exception: If there is an error during the extraction or deletion of the compressed file.
+        dataset_name (str): Name of the dataset to download
+        split_name (str): Split type ("train" or "val")
+        base_path (str): Base path for dataset storage
     """
-    os.makedirs(f"./datasets/{split_name}", exist_ok=True)
+    if split_name not in ["train", "val"]:
+        raise ValueError(f"Invalid split name: {split_name}")
 
-    try:
-        url = DATASETS[split_name][dataset_name]["url"]
-    except KeyError:
-        raise KeyError(f"Dataset '{dataset_name}' not found in DATASETS dictionary.")
+    if dataset_name not in VALID_DATASETS:
+        raise ValueError(f"Invalid dataset name: {dataset_name}")
 
-    dataset_path = Path(f"datasets/{split_name}/{dataset_name}")
+    # Get the URL for the dataset
+    url = get_dataset_url(dataset_name, split_name)
 
-    compressed_path = dataset_path.with_suffix(".tar.gz")
+    # Create the necessary directories
+    os.makedirs(base_path, exist_ok=True)
+    os.makedirs(os.path.join(base_path, split_name), exist_ok=True)
+
+    # Construct paths
+    dataset_path = Path(base_path) / split_name / dataset_name
+    compressed_path = Path(base_path) / f"{dataset_name}.tar.gz"
+
+    # Download the dataset
     print(f"Starting download from {url}...")
-    gdown.download(url, str(compressed_path), quiet=False)
+    response = requests.get(url, stream=True)
+    response.raise_for_status()
+
+    # Get total file size for progress bar
+    total_size = int(response.headers.get("content-length", 0))
+
+    # Download with progress bar
+    with open(str(compressed_path), "wb") as f:
+        with tqdm(
+            total=total_size,
+            unit="iB",
+            unit_scale=True,
+            unit_divisor=1024,
+            desc=f"Downloading {dataset_name}",
+        ) as pbar:
+            for chunk in response.iter_content(chunk_size=8192):
+                size = f.write(chunk)
+                pbar.update(size)
 
     # Extract the dataset
     print(f"Extracting {compressed_path}...")
@@ -57,7 +95,7 @@ def download_dataset(dataset_name: str, split_name: str):
         tar.extractall(path=dataset_path.parent)
     print(f"Extraction completed. Files are available at {dataset_path}.")
 
-    # Clean up
+    # Delete the compressed file
     try:
         compressed_path.unlink()
         print(f"Deleted the compressed file {compressed_path}.")
@@ -105,25 +143,29 @@ def pad_tensor(
 
 
 def pad_matrix(
-    matrix: torch.Tensor, pad_size: int, padding_value: float = 0.0
+    matrix: torch.Tensor, pad_size_x: int, pad_size_y: int, padding_value: float = 0.0
 ) -> torch.Tensor:
     """
-    Pad a 2D matrix to [pad_size, pad_size].
+    Pad a 2D tensor to the specified dimensions [pad_size_x, pad_size_y].
 
     Args:
-        matrix (torch.Tensor): Tensor of shape [N, M].
-        pad_size (int): Desired size after padding.
-        padding_value (float, optional): Value to use for padding. Defaults to 0.0.
+        matrix (torch.Tensor): Input tensor of shape [rows, cols].
+        pad_size_x (int): Target number of rows.
+        pad_size_y (int): Target number of columns.
+        padding_value (float, optional): Value to fill the padded entries. Defaults to 0.0.
 
     Returns:
-        torch.Tensor: Padded matrix of shape [pad_size, pad_size].
+        torch.Tensor: Padded tensor of shape [pad_size_x, pad_size_y].
     """
-    current_size = matrix.size(0)
-    if current_size > pad_size or matrix.size(1) > pad_size:
-        raise ValueError(f"Matrix size {matrix.size()} exceeds pad_size {pad_size}.")
+    # Calculate extra rows and columns needed for padding.
+    pad_rows = pad_size_x - matrix.size(0)  # additional rows required
+    pad_cols = pad_size_y - matrix.size(1)  # additional columns required
 
-    # Pad rows (dimension 0)
-    pad_rows = pad_size - matrix.size(0)
+    # Ensure the input is not larger than the target dimensions.
+    if pad_rows < 0 and pad_cols < 0:
+        raise ValueError("Matrix dimensions exceed target pad sizes.")
+
+    # If extra rows are needed, create a filler tensor and concatenate along rows.
     if pad_rows > 0:
         pad_row = torch.full(
             (pad_rows, matrix.size(1)),
@@ -133,8 +175,7 @@ def pad_matrix(
         )
         matrix = torch.cat([matrix, pad_row], dim=0)
 
-    # Pad columns (dimension 1)
-    pad_cols = pad_size - matrix.size(1)
+    # If extra columns are needed, create a filler tensor and concatenate along columns.
     if pad_cols > 0:
         pad_col = torch.full(
             (matrix.size(0), pad_cols),
@@ -148,12 +189,14 @@ def pad_matrix(
 
 
 def custom_collate_fn_dataset_padded(
-    batch: list, max_n_atoms: int
+    batch: list, max_n_atoms: int, factorize: bool = False
 ) -> Dict[str, torch.Tensor]:
     """Collate function that pads all samples to a fixed number of atoms (MAX_ATOMS).
 
     Args:
         batch (List[Dict[str, torch.Tensor]]): A list of samples.
+        max_n_atoms (int): The maximum number of atoms to pad to.
+        factorize (bool): Whether to pad the factorized matrices.
 
     Returns:
         Dict[str, torch.Tensor]: A dictionary of batched and padded tensors.
@@ -161,11 +204,12 @@ def custom_collate_fn_dataset_padded(
     atomic_numbers = [sample["atomic_numbers"] for sample in batch]
     positions = [sample["positions"] for sample in batch]
     distance_matrices = [sample["distance_matrix"] for sample in batch]
+    factorized_matrices = [sample["factorized_matrix"] for sample in batch]
     energies = torch.stack([sample["energy"] for sample in batch], dim=0)
     forces = [sample["forces"] for sample in batch]
     stresses = torch.stack([sample["stress"] for sample in batch], dim=0)
 
-    # Pad atomic_numbers, positions, forces to MAX_ATOMS
+    # Pad atomic_numbers, positions, and forces to MAX_ATOMS
     padded_atomic_numbers = torch.stack(
         [
             pad_tensor(tensor, max_n_atoms, dim=0, padding_value=0)
@@ -193,13 +237,13 @@ def custom_collate_fn_dataset_padded(
     # Pad distance matrices to [MAX_ATOMS, MAX_ATOMS]
     padded_distance_matrices = torch.stack(
         [
-            pad_matrix(tensor, max_n_atoms, padding_value=0.0)
+            pad_matrix(tensor, max_n_atoms, max_n_atoms, padding_value=0.0)
             for tensor in distance_matrices
         ],
         dim=0,
     )  # Shape: [batch_size, MAX_ATOMS, MAX_ATOMS]
 
-    return_dict = {
+    output = {
         "atomic_numbers": padded_atomic_numbers,  # [batch_size, MAX_ATOMS]
         "positions": padded_positions,  # [batch_size, MAX_ATOMS, 3]
         "distance_matrix": padded_distance_matrices,  # [batch_size, MAX_ATOMS, MAX_ATOMS]
@@ -208,10 +252,27 @@ def custom_collate_fn_dataset_padded(
         "stress": stresses,  # [batch_size, 6]
     }
 
-    return return_dict
+    if factorize:
+        # Determine the second dimension (k) for the factorized matrices.
+        k = factorized_matrices[0].size(1) if factorized_matrices[0].dim() > 1 else 1
+
+        padded_factorized_matrices = torch.stack(
+            [
+                pad_matrix(tensor, max_n_atoms, k, padding_value=0.0)
+                for tensor in factorized_matrices
+            ],
+            dim=0,
+        )  # Shape: [batch_size, MAX_ATOMS, k]
+
+        # [batch_size, MAX_ATOMS, k]
+        output["factorized_matrix"] = padded_factorized_matrices
+
+    return output
 
 
-def custom_collate_fn_batch_padded(batch: list) -> Dict[str, torch.Tensor]:
+def custom_collate_fn_batch_padded(
+    batch: list, factorize: bool
+) -> Dict[str, torch.Tensor]:
     """Collate function that pads variable-sized tensors to the maximum size within the batch.
 
     This function pads the `atomic_numbers`, `positions`, `forces`, and `distance_matrix` tensors to ensure
@@ -220,6 +281,8 @@ def custom_collate_fn_batch_padded(batch: list) -> Dict[str, torch.Tensor]:
 
     Args:
         batch (List[Dict[str, torch.Tensor]]): A list of samples.
+        factorize (bool): Whether to pad the factorized matrices.
+
 
     Returns:
         Dict[str, torch.Tensor]: A dictionary of batched and padded tensors.
@@ -227,6 +290,7 @@ def custom_collate_fn_batch_padded(batch: list) -> Dict[str, torch.Tensor]:
     atomic_numbers = [sample["atomic_numbers"] for sample in batch]
     positions = [sample["positions"] for sample in batch]
     distance_matrices = [sample["distance_matrix"] for sample in batch]
+    factorized_matrices = [sample["factorized_matrix"] for sample in batch]
     energies = torch.stack([sample["energy"] for sample in batch], dim=0)
     forces = [sample["forces"] for sample in batch]
     stresses = torch.stack([sample["stress"] for sample in batch], dim=0)
@@ -259,13 +323,13 @@ def custom_collate_fn_batch_padded(batch: list) -> Dict[str, torch.Tensor]:
     # Pad distance matrices to [max_atoms, max_atoms]
     padded_distance_matrices = torch.stack(
         [
-            pad_matrix(tensor, max_atoms, padding_value=0.0)
+            pad_matrix(tensor, max_atoms, max_atoms, padding_value=0.0)
             for tensor in distance_matrices
         ],
         dim=0,
     )  # Shape: [batch_size, max_atoms, max_atoms]
 
-    return_dict = {
+    output = {
         "atomic_numbers": padded_atomic_numbers,  # [batch_size, max_atoms]
         "positions": padded_positions,  # [batch_size, max_atoms, 3]
         "distance_matrix": padded_distance_matrices,  # [batch_size, max_atoms, max_atoms]
@@ -274,10 +338,23 @@ def custom_collate_fn_batch_padded(batch: list) -> Dict[str, torch.Tensor]:
         "stress": stresses,  # [batch_size, 6]
     }
 
-    return return_dict
+    if factorize:
+        padded_factorized_matrices = torch.stack(
+            [
+                pad_matrix(tensor, max_atoms, 0, padding_value=0.0)
+                for tensor in factorized_matrices
+            ],
+            dim=0,
+        )  # Shape: [batch_size, MAX_ATOMS, k]
+
+        output["factorized_matrix"] = (
+            padded_factorized_matrices  # [batch_size, MAX_ATOMS, k]
+        )
+
+    return output
 
 
-def generate_graph(positions, distance_matrix):
+def generate_graph(positions):
     """
     Generate graph connectivity and edge attributes based on positions or distance matrix.
     Customize this method based on how you want to define edges.

@@ -3,27 +3,6 @@ import torch.nn as nn
 from x_transformers import TransformerWrapper, Encoder
 
 
-class CombinedEmbedding(nn.Module):
-    def __init__(self, num_tokens, d_model):
-        super().__init__()
-        self.token_emb = nn.Embedding(num_tokens, d_model)
-        self.position_proj = nn.Linear(3, d_model)  # Project 3D positions to d_model
-
-    def forward(self, x, positions):
-        """
-        Args:
-            x: Tensor of shape [M, A] containing atomic numbers.
-            positions: Tensor of shape [M, A, 3] containing 3D atomic positions.
-        Returns:
-            combined_emb: Tensor of shape [M, A, d_model]
-        """
-        token_embeddings = self.token_emb(x)
-        pos_embeddings = self.position_proj(positions)
-        combined_emb = token_embeddings + pos_embeddings  # [M, A, d_model]
-
-        return combined_emb
-
-
 class ConcatenatedEmbedding(nn.Module):
     def __init__(self, num_tokens, d_model):
         super().__init__()
@@ -35,13 +14,13 @@ class ConcatenatedEmbedding(nn.Module):
             x: Tensor of shape [M, A] containing atomic numbers.
             positions: Tensor of shape [M, A, 3] containing 3D atomic positions.
         Returns:
-            combined_emb: Tensor of shape [M, A, d_model + 3]
+            concatenated_emb: Tensor of shape [M, A, d_model + 3]
         """
         token_embeddings = self.token_emb(x)
-        combined_emb = torch.cat(
+        concatenated_emb = torch.cat(
             [token_embeddings, positions], dim=-1
-        )  # [M, A, d_model + 3]
-        return combined_emb
+        )  # [M, A, d_model + 3 or 5]
+        return concatenated_emb
 
 
 class MetaTransformerModels:
@@ -49,7 +28,7 @@ class MetaTransformerModels:
         self,
         vocab_size,
         max_seq_len,
-        concatenated=False,
+        use_factorized=False,
     ):
         """Initializes TransformerModels with a list of configurations.
 
@@ -57,46 +36,34 @@ class MetaTransformerModels:
             vocab_size (int): Number of unique tokens (atomic numbers).
             max_seq_len (int): Maximum sequence length for the transformer.
         """
+        # fmt: off
         self.configurations = [
-            {
-                "d_model": 1,
-                "depth": 1,
-                "n_heads": 1,
-                "d_ff_mult": 1,
-                "concatenated": concatenated,
-            },
-            {
-                "d_model": 2,
-                "depth": 1,
-                "n_heads": 1,
-                "d_ff_mult": 2,
-                "concatenated": concatenated,
-            },
-            {
-                "d_model": 2,
-                "depth": 1,
-                "n_heads": 2,
-                "d_ff_mult": 2,
-                "concatenated": concatenated,
-            },
-            {
-                "d_model": 2,
-                "depth": 2,
-                "n_heads": 2,
-                "d_ff_mult": 2,
-                "concatenated": concatenated,
-            },
-            {
-                "d_model": 4,
-                "depth": 2,
-                "n_heads": 2,
-                "d_ff_mult": 4,
-                "concatenated": concatenated,
-            },  # Medium
+            {"d_model": 1, "depth": 1, "n_heads": 1, "d_ff_mult": 1},  # 1,670 params
+            {"d_model": 4, "depth": 2, "n_heads": 2, "d_ff_mult": 2},  # 8,753 params
+            {"d_model": 8, "depth": 2, "n_heads": 4, "d_ff_mult": 2},  # 25,541 params
+            {"d_model": 8, "depth": 4, "n_heads": 4, "d_ff_mult": 4},  # 51,171 params
+            {"d_model": 16, "depth": 4, "n_heads": 4, "d_ff_mult": 4},  # 93,851 params
+            {"d_model": 16, "depth": 6, "n_heads": 4, "d_ff_mult": 8},  # 156,589 params
+            {"d_model": 24, "depth": 6, "n_heads": 6, "d_ff_mult": 8},  # 327,061 params
+            {"d_model": 32, "depth": 8, "n_heads": 8, "d_ff_mult": 8},  # 742,815 params
+            {"d_model": 32, "depth": 12, "n_heads": 8, "d_ff_mult": 8},  # 1,109,475 params
+            {"d_model": 64, "depth": 6, "n_heads": 8, "d_ff_mult": 16},  # 1,719,565 params
+            {"d_model": 48, "depth": 12, "n_heads": 8, "d_ff_mult": 12},  # 2,028,739 params
+            {"d_model": 64, "depth": 8, "n_heads": 8, "d_ff_mult": 16},  # 2,283,839 params
+            {"d_model": 96, "depth": 8, "n_heads": 8, "d_ff_mult": 16},  # 4,198,303 params
+            {"d_model": 128, "depth": 8, "n_heads": 8, "d_ff_mult": 16},  # 6,645,247 params
+            {"d_model": 128, "depth": 10, "n_heads": 16, "d_ff_mult": 16},  # 10,967,985 params
+            {"d_model": 192, "depth": 8, "n_heads": 12, "d_ff_mult": 24},  # 19,613,695 params
+            {"d_model": 256, "depth": 6, "n_heads": 8, "d_ff_mult": 32},  # 29,298,349 params
+            {"d_model": 256, "depth": 8, "n_heads": 16, "d_ff_mult": 32},  # 43,207,167 params
+            {"d_model": 384, "depth": 8, "n_heads": 16, "d_ff_mult": 48},  # 128,511,487 params
+            {"d_model": 512, "depth": 8, "n_heads": 16, "d_ff_mult": 32},  # 153,943,295 params
         ]
+        # fmt: on
 
         self.vocab_size = vocab_size
         self.max_seq_len = max_seq_len
+        self.use_factorized = use_factorized
 
     def __getitem__(self, idx):
         """Retrieves transformer model corresponding to the configuration at index `idx`.
@@ -119,7 +86,7 @@ class MetaTransformerModels:
             depth=config["depth"],
             n_heads=config["n_heads"],
             d_ff_mult=config["d_ff_mult"],
-            concatenated=config["concatenated"],
+            use_factorized=self.use_factorized,
         )
 
     def __len__(self):
@@ -133,7 +100,15 @@ class MetaTransformerModels:
 
 
 class XTransformerModel(TransformerWrapper):
-    def __init__(self, num_tokens, d_model, depth, n_heads, d_ff_mult, concatenated):
+    def __init__(
+        self,
+        num_tokens,
+        d_model,
+        depth,
+        n_heads,
+        d_ff_mult,
+        use_factorized,
+    ):
         """Initializes XTransformerModel with specified configurations.
 
         Args:
@@ -142,13 +117,15 @@ class XTransformerModel(TransformerWrapper):
             depth (int): Number of transformer layers.
             n_heads (int): Number of attention heads.
             d_ff_mult (int): Multiplier for the feed-forward network dimension.
-            concatenated (bool): Whether to concatenate positional information.
+            use_factorized (bool): Whether to use factorized distances instead of positions.
         """
         self.embedding_dim = d_model
         self.depth = depth
         self.n_heads = n_heads
         self.d_ff_mult = d_ff_mult
-        self.additional_dim = 3 if concatenated else 0  # For concatenated positions
+        self.use_factorized = use_factorized
+        self.additional_dim = 5 if use_factorized else 3  # For concatenated positions
+        self.name = "Transformer"
 
         # Initialize base TransformerWrapper without its own embedding
         super().__init__(
@@ -160,31 +137,55 @@ class XTransformerModel(TransformerWrapper):
                 depth=depth,
                 heads=n_heads,
                 ff_mult=d_ff_mult,
+                attn_flash=torch.cuda.is_available(),
             ),
             use_abs_pos_emb=False,  # Disable internal positional embeddings
         )
 
-        # Initialize the combined or concatenated embedding
-        if concatenated:
-            self.emb = ConcatenatedEmbedding(num_tokens, d_model)
-        else:
-            self.emb = CombinedEmbedding(num_tokens, d_model)
+        self.token_emb = ConcatenatedEmbedding(num_tokens, d_model)
 
         # Predictors for Energy, Forces, and Stresses
-        self.energy_predictor = nn.Linear(
-            d_model + self.additional_dim, 1
-        )  # Energy: [M, 1]
-        self.forces_predictor = nn.Linear(
-            d_model + self.additional_dim, 3
-        )  # Forces: [M, A, 3]
-        self.stresses_predictor = nn.Linear(
-            d_model + self.additional_dim, 6
-        )  # Stresses: [M, 6]
+        self.energy_1 = nn.Linear(
+            d_model + self.additional_dim, d_model + self.additional_dim
+        )
+        self.energy_2 = nn.Linear(d_model + self.additional_dim, 1)  # Energy: [M, 1]
+        self.force_1 = nn.Linear(
+            d_model + self.additional_dim, d_model + self.additional_dim
+        )
+        self.force_2 = nn.Linear(d_model + self.additional_dim, 3)  # Forces: [M, A, 3]
+        self.stress_1 = nn.Linear(
+            d_model + self.additional_dim, d_model + self.additional_dim
+        )
+        self.stress_2 = nn.Linear(d_model + self.additional_dim, 6)  # Stresses: [M, 6]
+
+        # Initialize weights in the __init__ method
+        # Initialize Linear 1 with Xavier initialization (normal distribution)
+        nn.init.xavier_normal_(self.energy_1.weight)
+        if self.energy_1.bias is not None:
+            nn.init.zeros_(self.energy_1.bias)
+        nn.init.xavier_normal_(self.force_1.weight)
+        if self.force_1.bias is not None:
+            nn.init.zeros_(self.force_1.bias)
+        nn.init.xavier_normal_(self.stress_1.weight)
+        if self.stress_1.bias is not None:
+            nn.init.zeros_(self.stress_1.bias)
+        # Initialize Linear 2 with Xavier initialization (normal distribution)
+        nn.init.xavier_normal_(self.energy_2.weight)
+        if self.energy_2.bias is not None:
+            nn.init.zeros_(self.energy_2.bias)
+        nn.init.xavier_normal_(self.force_2.weight)
+        if self.force_2.bias is not None:
+            nn.init.zeros_(self.force_2.bias)
+        nn.init.xavier_normal_(self.stress_2.weight)
+        if self.stress_2.bias is not None:
+            nn.init.zeros_(self.stress_2.bias)
 
         # Count parameters
-        self.num_params = sum(p.numel() for p in self.parameters())
+        self.num_params = sum(
+            p.numel() for name, p in self.named_parameters() if "token_emb" not in name
+        )
 
-    def forward(self, x, positions, mask=None):
+    def forward(self, x, positions, distance_matrix=None, mask=None):
         """Forward pass of the transformer model.
 
         Args:
@@ -198,20 +199,31 @@ class XTransformerModel(TransformerWrapper):
                 - energy (Tensor): [M]
                 - stresses (Tensor): [M, 6]
         """
-        # Obtain combined embeddings
-        combined_emb = self.emb(x, positions)  # [M, A, d_model]
+        # Obtain concatenated embeddings
+        if self.use_factorized:
+            concatenated_emb = self.token_emb(x, distance_matrix)  # [M, A, d_model]
+        else:
+            concatenated_emb = self.token_emb(x, positions)  # [M, A, d_model]
 
-        # Pass combined embeddings to the transformer
-        output = self.attn_layers(x=combined_emb, mask=mask)  # [M, A, d_model]
+        # Pass embeddings to the transformer
+        output = self.attn_layers(x=concatenated_emb, mask=mask)  # [M, A, d_model]
 
-        # Energy: Global pooling and linear layer
-        pooled_output = output.mean(dim=1)  # Shape: [M, d_model]
-        energy = self.energy_predictor(pooled_output).squeeze()  # Shape: [M]
+        # Predict forces
+        forces = self.force_2(torch.tanh(self.force_1(output)))  # [M, A, 3]
+        expanded_mask = mask.unsqueeze(-1).expand(-1, -1, 3)
+        forces = forces * expanded_mask.float()  # Mask padded atoms
 
-        # Forces: Per-atom output via linear layer
-        forces = self.forces_predictor(output)  # Shape: [M, A, 3]
+        # Predict per-atom energy contributions and sum
+        energy_contrib = self.energy_2(torch.tanh(self.energy_1(output))).squeeze(
+            -1
+        )  # [M, A]
+        energy_contrib = energy_contrib * mask.squeeze(-1).float()
+        energy = energy_contrib.sum(dim=1)  # [batch_size]
 
-        # Stresses: Global pooling and linear layer
-        stress = self.stresses_predictor(pooled_output)  # Shape: [M, 6]
+        # Predict per-atom stress contributions and sum
+        stress_contrib = self.stress_2(torch.tanh(self.stress_1(output)))  # [M, A, 6]
+        expanded_mask = mask.unsqueeze(-1).expand(-1, -1, 6)
+        stress_contrib = stress_contrib * expanded_mask.float()
+        stress = stress_contrib.sum(dim=1)  # [batch_size, 6]
 
         return forces, energy, stress

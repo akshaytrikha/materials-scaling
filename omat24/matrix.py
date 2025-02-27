@@ -76,33 +76,32 @@ def compute_distance_matrix(positions: torch.Tensor) -> torch.Tensor:
     return distance_matrix
 
 
-def factorize_matrix(D: torch.Tensor) -> tuple:
+def factorize_matrix(D: torch.Tensor) -> torch.Tensor:
     """Factorize the distance matrix using Singular Value Decomposition (SVD).
 
     Args:
-        distance_matrix (torch.Tensor): Tensor of shape [N_atoms, N_atoms].
+        D (torch.Tensor): Distance matrix tensor of shape [N_atoms, N_atoms].
 
     Returns:
-        tuple:
-            - U is a [N_atoms, N_atoms] orthogonal matrix,
-            - S is a [N_atoms] vector of singular values,
-            - Vh is a [N_atoms, N_atoms] orthogonal matrix (transpose of V).
+        torch.Tensor: Left matrix (U * sqrt(Sigma)) of shape [N_atoms, k=5]
     """
     if D.dim() != 2 or D.size(0) != D.size(1):
         raise ValueError("Distance matrix must be a square 2D tensor.")
-    D_inv = np.zeros_like(D)
-    mask = ~np.eye(D.shape[0], dtype=bool)
-    D_inv[mask] = 1.0 / D[mask]
-    # Fix k=5
-    k = 5
-    U, s, Vt = np.linalg.svd(D_inv)
-    U_k = U[:, :k]  # n x k matrix
-    s_k = s[:k]     # k singular values
-    Vt_k = Vt[:k, :] # k x n matrix
 
-    s_sqrt = np.sqrt(s_k)
-    # Left matrix: U * sqrt(Sigma)
+    # Create inverse distance matrix with zeros on diagonal
+    EPS = 1e-8
+    D_inv = 1.0 / (D + EPS)
+
+    # Compute SVD
+    U, s, Vt = torch.linalg.svd(D_inv)
+
+    # Take first k components
+    k = min(1, D.size(0))
+    U_k = U[:, :k]  # n x k matrix
+    s_k = s[:k]  # k singular values
+
+    # Compute left matrix: U * sqrt(Sigma)
+    s_sqrt = torch.sqrt(s_k)
     left_matrix = U_k * s_sqrt[None, :]  # Broadcasting to multiply each column
-    # # Right matrix: sqrt(Sigma) * V^T
-    # right_matrix = (s_sqrt[:, None] * Vt_k)  # Broadcasting to multiply each row
+
     return left_matrix

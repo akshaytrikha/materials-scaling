@@ -1,79 +1,31 @@
 # External
-from torch.utils.data import DataLoader, Subset, Dataset
-from pathlib import Path
+from typing import List, Tuple
 import torch
-from fairchem.core.datasets import AseDBDataset
 import ase
-from typing import Tuple
+import random
+from pathlib import Path
+from torch.utils.data import DataLoader, Subset, Dataset, ConcatDataset
+from fairchem.core.datasets import AseDBDataset
 from torch_geometric.data import Data
 from torch_geometric.data import DataLoader as PyGDataLoader
-import tarfile
-import gdown
-import os
-import random
+
 
 # Internal
 from matrix import compute_distance_matrix, factorize_matrix, random_rotate_atoms
 from data_utils import (
     custom_collate_fn_batch_padded,
     custom_collate_fn_dataset_padded,
+    DATASET_INFO,
     generate_graph,
-    DATASETS,
 )
 
 
-def download_dataset(dataset_name: str):
-    """Downloads a .tar.gz file from the specified URL and extracts it to the given directory."""
-    os.makedirs("./datasets", exist_ok=True)
-    url = DATASETS[dataset_name]
-    dataset_path = Path(f"datasets/{dataset_name}")
-    compressed_path = dataset_path.with_suffix(".tar.gz")
-    print(f"Starting download from {url}...")
-    gdown.download(url, str(compressed_path), quiet=False)
-    # Extract the dataset
-    print(f"Extracting {compressed_path}...")
-    with tarfile.open(compressed_path, "r:gz") as tar:
-        tar.extractall(path=dataset_path.parent)
-    print(f"Extraction completed. Files are available at {dataset_path}.")
-    # Clean up
-    try:
-        compressed_path.unlink()
-        print(f"Deleted the compressed file {compressed_path}.")
-    except Exception as e:
-        print(f"An error occurred while deleting {compressed_path}: {e}")
-
-
-def get_dataloaders(
-    dataset: Dataset,
-    train_data_fraction: float,
-    batch_size: int,
-    seed: int,
-    batch_padded: bool = True,
-    return_indices: bool = False,
-):
-    """Creates training and validation DataLoaders from a given dataset.
-
-    This function splits the dataset into training and validation subsets based on the
-    specified `data_fraction`. It then creates DataLoaders for each subset, using either
-    a custom collate function that keeps variable-length tensors as lists or one that
-    pads them to uniform sizes.
-
-    Args:
-        dataset (Dataset): The dataset to create DataLoaders from.
-        data_fraction (float): Fraction of the dataset to use (e.g., 0.9 for 90%).
-        batch_size (int): Number of samples per batch.
-        seed (int): Seed for random number generators to ensure reproducibility
-        batch_padded (bool, optional): Whether to pad variable-length tensors. Defaults to True.
-
-    Returns:
-        tuple:
-            - train_loader (DataLoader): DataLoader for the training subset.
-            - val_loader (DataLoader): DataLoader for the validation subset.
-    """
+def split_dataset(dataset, train_data_fraction, val_data_fraction, seed):
+    """Splits a dataset into training and validation subsets."""
     dataset_size = len(dataset)
-    val_size = int(dataset_size * 0.1)
+    val_size = int(dataset_size * val_data_fraction)
     remaining_size = dataset_size - val_size
-    train_size = int(remaining_size * train_data_fraction)
+    train_size = max(1, int(remaining_size * train_data_fraction))
 
     random.seed(seed)
     indices = list(range(dataset_size))
@@ -85,34 +37,124 @@ def get_dataloaders(
     train_subset = Subset(dataset, indices=train_indices)
     val_subset = Subset(dataset, indices=val_indices)
 
-    # Select the appropriate collate function
-    if batch_padded:
-        collate_fn = custom_collate_fn_batch_padded
+    return train_subset, val_subset, train_indices, val_indices
+
+
+def get_dataloaders(
+    dataset_paths: List[str],
+    train_data_fraction: float,
+    batch_size: int,
+    seed: int,
+    architecture: str,
+    batch_padded: bool = False,
+    val_data_fraction: float = 0.1,
+    train_workers: int = 0,
+    val_workers: int = 0,
+    graph: bool = False,
+    factorize: bool = False,
+):
+    """Creates training and validation DataLoaders from a list of dataset paths.
+    Each dataset is loaded, split into training and validation subsets, and then
+    the splits are concatenated. This works for a single dataset path as well as multiple paths.
+
+    Args:
+        dataset_paths (List[str]): List of dataset paths.
+        train_data_fraction (float): Fraction of each dataset (after validation split) to use for training.
+        batch_size (int): Number of samples per batch.
+        seed (int): Seed for reproducibility.
+        architecture (str): Model architecture name (e.g., "FCN", "Transformer", "SchNet", "EquiformerV2").
+        batch_padded (bool, optional): Whether to pad variable-length tensors.
+        val_data_fraction (float, optional): Fraction of each dataset to use for validation.
+        train_workers (int, optional): Number of worker processes for the training DataLoader.
+        val_workers (int, optional): Number of worker processes for the validation DataLoader.
+        graph (bool, optional): Whether to create PyG DataLoaders for graph datasets.
+        factorize (bool, optional): Whether to factorize the distance matrix into a low-rank matrix.
+
+    Returns:
+        tuple: (train_loader, val_loader)
+    """
+    train_subsets = []
+    val_subsets = []
+
+    # Load each dataset from its path and split it individually
+    for path in dataset_paths:
+        dataset = OMat24Dataset(
+            dataset_paths=[path], graph=graph, architecture=architecture
+        )
+        train_subset, val_subset, _, _ = split_dataset(
+            dataset, train_data_fraction, val_data_fraction, seed
+        )
+        train_subsets.append(train_subset)
+        val_subsets.append(val_subset)
+
+    train_dataset = ConcatDataset(train_subsets)
+    val_dataset = ConcatDataset(val_subsets)
+
+    if graph:
+        # Create PyG DataLoaders
+        train_loader = PyGDataLoader(
+            train_dataset,
+            batch_size=batch_size,
+            shuffle=True,
+            num_workers=train_workers,
+        )
+        val_loader = PyGDataLoader(
+            val_dataset,
+            batch_size=batch_size,
+            shuffle=False,
+            num_workers=val_workers,
+        )
     else:
-        collate_fn = lambda batch: custom_collate_fn_dataset_padded(
-            batch, dataset.max_n_atoms
+        # Set maximum number of atoms for padding
+        if len(dataset_paths) > 1:
+            max_n_atoms = 180
+        else:
+            max_n_atoms = dataset.max_n_atoms
+
+        # Select the appropriate collate function
+        if batch_padded:
+            collate_fn = lambda batch: custom_collate_fn_batch_padded(batch, factorize)
+        else:
+            collate_fn = lambda batch: custom_collate_fn_dataset_padded(
+                batch, max_n_atoms, factorize
+            )
+
+        train_loader = DataLoader(
+            train_dataset,
+            batch_size=batch_size,
+            shuffle=True,
+            collate_fn=collate_fn,
+            num_workers=train_workers,
+            persistent_workers=train_workers > 0,
+            pin_memory=torch.cuda.is_available(),
+        )
+        val_loader = DataLoader(
+            val_dataset,
+            batch_size=batch_size,
+            shuffle=False,
+            collate_fn=collate_fn,
+            num_workers=val_workers,
+            persistent_workers=val_workers > 0,
+            pin_memory=torch.cuda.is_available(),
         )
 
-    # Create DataLoaders
-    train_loader = DataLoader(
-        train_subset,
-        batch_size=batch_size,
-        shuffle=True,
-        collate_fn=collate_fn,
-    )
+    return train_loader, val_loader
 
-    val_loader = DataLoader(
-        val_subset,
-        batch_size=batch_size,
-        shuffle=False,  # Typically, shuffle=False for validation
-        collate_fn=collate_fn,
-    )
 
-    if return_indices:
-        # For debugging
-        return train_loader, val_loader, train_indices, val_indices
-    else:
-        return train_loader, val_loader
+class PyGData(Data):
+    """Custom PyG Data class with additional attributes for running EquiformerV2 on OMat24 dataset."""
+
+    def __cat_dim__(self, key, value, *args, **kwargs):
+        # For 'cell', return None so that PyG stores them as a Python list (no concat).
+        if key == "cell":
+            return None
+        return super().__cat_dim__(key, value, *args, **kwargs)
+
+    def __inc__(self, key, value, *args, **kwargs):
+        # Also ensure 'cell' does not get incremented.
+        if key == "cell":
+            return 0
+        return super().__inc__(key, value, *args, **kwargs)
 
 
 def get_pyg_dataloaders(
@@ -150,23 +192,33 @@ class OMat24Dataset(Dataset):
 
     Args:
         dataset_path (Path): Path to the extracted dataset directory.
+        architecture (str): Model architecture name (e.g., "FCN", "Transformer", "SchNet", "EquiformerV2").
         config_kwargs (dict, optional): Additional configuration parameters for AseDBDataset. Defaults to {}.
         augment (bool, optional): Whether to apply data augmentation (random rotations). Defaults to True.
+        graph (bool, optional): Whether to generate graph data for PyG. Defaults to False.
     """
 
     def __init__(
         self,
-        dataset_path: Path,
+        dataset_paths: List[Path],
+        architecture: str,
         config_kwargs={},
         augment: bool = False,
         graph: bool = False,
+        debug: bool = False,
     ):
-        self.dataset = AseDBDataset(config=dict(src=str(dataset_path), **config_kwargs))
+        self.dataset = AseDBDataset(config=dict(src=dataset_paths, **config_kwargs))
+        self.architecture = architecture
         self.augment = augment
         self.graph = graph
-        split_name = dataset_path.parent.name  # Parent directory's name
-        dataset_name = dataset_path.name
-        self.max_n_atoms = DATASETS[split_name][dataset_name]["max_n_atoms"]
+        self.debug = debug
+
+        if len(dataset_paths) > 1:
+            self.max_n_atoms = 180
+        else:
+            split_name = dataset_paths[0].parent.name  # Parent directory's name
+            dataset_name = dataset_paths[0].name
+            self.max_n_atoms = DATASET_INFO[split_name][dataset_name]["max_n_atoms"]
 
     def __len__(self):
         return len(self.dataset)
@@ -175,13 +227,18 @@ class OMat24Dataset(Dataset):
         # Retrieve atoms object for the given index
         atoms: ase.atoms.Atoms = self.dataset.get_atoms(idx)
 
-        # Extract atomic numbers and positions
+        # Extract atomic numbers, positions, symbols, and cell parameters
         atomic_numbers = atoms.get_atomic_numbers()  # Shape: (N_atoms,)
         positions = atoms.get_positions()  # Shape: (N_atoms, 3)
+        symbols = (
+            atoms.symbols.get_chemical_formula()
+        )  # Keep as string, no tensor conversion needed
+        cell = atoms.get_cell()
 
         # Convert to tensors
         atomic_numbers = torch.tensor(atomic_numbers, dtype=torch.long)
         positions = torch.tensor(positions, dtype=torch.float)
+        cell = torch.tensor(cell, dtype=torch.float)
 
         # Extract target properties (e.g., energy, forces, stress)
         energy = torch.tensor(atoms.get_potential_energy(), dtype=torch.float)
@@ -197,31 +254,56 @@ class OMat24Dataset(Dataset):
             positions, R = random_rotate_atoms(positions)
             forces = forces @ R.T
 
-        # Compute the distance matrix from (possibly rotated) positions
-        distance_matrix = compute_distance_matrix(
-            positions
-        )  # Shape: [N_atoms, N_atoms]
-
         if self.graph:
-            # Generate graph connectivity (edge_index) and edge attributes (edge_attr)
-            edge_index, edge_attr = generate_graph(positions, distance_matrix)
+            pyg_args = {
+                "pos": positions,
+                "atomic_numbers": atomic_numbers,
+                "energy": energy,
+                "forces": forces,
+                "stress": stress.unsqueeze(0),
+            }
+
+            if self.architecture == "SchNet":
+                # Generate graph connectivity (edge_index) and edge attributes (edge_attr)
+                edge_index, edge_attr = generate_graph(positions)
+                pyg_args["edge_index"] = edge_index
+                pyg_args["edge_attr"] = edge_attr
+            elif self.architecture == "EquiformerV2":
+                pyg_args["cell"] = cell
+                pyg_args["pbc"] = torch.tensor(atoms.get_pbc(), dtype=torch.float)
 
             # Create PyG Data object
-            data = Data(
-                pos=positions,
-                atomic_numbers=atomic_numbers,
-                edge_index=edge_index,
-                edge_attr=edge_attr,
-                energy=energy,
-                forces=forces,
-                stress=stress,
-            )
-            data.natoms = torch.tensor([len(atoms)])
-            return data
+            sample = PyGData(**pyg_args)
+            sample.natoms = torch.tensor(len(atoms))
+            sample.idx = idx
+            sample.symbols = symbols
+
         else:
+            # Compute the distance matrix from (possibly rotated) positions
+            distance_matrix = compute_distance_matrix(
+                positions
+            )  # Shape: [N_atoms, N_atoms]
+
             factorized_matrix = factorize_matrix(
                 distance_matrix
             )  # Left matrix: U * sqrt(Sigma) - Shape: [N_atoms, k=5]
+
+            # Package into a dictionary
+            sample = {
+                "idx": idx,
+                "symbols": symbols,
+                "atomic_numbers": atomic_numbers,  # Element types
+                "positions": positions,  # 3D atomic coordinates
+                "distance_matrix": distance_matrix,  # [N_atoms, N_atoms]
+                "factorized_matrix": factorized_matrix,  # [N_atoms, k=5]
+                "energy": energy,  # Target energy
+                "forces": forces,  # Target forces on each atom
+                "stress": stress,  # Target stress tensor
+            }
+
+        # Add source information for verifying mutli-dataset usage
+        if self.debug:
+            sample["source"] = atoms.info["calc_id"]
 
             # Package the input and labels into a dictionary
             sample = {
