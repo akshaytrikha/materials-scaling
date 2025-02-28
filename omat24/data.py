@@ -20,11 +20,6 @@ from data_utils import (
 )
 
 
-# Module-level variables that will be set before creating DataLoaders
-MAX_N_ATOMS = 0
-FACTORIZE = False
-
-
 # Define top-level wrapper functions for collate_fn
 def collate_fn_batch_padded_wrapper(batch):
     """Top-level wrapper to make the function picklable for multiprocessing."""
@@ -110,9 +105,6 @@ def get_dataloaders(
     Returns:
         tuple: (train_loader, val_loader)
     """
-    global MAX_N_ATOMS, FACTORIZE
-    FACTORIZE = factorize
-
     train_subsets = []
     val_subsets = []
 
@@ -160,15 +152,15 @@ def get_dataloaders(
     else:
         # Set maximum number of atoms for padding
         if len(dataset_paths) > 1:
-            MAX_N_ATOMS = 180
+            max_n_atoms = 180
         else:
-            MAX_N_ATOMS = dataset.max_n_atoms
+            max_n_atoms = dataset.max_n_atoms
 
         # Create collate function instances
         if batch_padded:
             collate_fn = BatchPaddedCollate(factorize)
         else:
-            collate_fn = DatasetPaddedCollate(MAX_N_ATOMS, factorize)
+            collate_fn = DatasetPaddedCollate(max_n_atoms, factorize)
 
         train_loader = DataLoader(
             train_dataset,
