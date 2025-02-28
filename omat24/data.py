@@ -19,6 +19,12 @@ from data_utils import (
     DATASET_INFO,
 )
 
+
+# Module-level variables that will be set before creating DataLoaders
+MAX_N_ATOMS = 0
+FACTORIZE = False
+
+
 # Define top-level wrapper functions for collate_fn
 def collate_fn_batch_padded_wrapper(batch):
     """Top-level wrapper to make the function picklable for multiprocessing."""
@@ -26,15 +32,13 @@ def collate_fn_batch_padded_wrapper(batch):
     global FACTORIZE  # This should be set at the module level before creating DataLoader
     return custom_collate_fn_batch_padded(batch, FACTORIZE)
 
+
 def collate_fn_dataset_padded_wrapper(batch):
     """Top-level wrapper to make the function picklable for multiprocessing."""
     # You'll need to have these variables at the module level
     global MAX_N_ATOMS, FACTORIZE  # These should be set at the module level
     return custom_collate_fn_dataset_padded(batch, MAX_N_ATOMS, FACTORIZE)
 
-# Module-level variables that will be set before creating DataLoaders
-MAX_N_ATOMS = 0
-FACTORIZE = False
 
 def split_dataset(dataset, train_data_fraction, val_data_fraction, seed):
     """Splits a dataset into training and validation subsets."""
@@ -54,6 +58,23 @@ def split_dataset(dataset, train_data_fraction, val_data_fraction, seed):
     val_subset = Subset(dataset, indices=val_indices)
 
     return train_subset, val_subset, train_indices, val_indices
+
+
+class BatchPaddedCollate:
+    def __init__(self, factorize):
+        self.factorize = factorize
+
+    def __call__(self, batch):
+        return custom_collate_fn_batch_padded(batch, self.factorize)
+
+
+class DatasetPaddedCollate:
+    def __init__(self, max_n_atoms, factorize):
+        self.max_n_atoms = max_n_atoms
+        self.factorize = factorize
+
+    def __call__(self, batch):
+        return custom_collate_fn_dataset_padded(batch, self.max_n_atoms, self.factorize)
 
 
 def get_dataloaders(
@@ -91,7 +112,7 @@ def get_dataloaders(
     """
     global MAX_N_ATOMS, FACTORIZE
     FACTORIZE = factorize
-    
+
     train_subsets = []
     val_subsets = []
 
@@ -143,11 +164,11 @@ def get_dataloaders(
         else:
             MAX_N_ATOMS = dataset.max_n_atoms
 
-        # Use the top-level wrapper functions
+        # Create collate function instances
         if batch_padded:
-            collate_fn = collate_fn_batch_padded_wrapper
+            collate_fn = BatchPaddedCollate(factorize)
         else:
-            collate_fn = collate_fn_dataset_padded_wrapper
+            collate_fn = DatasetPaddedCollate(MAX_N_ATOMS, factorize)
 
         train_loader = DataLoader(
             train_dataset,
