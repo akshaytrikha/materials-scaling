@@ -19,6 +19,22 @@ from data_utils import (
     DATASET_INFO,
 )
 
+# Define top-level wrapper functions for collate_fn
+def collate_fn_batch_padded_wrapper(batch):
+    """Top-level wrapper to make the function picklable for multiprocessing."""
+    # You'll need to have factorize as a global variable or pass it during initialization
+    global FACTORIZE  # This should be set at the module level before creating DataLoader
+    return custom_collate_fn_batch_padded(batch, FACTORIZE)
+
+def collate_fn_dataset_padded_wrapper(batch):
+    """Top-level wrapper to make the function picklable for multiprocessing."""
+    # You'll need to have these variables at the module level
+    global MAX_N_ATOMS, FACTORIZE  # These should be set at the module level
+    return custom_collate_fn_dataset_padded(batch, MAX_N_ATOMS, FACTORIZE)
+
+# Module-level variables that will be set before creating DataLoaders
+MAX_N_ATOMS = 0
+FACTORIZE = False
 
 def split_dataset(dataset, train_data_fraction, val_data_fraction, seed):
     """Splits a dataset into training and validation subsets."""
@@ -73,6 +89,9 @@ def get_dataloaders(
     Returns:
         tuple: (train_loader, val_loader)
     """
+    global MAX_N_ATOMS, FACTORIZE
+    FACTORIZE = factorize
+    
     train_subsets = []
     val_subsets = []
 
@@ -120,20 +139,15 @@ def get_dataloaders(
     else:
         # Set maximum number of atoms for padding
         if len(dataset_paths) > 1:
-            max_n_atoms = 180
+            MAX_N_ATOMS = 180
         else:
-            max_n_atoms = dataset.max_n_atoms
+            MAX_N_ATOMS = dataset.max_n_atoms
 
-        # Define collate functions as named functions instead of lambdas
-        # This makes them picklable for multiprocessing
+        # Use the top-level wrapper functions
         if batch_padded:
-            def collate_fn_batch(batch):
-                return custom_collate_fn_batch_padded(batch, factorize)
-            collate_fn = collate_fn_batch
+            collate_fn = collate_fn_batch_padded_wrapper
         else:
-            def collate_fn_dataset(batch):
-                return custom_collate_fn_dataset_padded(batch, max_n_atoms, factorize)
-            collate_fn = collate_fn_dataset
+            collate_fn = collate_fn_dataset_padded_wrapper
 
         train_loader = DataLoader(
             train_dataset,
