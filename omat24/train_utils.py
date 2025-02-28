@@ -542,3 +542,15 @@ def train(
         pbar.update(1)
 
     return model, losses
+
+
+def lr_schedule(epoch, num_epochs, lr):
+    scale = 0
+    if epoch < num_epochs * 0.1:  # First 10% of epochs → increasing phase
+        scale = 0.5 + 0.5 * (epoch / (num_epochs * 0.1))  # Starts at 0.5 and rises to 1.0
+    elif epoch < num_epochs * 0.6:  # 50% of epochs → peak
+        scale = 1.0  # Max learning rate
+    else:  # Last 40% of epochs → decreasing phase
+        scale = 0.5 + 0.5 * ((num_epochs - epoch) / (num_epochs * 0.4))  # Ends at 0.5
+    return scale * lr
+
