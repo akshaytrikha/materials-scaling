@@ -124,13 +124,16 @@ def get_dataloaders(
         else:
             max_n_atoms = dataset.max_n_atoms
 
-        # Select the appropriate collate function
+        # Define collate functions as named functions instead of lambdas
+        # This makes them picklable for multiprocessing
         if batch_padded:
-            collate_fn = lambda batch: custom_collate_fn_batch_padded(batch, factorize)
+            def collate_fn_batch(batch):
+                return custom_collate_fn_batch_padded(batch, factorize)
+            collate_fn = collate_fn_batch
         else:
-            collate_fn = lambda batch: custom_collate_fn_dataset_padded(
-                batch, max_n_atoms, factorize
-            )
+            def collate_fn_dataset(batch):
+                return custom_collate_fn_dataset_padded(batch, max_n_atoms, factorize)
+            collate_fn = collate_fn_dataset
 
         train_loader = DataLoader(
             train_dataset,
