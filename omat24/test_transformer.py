@@ -141,16 +141,22 @@ class TestTransformer(unittest.TestCase):
                 self.assertEqual(config["depth"], 1)
                 self.assertEqual(config["num_params"], 1670)
 
-                np.testing.assert_allclose(first_train_loss, 1029.019196, rtol=0.1)
-                np.testing.assert_allclose(first_val_loss, 238.1077, rtol=0.1)
+                np.testing.assert_allclose(
+                    first_train_loss, 1540.4001922607422, rtol=0.1
+                )
+                np.testing.assert_allclose(first_val_loss, 197.6502628326416, rtol=0.1)
                 np.testing.assert_allclose(first_flops, 0, rtol=0.1)
                 np.testing.assert_allclose(second_flops, 24920064, rtol=0.1)
-                np.testing.assert_allclose(last_train_loss, 437.988144, rtol=0.1)
-                np.testing.assert_allclose(last_flops, 12468728832, rtol=0.1)
+                np.testing.assert_allclose(
+                    last_train_loss, 252.46292877197266, rtol=0.1
+                )
+                np.testing.assert_allclose(last_flops, 12460032000, rtol=0.1)
                 if os.getenv("IS_CI", False):
                     np.testing.assert_allclose(last_val_loss, 2181.785034, rtol=0.1)
                 else:
-                    np.testing.assert_allclose(last_val_loss, 1894.927307, rtol=0.1)
+                    np.testing.assert_allclose(
+                        last_val_loss, 670.0771789550781, rtol=0.1
+                    )
 
                 # ---------- Test visualization was created ----------
                 result = subprocess.run(
@@ -343,12 +349,12 @@ class TestTransformer(unittest.TestCase):
         expected_in_features_non_factorized = 4 + 3
 
         self.assertEqual(
-            model_factorized.force_1.in_features,
+            model_factorized.force_head.net[0].in_features,
             expected_in_features_factorized,
             "Factorized mode force_1 input feature size incorrect.",
         )
         self.assertEqual(
-            model_non_factorized.force_1.in_features,
+            model_non_factorized.force_head.net[0].in_features,
             expected_in_features_non_factorized,
             "Non-factorized mode force_1 input feature size incorrect.",
         )

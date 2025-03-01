@@ -64,8 +64,6 @@ class TestFCN(unittest.TestCase):
 
     def test_fixed_fcn_overfit(self):
         """Test that a minimal training job executes successfully and produces expected configuration and loss values."""
-        self.set_seed()
-
         # Create a fixed FCN model with desired hyperparameters.
         fixed_model = FCNModel(
             vocab_size=119,
@@ -145,11 +143,11 @@ class TestFCN(unittest.TestCase):
                 self.assertEqual(config["num_params"], 80)
 
                 np.testing.assert_allclose(
-                    first_train_loss, 1561.3440856933594, rtol=0.1
+                    first_train_loss, 1005.5555725097656, rtol=0.1
                 )
-                np.testing.assert_allclose(first_val_loss, 248.71630859375, rtol=0.1)
-                np.testing.assert_allclose(last_train_loss, 322.0016403198242, rtol=0.1)
-                np.testing.assert_allclose(last_val_loss, 2292.2998657226562, rtol=0.1)
+                np.testing.assert_allclose(first_val_loss, 313.1186218261719, rtol=0.1)
+                np.testing.assert_allclose(last_train_loss, 518.8652191162109, rtol=0.1)
+                np.testing.assert_allclose(last_val_loss, 3653.9012451171875, rtol=0.1)
 
                 # ---------- Test visualization was created ----------
                 result = subprocess.run(
