@@ -61,7 +61,7 @@ def forward_pass(
             true_energy = batch["energy"].to(device, non_blocking=True)
             true_stress = batch["stress"].to(device, non_blocking=True)
             mask = atomic_numbers != 0
-            natoms = mask.sum(dim=1)
+            natoms = mask.sum(dim=1).to(device)
 
             if factorize:
                 factorized_distances = batch["factorized_matrix"].to(
@@ -84,7 +84,14 @@ def forward_pass(
             true_energy = batch.energy.to(device, non_blocking=True)
             true_stress = batch.stress.to(device, non_blocking=True)
             mask = None
-            natoms = batch.natoms
+            if hasattr(batch, "natoms"):
+                natoms = (
+                    batch.natoms.to(device)
+                    if hasattr(batch.natoms, "to")
+                    else torch.tensor(batch.natoms, device=device)
+                )
+            else:
+                natoms = None
 
             if model_name == "SchNet":
                 edge_index = batch.edge_index.to(device, non_blocking=True)
@@ -211,9 +218,11 @@ def run_validation(model, val_loader, graph, device, factorize):
         model (nn.Module): The PyTorch model to validate.
         val_loader (DataLoader): The validation data loader.
         device (torch.device): The device to run validation on.
+        graph (bool): Whether the model is graph-based.
+        factorize (bool): Whether to use factorized distance matrices.
 
     Returns:
-        float: The average validation loss across the validation set.
+        tuple: The average validation losses (total, energy, force, stress_iso, stress_aniso).
     """
     model.to(device)
     model.eval()
@@ -243,8 +252,19 @@ def run_validation(model, val_loader, graph, device, factorize):
             factorize=factorize,
         )
 
+        # Ensure natoms is on the correct device
+        if natoms is not None and natoms.device != device:
+            natoms = natoms.to(device)
+
         # Mapping atoms to their respective structures (for graphs)
         structure_index = batch.batch if graph and hasattr(batch, "batch") else []
+        if (
+            structure_index
+            and hasattr(structure_index, "device")
+            and structure_index.device != device
+        ):
+            structure_index = structure_index.to(device)
+
         val_loss_dict = compute_loss(
             pred_forces,
             pred_energy,
