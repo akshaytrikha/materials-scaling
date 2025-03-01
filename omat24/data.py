@@ -144,9 +144,8 @@ class PyGData(Data):
     """Custom PyG Data class with additional attributes for running EquiformerV2 on OMat24 dataset."""
 
     def __cat_dim__(self, key, value, *args, **kwargs):
-        # For 'cell', return None so that PyG stores them as a Python list (no concat).
         if key == "cell":
-            return None
+            return 0
         return super().__cat_dim__(key, value, *args, **kwargs)
 
     def __inc__(self, key, value, *args, **kwargs):
@@ -238,7 +237,7 @@ class OMat24Dataset(Dataset):
                 pyg_args["edge_index"] = edge_index
                 pyg_args["edge_attr"] = edge_attr
             elif self.architecture == "EquiformerV2":
-                pyg_args["cell"] = cell
+                pyg_args["cell"] = cell.unsqueeze(0)  # Shape: [1, 3, 3]
                 pyg_args["pbc"] = torch.tensor(atoms.get_pbc(), dtype=torch.float)
 
             # Create PyG Data object
