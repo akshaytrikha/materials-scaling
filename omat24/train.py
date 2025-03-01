@@ -22,6 +22,7 @@ from arg_parser import get_args
 from models.fcn import MetaFCNModels
 from models.transformer_models import MetaTransformerModels
 from models.schnet import MetaSchNetModels
+from models.equiformer_v2 import MetaEquiformerV2Models
 from train_utils import train
 
 # Set seed & device
@@ -83,7 +84,6 @@ def main(rank=None, world_size=None):
     # User Hyperparam Feedback
     params = vars(args) | {
         "dataset_split": args.split_name,
-        "dataset_paths": dataset_paths,
     }
     pprint.pprint(params)
     print()
@@ -92,7 +92,7 @@ def main(rank=None, world_size=None):
     lr = args.lr[0]
     num_epochs = args.epochs
     use_factorize = args.factorize
-    graph = args.architecture == "SchNet"
+    graph = args.architecture in ["SchNet", "EquiformerV2"]
 
     # Initialize meta model class based on architecture choice
     if args.architecture == "FCN":
@@ -115,6 +115,11 @@ def main(rank=None, world_size=None):
             print("MPS is not supported for SchNet. Switching to CPU.")
             DEVICE = torch.device("cpu")
         meta_models = MetaSchNetModels(device=DEVICE)
+    elif args.architecture == "EquiformerV2":
+        if DEVICE == torch.device("mps"):
+            print("MPS is not supported for EquiformerV2. Switching to CPU.")
+            DEVICE = torch.device("cpu")
+        meta_models = MetaEquiformerV2Models(device=DEVICE)
 
     # Create results path and initialize file if logging is enabled
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -139,6 +144,7 @@ def main(rank=None, world_size=None):
             train_data_fraction=data_fraction,
             batch_size=batch_size,
             seed=SEED,
+            architecture=args.architecture,
             batch_padded=False,
             val_data_fraction=args.val_data_fraction,
             train_workers=args.train_workers,
@@ -157,6 +163,7 @@ def main(rank=None, world_size=None):
                 print(
                     f"\nModel {model_idx + 1}/{len(meta_models)} is on device {DEVICE} and has {model.num_params} parameters"
                 )
+
             model.to(DEVICE)
 
             # Store original model attributes before DDP wrapping
