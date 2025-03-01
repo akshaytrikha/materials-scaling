@@ -1,22 +1,11 @@
+# External
 import torch
 import torch.nn as nn
 from torch_scatter import scatter
 from fairchem.core.models.equiformer_v2.equiformer_v2 import EquiformerV2Backbone
 
-
-class MLPReadout(nn.Module):
-    """A simple MLP readout: node_emb -> linear -> tanh -> linear -> out_dim."""
-
-    def __init__(self, in_dim, out_dim):
-        super().__init__()
-        self.net = nn.Sequential(
-            nn.Linear(in_dim, in_dim),
-            nn.Tanh(),
-            nn.Linear(in_dim, out_dim),
-        )
-
-    def forward(self, node_emb):
-        return self.net(node_emb)
+# Internal
+from model_utils import MLPReadout
 
 
 class EquiformerS2EF(nn.Module):
