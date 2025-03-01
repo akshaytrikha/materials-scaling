@@ -45,6 +45,13 @@ def forward_pass(
     else:
         context_manager = torch.no_grad()
 
+    # Get the model name, handling both regular models and DDP-wrapped models
+    model_name = (
+        model.name
+        if hasattr(model, "name")
+        else model.module.name if hasattr(model, "module") else None
+    )
+
     with context_manager:
         if type(batch) == dict:
 
@@ -79,7 +86,7 @@ def forward_pass(
             mask = None
             natoms = batch.natoms
 
-            if model.name == "SchNet":
+            if model_name == "SchNet":
                 edge_index = batch.edge_index.to(device, non_blocking=True)
                 structure_index = batch.batch.to(device, non_blocking=True)
 
@@ -89,7 +96,7 @@ def forward_pass(
                     edge_index,
                     structure_index,
                 )
-            elif model.name == "EquiformerV2":
+            elif model_name == "EquiformerV2":
                 # equiformer constructs graphs internally
                 batch = batch.to(device)
                 pred_forces, pred_energy, pred_stress = model(batch)
@@ -381,7 +388,11 @@ def train(
     flop_counter = FlopCounterMode(display=False)
     flops_per_epoch = 0
     for epoch in range(1, total_epochs):
-        if distributed and hasattr(train_loader, 'sampler') and hasattr(train_loader.sampler, 'set_epoch'):
+        if (
+            distributed
+            and hasattr(train_loader, "sampler")
+            and hasattr(train_loader.sampler, "set_epoch")
+        ):
             train_loader.sampler.set_epoch(epoch)
 
         model.train()
@@ -413,6 +424,11 @@ def train(
                     factorize=factorize,
                 )
                 # Mapping atoms to their respective structures (for graphs)
+                model_name = (
+                    model.name
+                    if hasattr(model, "name")
+                    else model.module.name if hasattr(model, "module") else None
+                )
                 structure_index = (
                     batch.batch if graph and hasattr(batch, "batch") else []
                 )
@@ -431,14 +447,14 @@ def train(
                 )
                 total_train_loss = train_loss_dict["total_loss"]
                 total_train_loss.backward()
-                
+
                 if distributed:
                     # Synchronize gradients across processes
                     for param in model.parameters():
                         if param.grad is not None:
                             dist.all_reduce(param.grad.data, op=dist.ReduceOp.SUM)
                             param.grad.data /= dist.get_world_size()
-                
+
                 torch.nn.utils.clip_grad_norm_(model.parameters(), gradient_clip)
                 optimizer.step()
 
@@ -465,13 +481,19 @@ def train(
             energy_loss_tensor = torch.tensor(energy_loss_sum, device=device)
             force_loss_tensor = torch.tensor(force_loss_sum, device=device)
             stress_iso_loss_tensor = torch.tensor(stress_iso_loss_sum, device=device)
-            stress_aniso_loss_tensor = torch.tensor(stress_aniso_loss_sum, device=device)
-            
+            stress_aniso_loss_tensor = torch.tensor(
+                stress_aniso_loss_sum, device=device
+            )
+
             train_loss_sum = reduce_tensor(train_loss_tensor, average=True).item()
             energy_loss_sum = reduce_tensor(energy_loss_tensor, average=True).item()
             force_loss_sum = reduce_tensor(force_loss_tensor, average=True).item()
-            stress_iso_loss_sum = reduce_tensor(stress_iso_loss_tensor, average=True).item()
-            stress_aniso_loss_sum = reduce_tensor(stress_aniso_loss_tensor, average=True).item()
+            stress_iso_loss_sum = reduce_tensor(
+                stress_iso_loss_tensor, average=True
+            ).item()
+            stress_aniso_loss_sum = reduce_tensor(
+                stress_aniso_loss_tensor, average=True
+            ).item()
 
         avg_epoch_train_loss = train_loss_sum / n_train_batches
         avg_epoch_energy_loss = energy_loss_sum / n_train_batches
