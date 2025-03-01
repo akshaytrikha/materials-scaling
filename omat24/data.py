@@ -76,6 +76,13 @@ def get_dataloaders(
     train_subsets = []
     val_subsets = []
 
+    # Set max number of atoms per sample based on dataset split
+    split_name = dataset_paths[0].parent.name
+    if split_name == "train":
+        max_n_atoms = 236
+    elif split_name == "val":
+        max_n_atoms = 180
+
     # Load each dataset from its path and split it individually
     for path in dataset_paths:
         dataset = OMat24Dataset(
@@ -105,12 +112,6 @@ def get_dataloaders(
             num_workers=val_workers,
         )
     else:
-        # Set maximum number of atoms for padding
-        if len(dataset_paths) > 1:
-            max_n_atoms = 180
-        else:
-            max_n_atoms = dataset.max_n_atoms
-
         # Select the appropriate collate function
         if batch_padded:
             collate_fn = lambda batch: custom_collate_fn_batch_padded(batch, factorize)
@@ -181,13 +182,6 @@ class OMat24Dataset(Dataset):
         self.augment = augment
         self.graph = graph
         self.debug = debug
-
-        if len(dataset_paths) > 1:
-            self.max_n_atoms = 180
-        else:
-            split_name = dataset_paths[0].parent.name  # Parent directory's name
-            dataset_name = dataset_paths[0].name
-            self.max_n_atoms = DATASET_INFO[split_name][dataset_name]["max_n_atoms"]
 
     def __len__(self):
         return len(self.dataset)
