@@ -92,6 +92,9 @@ def main():
             DEVICE = torch.device("cpu")
         meta_models = MetaSchNetModels(device=DEVICE)
     elif args.architecture == "EquiformerV2":
+        if DEVICE == torch.device("mps"):
+            print("MPS is not supported for EquiformerV2. Switching to CPU.")
+            DEVICE = torch.device("cpu")
         meta_models = MetaEquiformerV2Models(device=DEVICE)
 
     # Create results path and initialize file if logging is enabled
