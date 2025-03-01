@@ -4,6 +4,7 @@ import torch
 import ase
 import random
 from pathlib import Path
+import numpy as np
 from torch.utils.data import DataLoader, Subset, Dataset, ConcatDataset
 from fairchem.core.datasets import AseDBDataset
 from torch_geometric.data import Data
@@ -206,7 +207,7 @@ class OMat24Dataset(Dataset):
         # Convert to tensors
         atomic_numbers = torch.tensor(atomic_numbers, dtype=torch.long)
         positions = torch.tensor(positions, dtype=torch.float)
-        cell = torch.tensor(cell, dtype=torch.float)
+        cell = torch.tensor(np.array(cell), dtype=torch.float)
 
         # Extract target properties (e.g., energy, forces, stress)
         energy = torch.tensor(atoms.get_potential_energy(), dtype=torch.float)
