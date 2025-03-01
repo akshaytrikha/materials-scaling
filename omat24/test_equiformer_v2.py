@@ -18,7 +18,7 @@ from torch_geometric.data import Data as PyGData
 from torch_geometric.data import Batch
 
 # Internal
-from models.equiformer_v2 import EquiformerS2EF
+from omat24.models.fast_equiformer_v2.equiformer_v2 import EquiformerS2EF
 from fairchem.core.models.equiformer_v2.so3 import SO3_Embedding
 from train import main as train_main
 

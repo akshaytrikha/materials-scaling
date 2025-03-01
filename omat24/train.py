@@ -19,7 +19,7 @@ from arg_parser import get_args
 from models.fcn import MetaFCNModels
 from models.transformer_models import MetaTransformerModels
 from models.schnet import MetaSchNetModels
-from models.equiformer_v2 import MetaEquiformerV2Models
+from models.gaunt_equiformer_v2.equiformer_v2 import MetaEquiformerV2Models
 from train_utils import train
 
 # Set seed & device
