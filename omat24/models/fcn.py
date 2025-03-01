@@ -1,5 +1,9 @@
+# External
 import torch
 import torch.nn as nn
+
+# Internal
+from models.model_utils import MLPReadout
 
 
 class MetaFCNModels:
@@ -81,10 +85,10 @@ class FCNModel(nn.Module):
             )
             self.inner_layers.append(layer)
 
-        # Output layers
-        self.force_output = nn.Linear(hidden_dim, 3)  # Forces per atom
-        self.energy_output = nn.Linear(hidden_dim, 1)  # Energy contributions per atom
-        self.stress_output = nn.Linear(hidden_dim, 6)  # Stress contributions per atom
+        # Output layers using MLPReadout
+        self.force_output = MLPReadout(hidden_dim, 3)  # Forces per atom
+        self.energy_output = MLPReadout(hidden_dim, 1)  # Energy contributions per atom
+        self.stress_output = MLPReadout(hidden_dim, 6)  # Stress contributions per atom
 
         # Calculate number of parameters
         self.num_params = sum(
