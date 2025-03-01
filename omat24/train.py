@@ -1,3 +1,12 @@
+# Add these imports and warning filters at the very top of the file
+import warnings
+
+# Suppress specific warnings
+warnings.filterwarnings(
+    "ignore", message="You are using `torch.load` with `weights_only=False`"
+)
+warnings.filterwarnings("ignore", message="`torch.cuda.amp.autocast")
+
 # External
 import torch
 import torch.optim as optim
@@ -14,7 +23,6 @@ import subprocess
 import torch.distributed as dist
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data.distributed import DistributedSampler
-import warnings
 
 # Internal
 from data import get_dataloaders
@@ -41,9 +49,6 @@ elif torch.backends.mps.is_available():
 else:
     DEVICE = torch.device("cpu")
 
-# Suppress specific warnings
-warnings.filterwarnings("ignore", message="You are using `torch.load` with `weights_only=False`")
-warnings.filterwarnings("ignore", message="`torch.cuda.amp.autocast")
 
 def setup_ddp(rank, world_size):
     """Initialize DDP process group."""
