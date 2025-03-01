@@ -14,6 +14,7 @@ import subprocess
 import torch.distributed as dist
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data.distributed import DistributedSampler
+import warnings
 
 # Internal
 from data import get_dataloaders
@@ -40,6 +41,9 @@ elif torch.backends.mps.is_available():
 else:
     DEVICE = torch.device("cpu")
 
+# Suppress specific warnings
+warnings.filterwarnings("ignore", message="You are using `torch.load` with `weights_only=False`")
+warnings.filterwarnings("ignore", message="`torch.cuda.amp.autocast")
 
 def setup_ddp(rank, world_size):
     """Initialize DDP process group."""
@@ -57,6 +61,7 @@ def cleanup_ddp():
 
 
 def main(rank=None, world_size=None):
+    is_main_process = rank == 0 if world_size is not None else True
     args = get_args()
     log = not args.no_log
     global DEVICE
@@ -85,8 +90,9 @@ def main(rank=None, world_size=None):
     params = vars(args) | {
         "dataset_split": args.split_name,
     }
-    pprint.pprint(params)
-    print()
+    if is_main_process:
+        pprint.pprint(params)
+        print()
 
     batch_size = args.batch_size[0]
     lr = args.lr[0]
@@ -125,11 +131,12 @@ def main(rank=None, world_size=None):
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     tb_logdir = os.path.join("runs", f"exp_{timestamp}")
     writer = SummaryWriter(log_dir=tb_logdir)
-    print(f"TensorBoard logs will be saved to: {tb_logdir}")
+    if is_main_process:
+        print(f"TensorBoard logs will be saved to: {tb_logdir}")
 
     results_path = Path("results") / f"experiments_{timestamp}.json"
     experiment_results = {}
-    if log:
+    if log and is_main_process:
         Path("results").mkdir(exist_ok=True)
         with open(results_path, "w") as f:
             json.dump({}, f)  # Initialize as empty JSON
@@ -137,7 +144,6 @@ def main(rank=None, world_size=None):
     else:
         print("\nLogging disabled. No experiment log will be saved.")
 
-    is_main_process = rank == 0 if world_size is not None else True
     for data_fraction in args.data_fractions:
         train_loader, val_loader = get_dataloaders(
             dataset_paths,
