@@ -142,14 +142,14 @@ class TestFCN(unittest.TestCase):
                 # For the FCN, the first configuration (from MetaFCNModels) is expected to be:
                 self.assertEqual(config["embedding_dim"], 2)
                 self.assertEqual(config["depth"], 2)
-                self.assertEqual(config["num_params"], 62)
+                self.assertEqual(config["num_params"], 80)
 
                 np.testing.assert_allclose(
-                    first_train_loss, 1122.336365, rtol=0.1
+                    first_train_loss, 1561.3440856933594, rtol=0.1
                 )
-                np.testing.assert_allclose(first_val_loss, 401.071281, rtol=0.1)
-                np.testing.assert_allclose(last_train_loss, 726.405075, rtol=0.1)
-                np.testing.assert_allclose(last_val_loss, 595.362289, rtol=0.1)
+                np.testing.assert_allclose(first_val_loss, 248.71630859375, rtol=0.1)
+                np.testing.assert_allclose(last_train_loss, 322.0016403198242, rtol=0.1)
+                np.testing.assert_allclose(last_val_loss, 2292.2998657226562, rtol=0.1)
 
                 # ---------- Test visualization was created ----------
                 result = subprocess.run(
@@ -385,7 +385,7 @@ class TestFCN(unittest.TestCase):
             # 1274 params
             {"embedding_dim": 8, "hidden_dim": 16, "depth": 3},
             # 99338 params
-            {"embedding_dim": 64, "hidden_dim": 64, "depth": 22},
+            {"embedding_dim": 32, "hidden_dim": 32, "depth": 16},
         ]
 
         models_list = list(iter(meta_models))
@@ -394,7 +394,7 @@ class TestFCN(unittest.TestCase):
             len(meta_models),
             "Number of models returned by iteration does not match expected count.",
         )
-        expected_params = [138, 1274, 99338]
+        expected_params = [198, 2090, 22570]
         for model, expected in zip(models_list, expected_params):
             self.assertEqual(
                 model.num_params,

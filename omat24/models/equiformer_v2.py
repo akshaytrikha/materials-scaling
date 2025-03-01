@@ -5,7 +5,7 @@ from torch_scatter import scatter
 from fairchem.core.models.equiformer_v2.equiformer_v2 import EquiformerV2Backbone
 
 # Internal
-from model_utils import MLPReadout
+from models.model_utils import MLPReadout
 
 
 class EquiformerS2EF(nn.Module):
@@ -572,7 +572,7 @@ class MetaEquiformerV2Models:
                 "drop_path_rate": 0.1,
                 "proj_drop": 0.0,
                 "weight_init": "uniform",
-            }
+            },
         ]
 
         self.device = device
