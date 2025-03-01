@@ -258,11 +258,17 @@ def run_validation(model, val_loader, graph, device, factorize):
 
         # Mapping atoms to their respective structures (for graphs)
         structure_index = batch.batch if graph and hasattr(batch, "batch") else []
-        if (
-            structure_index
+
+        # Fix: Check if structure_index is a non-empty tensor before checking device
+        is_tensor = isinstance(structure_index, torch.Tensor)
+        has_elements = is_tensor and structure_index.numel() > 0
+        wrong_device = (
+            has_elements
             and hasattr(structure_index, "device")
             and structure_index.device != device
-        ):
+        )
+
+        if wrong_device:
             structure_index = structure_index.to(device)
 
         val_loss_dict = compute_loss(
