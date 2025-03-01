@@ -282,21 +282,36 @@ def train(
 ):
     """
     Train model with validation at epoch 0 and every 'validate_every' epochs.
-    Includes early stopping, checkpoint saving, and optional JSON + TensorBoard logging.
+    Includes early stopping and optional JSON + TensorBoard logging.
+
+    Args:
+        model (nn.Module): The PyTorch model to train.
+        train_loader (DataLoader): DataLoader for training data.
+        val_loader (DataLoader): DataLoader for validation data.
+        optimizer (torch.optim.Optimizer): The optimizer for training.
+        scheduler (torch.optim.lr_scheduler): Learning rate scheduler, or None.
+        pbar (tqdm): A tqdm progress bar initialized with the total number of epochs.
+        device (torch.device): The device to run training on.
+        patience (int): Early stopping patience (number of checks with no improvement).
+        results_path (str, optional): Path to JSON results file. If provided, partial logs are written.
+        experiment_results (dict, optional): Dict for storing experiment results.
+        data_size_key (str, optional): Key to label experiment_results by dataset size.
+        run_entry (dict, optional): Dictionary describing the current run (e.g., model_name, config).
+        writer (SummaryWriter, optional): TensorBoard writer for logging.
+        tensorboard_prefix (str, optional): Prefix for naming logs in TensorBoard.
+        num_visualization_samples (int, optional): Number of samples to visualize in logs.
+        gradient_clip (int, optional): Gradient clipping value.
+        validate_every (int, optional): Frequency (in epochs) to run validation.
+        visualize_every (int, optional): Frequency (in epochs) to collect visualization samples.
+
+    Returns:
+        (nn.Module, dict): The trained model and a dictionary of recorded losses.
     """
     model.to(device)
     can_write_partial = all(
         [results_path, experiment_results, data_size_key, run_entry]
     )
     losses = {}
-
-    # Get a unique identifier for this run based on model name or timestamp
-    if run_entry and "model_name" in run_entry:
-        run_id = run_entry["model_name"]
-    else:
-        from datetime import datetime
-
-        run_id = datetime.now().strftime("%Y%m%d_%H%M%S")
 
     # Initial validation at epoch 0
     (
@@ -307,22 +322,6 @@ def train(
         val_stress_aniso_loss,
     ) = run_validation(model, val_loader, graph, device, factorize)
     losses[0] = {"val_loss": float(val_loss)}
-
-    # Save initial checkpoint
-    checkpoint_path = f"checkpoints/{run_id}_epoch_0.pth"
-    torch.save(
-        {
-            "epoch": 0,
-            "model_state_dict": model.state_dict(),
-            "optimizer_state_dict": optimizer.state_dict() if optimizer else None,
-            "scheduler_state_dict": scheduler.state_dict() if scheduler else None,
-            "val_loss": val_loss,
-            "losses": losses,
-        },
-        checkpoint_path,
-    )
-    print(f"✅ Saved initial checkpoint to {checkpoint_path}")
-
     if writer is not None:
         # Logging each metric individually using log_tb_metrics
         log_tb_metrics(
@@ -488,29 +487,6 @@ def train(
                 val_stress_iso_loss,
                 val_stress_aniso_loss,
             ) = run_validation(model, val_loader, graph, device, factorize)
-
-            # Save checkpoint after validation
-            checkpoint_path = f"checkpoints/{run_id}_epoch_{epoch}.pth"
-            torch.save(
-                {
-                    "epoch": epoch,
-                    "model_state_dict": model.state_dict(),
-                    "optimizer_state_dict": (
-                        optimizer.state_dict() if optimizer else None
-                    ),
-                    "scheduler_state_dict": (
-                        scheduler.state_dict() if scheduler else None
-                    ),
-                    "train_loss": avg_epoch_train_loss,
-                    "val_loss": val_loss,
-                    "losses": losses,
-                    "best_val_loss": best_val_loss,
-                    "epochs_since_improvement": epochs_since_improvement,
-                },
-                checkpoint_path,
-            )
-            print(f"✅ Saved checkpoint at epoch {epoch} to {checkpoint_path}")
-
             if writer is not None:
                 log_tb_metrics(
                     {
@@ -533,51 +509,10 @@ def train(
                 epochs_since_improvement = 0
                 best_val_model = copy.deepcopy(model)
                 best_val_loss_dict = copy.deepcopy(losses)
-
-                # Save best model checkpoint
-                best_checkpoint_path = f"checkpoints/{run_id}_best.pth"
-                torch.save(
-                    {
-                        "epoch": epoch,
-                        "model_state_dict": model.state_dict(),
-                        "optimizer_state_dict": (
-                            optimizer.state_dict() if optimizer else None
-                        ),
-                        "scheduler_state_dict": (
-                            scheduler.state_dict() if scheduler else None
-                        ),
-                        "val_loss": val_loss,
-                        "train_loss": avg_epoch_train_loss,
-                        "losses": losses,
-                    },
-                    best_checkpoint_path,
-                )
-                print(
-                    f"🌟 Saved NEW BEST model checkpoint at epoch {epoch} to {best_checkpoint_path}"
-                )
             else:
                 epochs_since_improvement += 1
                 if epochs_since_improvement >= patience:
                     print(f"Early stopping triggered at epoch {epoch}")
-
-                    # Save final model state before returning
-                    final_checkpoint_path = (
-                        f"checkpoints/{run_id}_final_early_stopped.pth"
-                    )
-                    torch.save(
-                        {
-                            "epoch": epoch,
-                            "model_state_dict": best_val_model.state_dict(),
-                            "val_loss": best_val_loss,
-                            "losses": best_val_loss_dict,
-                            "early_stopped": True,
-                        },
-                        final_checkpoint_path,
-                    )
-                    print(
-                        f"✅ Saved final (early-stopped) model to {final_checkpoint_path}"
-                    )
-
                     return best_val_model, best_val_loss_dict
 
         # Visualization samples every 'visualize_every' epochs
@@ -606,21 +541,5 @@ def train(
             )
 
         pbar.update(1)
-
-    # Save final model at the end of training
-    final_checkpoint_path = f"checkpoints/{run_id}_final.pth"
-    torch.save(
-        {
-            "epoch": len(pbar),
-            "model_state_dict": model.state_dict(),
-            "optimizer_state_dict": optimizer.state_dict() if optimizer else None,
-            "scheduler_state_dict": scheduler.state_dict() if scheduler else None,
-            "val_loss": val_loss,
-            "train_loss": avg_epoch_train_loss,
-            "losses": losses,
-        },
-        final_checkpoint_path,
-    )
-    print(f"✅ Saved final model checkpoint to {final_checkpoint_path}")
 
     return model, losses
