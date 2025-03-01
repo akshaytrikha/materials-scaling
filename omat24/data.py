@@ -4,6 +4,7 @@ import torch
 import ase
 import random
 from pathlib import Path
+import numpy as np
 from torch.utils.data import DataLoader, Subset, Dataset, ConcatDataset
 from fairchem.core.datasets import AseDBDataset
 from torch_geometric.data import Data
@@ -44,6 +45,7 @@ def get_dataloaders(
     train_data_fraction: float,
     batch_size: int,
     seed: int,
+    architecture: str,
     batch_padded: bool = False,
     val_data_fraction: float = 0.1,
     train_workers: int = 0,
@@ -60,6 +62,7 @@ def get_dataloaders(
         train_data_fraction (float): Fraction of each dataset (after validation split) to use for training.
         batch_size (int): Number of samples per batch.
         seed (int): Seed for reproducibility.
+        architecture (str): Model architecture name (e.g., "FCN", "Transformer", "SchNet", "EquiformerV2").
         batch_padded (bool, optional): Whether to pad variable-length tensors.
         val_data_fraction (float, optional): Fraction of each dataset to use for validation.
         train_workers (int, optional): Number of worker processes for the training DataLoader.
@@ -73,9 +76,15 @@ def get_dataloaders(
     train_subsets = []
     val_subsets = []
 
+    # Set max number of atoms per sample based on dataset split
+    split_name = dataset_paths[0].parent.name
+    max_n_atoms = max(info["max_n_atoms"] for info in DATASET_INFO[split_name].values())
+
     # Load each dataset from its path and split it individually
     for path in dataset_paths:
-        dataset = OMat24Dataset(dataset_paths=[path], graph=graph)
+        dataset = OMat24Dataset(
+            dataset_paths=[path], graph=graph, architecture=architecture
+        )
         train_subset, val_subset, _, _ = split_dataset(
             dataset, train_data_fraction, val_data_fraction, seed
         )
@@ -100,12 +109,6 @@ def get_dataloaders(
             num_workers=val_workers,
         )
     else:
-        # Set maximum number of atoms for padding
-        if len(dataset_paths) > 1:
-            max_n_atoms = 180
-        else:
-            max_n_atoms = dataset.max_n_atoms
-
         # Select the appropriate collate function
         if batch_padded:
             collate_fn = lambda batch: custom_collate_fn_batch_padded(batch, factorize)
@@ -136,34 +139,46 @@ def get_dataloaders(
     return train_loader, val_loader
 
 
+class PyGData(Data):
+    """Custom PyG Data class with additional attributes for running EquiformerV2 on OMat24 dataset."""
+
+    def __cat_dim__(self, key, value, *args, **kwargs):
+        if key == "cell":
+            return 0
+        return super().__cat_dim__(key, value, *args, **kwargs)
+
+    def __inc__(self, key, value, *args, **kwargs):
+        # Also ensure 'cell' does not get incremented.
+        if key == "cell":
+            return 0
+        return super().__inc__(key, value, *args, **kwargs)
+
+
 class OMat24Dataset(Dataset):
     """Dataset class for the OMat24 dataset with data augmentation via random rotations.
 
     Args:
         dataset_path (Path): Path to the extracted dataset directory.
+        architecture (str): Model architecture name (e.g., "FCN", "Transformer", "SchNet", "EquiformerV2").
         config_kwargs (dict, optional): Additional configuration parameters for AseDBDataset. Defaults to {}.
         augment (bool, optional): Whether to apply data augmentation (random rotations). Defaults to True.
+        graph (bool, optional): Whether to generate graph data for PyG. Defaults to False.
     """
 
     def __init__(
         self,
         dataset_paths: List[Path],
+        architecture: str,
         config_kwargs={},
         augment: bool = False,
         graph: bool = False,
         debug: bool = False,
     ):
         self.dataset = AseDBDataset(config=dict(src=dataset_paths, **config_kwargs))
+        self.architecture = architecture
         self.augment = augment
         self.graph = graph
         self.debug = debug
-
-        if len(dataset_paths) > 1:
-            self.max_n_atoms = 180
-        else:
-            split_name = dataset_paths[0].parent.name  # Parent directory's name
-            dataset_name = dataset_paths[0].name
-            self.max_n_atoms = DATASET_INFO[split_name][dataset_name]["max_n_atoms"]
 
     def __len__(self):
         return len(self.dataset)
@@ -172,16 +187,18 @@ class OMat24Dataset(Dataset):
         # Retrieve atoms object for the given index
         atoms: ase.atoms.Atoms = self.dataset.get_atoms(idx)
 
-        # Extract atomic numbers, positions, and symbols
+        # Extract atomic numbers, positions, symbols, and cell parameters
         atomic_numbers = atoms.get_atomic_numbers()  # Shape: (N_atoms,)
         positions = atoms.get_positions()  # Shape: (N_atoms, 3)
         symbols = (
             atoms.symbols.get_chemical_formula()
         )  # Keep as string, no tensor conversion needed
+        cell = atoms.get_cell()
 
         # Convert to tensors
         atomic_numbers = torch.tensor(atomic_numbers, dtype=torch.long)
         positions = torch.tensor(positions, dtype=torch.float)
+        cell = torch.tensor(np.array(cell), dtype=torch.float)
 
         # Extract target properties (e.g., energy, forces, stress)
         energy = torch.tensor(atoms.get_potential_energy(), dtype=torch.float)
@@ -198,21 +215,26 @@ class OMat24Dataset(Dataset):
             forces = forces @ R.T
 
         if self.graph:
-            # Generate graph connectivity (edge_index) and edge attributes (edge_attr)
-            edge_index, edge_attr = generate_graph(positions)
+            pyg_args = {
+                "pos": positions,
+                "atomic_numbers": atomic_numbers,
+                "energy": energy,
+                "forces": forces,
+                "stress": stress.unsqueeze(0),
+            }
+
+            if self.architecture == "SchNet":
+                # Generate graph connectivity (edge_index) and edge attributes (edge_attr)
+                edge_index, edge_attr = generate_graph(positions)
+                pyg_args["edge_index"] = edge_index
+                pyg_args["edge_attr"] = edge_attr
+            elif self.architecture == "EquiformerV2":
+                pyg_args["cell"] = cell.unsqueeze(0)  # Shape: [1, 3, 3]
+                pyg_args["pbc"] = torch.tensor(atoms.get_pbc(), dtype=torch.float)
 
             # Create PyG Data object
-            sample = Data(
-                pos=positions,
-                atomic_numbers=atomic_numbers,
-                edge_index=edge_index,
-                edge_attr=edge_attr,
-                energy=energy,
-                forces=forces,
-                stress=stress.unsqueeze(0),
-            )
+            sample = PyGData(**pyg_args)
             sample.natoms = torch.tensor(len(atoms))
-            sample.postiions = positions
             sample.idx = idx
             sample.symbols = symbols
 

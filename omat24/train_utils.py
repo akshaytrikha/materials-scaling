@@ -63,17 +63,26 @@ def forward_pass(
             # PyG Batch
             atomic_numbers = batch.atomic_numbers.to(device, non_blocking=True)
             positions = batch.pos.to(device, non_blocking=True)
-            edge_index = batch.edge_index.to(device, non_blocking=True)
-            structure_index = batch.batch.to(device, non_blocking=True)
             true_forces = batch.forces.to(device, non_blocking=True)
             true_energy = batch.energy.to(device, non_blocking=True)
             true_stress = batch.stress.to(device, non_blocking=True)
             mask = None
             natoms = batch.natoms
 
-            pred_forces, pred_energy, pred_stress = model(
-                atomic_numbers, positions, edge_index, structure_index
-            )
+            if model.name == "SchNet":
+                edge_index = batch.edge_index.to(device, non_blocking=True)
+                structure_index = batch.batch.to(device, non_blocking=True)
+
+                pred_forces, pred_energy, pred_stress = model(
+                    atomic_numbers,
+                    positions,
+                    edge_index,
+                    structure_index,
+                )
+            elif model.name == "EquiformerV2":
+                # equiformer constructs graphs internally
+                batch = batch.to(device)
+                pred_forces, pred_energy, pred_stress = model(batch)
 
     return (
         pred_forces,
