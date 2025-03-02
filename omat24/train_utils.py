@@ -82,6 +82,7 @@ def forward_pass(
             elif model.name == "EquiformerV2":
                 # equiformer constructs graphs internally
                 batch = batch.to(device)
+                natoms = natoms.to(device, non_blocking=True)
                 pred_forces, pred_energy, pred_stress = model(batch)
 
     return (
