@@ -1,6 +1,16 @@
+# Add these imports and warning filters at the very top of the file
+import warnings
+
+# Suppress specific warnings
+warnings.filterwarnings(
+    "ignore", message="You are using `torch.load` with `weights_only=False`"
+)
+warnings.filterwarnings("ignore", message="`torch.cuda.amp.autocast")
+
 # External
 import torch
 import torch.optim as optim
+import torch.multiprocessing as mp
 from torch.optim.lr_scheduler import LambdaLR
 from pathlib import Path
 import pprint
@@ -22,6 +32,7 @@ from arg_parser import get_args
 from models.fcn import MetaFCNModels
 from models.transformer_models import MetaTransformerModels
 from models.schnet import MetaSchNetModels
+from models.equiformer_v2 import MetaEquiformerV2Models
 from train_utils import train
 
 # Set seed & device
@@ -56,6 +67,7 @@ def cleanup_ddp():
 
 
 def main(rank=None, world_size=None):
+    is_main_process = rank == 0 if world_size is not None else True
     args = get_args()
     log = not args.no_log
     global DEVICE
@@ -83,16 +95,16 @@ def main(rank=None, world_size=None):
     # User Hyperparam Feedback
     params = vars(args) | {
         "dataset_split": args.split_name,
-        "dataset_paths": dataset_paths,
     }
-    pprint.pprint(params)
-    print()
+    if is_main_process:
+        pprint.pprint(params)
+        print()
 
     batch_size = args.batch_size[0]
     lr = args.lr[0]
     num_epochs = args.epochs
     use_factorize = args.factorize
-    graph = args.architecture == "SchNet"
+    graph = args.architecture in ["SchNet", "EquiformerV2"]
 
     # Initialize meta model class based on architecture choice
     if args.architecture == "FCN":
@@ -115,16 +127,22 @@ def main(rank=None, world_size=None):
             print("MPS is not supported for SchNet. Switching to CPU.")
             DEVICE = torch.device("cpu")
         meta_models = MetaSchNetModels(device=DEVICE)
+    elif args.architecture == "EquiformerV2":
+        if DEVICE == torch.device("mps"):
+            print("MPS is not supported for EquiformerV2. Switching to CPU.")
+            DEVICE = torch.device("cpu")
+        meta_models = MetaEquiformerV2Models(device=DEVICE)
 
     # Create results path and initialize file if logging is enabled
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     tb_logdir = os.path.join("runs", f"exp_{timestamp}")
     writer = SummaryWriter(log_dir=tb_logdir)
-    print(f"TensorBoard logs will be saved to: {tb_logdir}")
+    if is_main_process:
+        print(f"TensorBoard logs will be saved to: {tb_logdir}")
 
     results_path = Path("results") / f"experiments_{timestamp}.json"
     experiment_results = {}
-    if log:
+    if log and is_main_process:
         Path("results").mkdir(exist_ok=True)
         with open(results_path, "w") as f:
             json.dump({}, f)  # Initialize as empty JSON
@@ -132,13 +150,13 @@ def main(rank=None, world_size=None):
     else:
         print("\nLogging disabled. No experiment log will be saved.")
 
-    is_main_process = rank == 0 if world_size is not None else True
     for data_fraction in args.data_fractions:
         train_loader, val_loader = get_dataloaders(
             dataset_paths,
             train_data_fraction=data_fraction,
             batch_size=batch_size,
             seed=SEED,
+            architecture=args.architecture,
             batch_padded=False,
             val_data_fraction=args.val_data_fraction,
             train_workers=args.train_workers,
@@ -157,6 +175,7 @@ def main(rank=None, world_size=None):
                 print(
                     f"\nModel {model_idx + 1}/{len(meta_models)} is on device {DEVICE} and has {model.num_params} parameters"
                 )
+
             model.to(DEVICE)
 
             # Store original model attributes before DDP wrapping
@@ -285,8 +304,6 @@ def main(rank=None, world_size=None):
 
 
 if __name__ == "__main__":
-    import torch.multiprocessing as mp
-
     args = get_args()
     if args.distributed:
         # Need to use spawn method for CUDA runtime initialization

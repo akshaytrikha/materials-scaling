@@ -272,6 +272,7 @@ class SchNet(nn.Module):
         self.mean = mean
         self.std = std
         self.device = device
+        self.name = "SchNet"
 
         # Embedding for atomic numbers (assumes atomic numbers < 100)
         self.embedding = nn.Embedding(100, hidden_channels)

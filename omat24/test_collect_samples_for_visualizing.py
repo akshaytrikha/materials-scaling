@@ -36,10 +36,12 @@ class TestCollectTrainValSamples(unittest.TestCase):
             train_data_fraction=0.001,
             batch_size=2,
             seed=1024,
+            architecture="SchNet" if graph else "FCN",
             batch_padded=False,
             val_data_fraction=0.001,
             graph=graph,
         )
+
         if graph:
             self.model = SchNet(
                 hidden_channels=64,
