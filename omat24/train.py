@@ -1,7 +1,5 @@
-# Add these imports and warning filters at the very top of the file
 import warnings
 
-# Suppress specific warnings
 warnings.filterwarnings(
     "ignore", message="You are using `torch.load` with `weights_only=False`"
 )
@@ -232,32 +230,38 @@ def main(rank=None, world_size=None):
             else:
                 progress_bar = range(num_epochs + 1)
 
-            trained_model, losses = train(
-                model=model,
-                train_loader=train_loader,
-                val_loader=val_loader,
-                optimizer=optimizer,
-                scheduler=scheduler,
-                pbar=progress_bar,
-                graph=graph,
-                device=DEVICE,
-                distributed=world_size is not None,
-                rank=rank,
-                patience=5,
-                factorize=use_factorize,
-                results_path=results_path if log and is_main_process else None,
-                experiment_results=(
-                    experiment_results if log and is_main_process else None
-                ),
-                data_size_key=ds_key if log and is_main_process else None,
-                run_entry=run_entry if log and is_main_process else None,
-                writer=writer if is_main_process else None,
-                tensorboard_prefix=model_name,
-                num_visualization_samples=args.num_visualization_samples,
-                gradient_clip=args.gradient_clip,
-                validate_every=args.val_every,
-                visualize_every=args.vis_every,
-            )
+            training_args = {
+                "model": model,
+                "train_loader": train_loader,
+                "val_loader": val_loader,
+                "optimizer": optimizer,
+                "scheduler": scheduler,
+                "pbar": progress_bar,
+                "graph": graph,
+                "device": DEVICE,
+                "distributed": (world_size is not None),
+                "rank": rank,
+                "patience": 5,
+                "factorize": use_factorize,
+                "writer": writer if is_main_process else None,
+                "tensorboard_prefix": model_name,
+                "num_visualization_samples": args.num_visualization_samples,
+                "gradient_clip": args.gradient_clip,
+                "validate_every": args.val_every,
+                "visualize_every": args.vis_every,
+            }
+
+            if log and is_main_process:
+                training_args.update(
+                    {
+                        "results_path": results_path,
+                        "experiment_results": experiment_results,
+                        "data_size_key": ds_key,
+                        "run_entry": run_entry,
+                    }
+                )
+
+            trained_model, losses = train(**training_args)
 
             # Save checkpoint
             if is_main_process:  # Only save on main process
