@@ -1,7 +1,5 @@
-# Add these imports and warning filters at the very top of the file
 import warnings
 
-# Suppress specific warnings
 warnings.filterwarnings(
     "ignore", message="You are using `torch.load` with `weights_only=False`"
 )
