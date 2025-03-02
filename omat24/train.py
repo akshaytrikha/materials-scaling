@@ -10,6 +10,7 @@ warnings.filterwarnings("ignore", message="`torch.cuda.amp.autocast")
 # External
 import torch
 import torch.optim as optim
+import torch.multiprocessing as mp
 from torch.optim.lr_scheduler import LambdaLR
 from pathlib import Path
 import pprint
@@ -303,8 +304,6 @@ def main(rank=None, world_size=None):
 
 
 if __name__ == "__main__":
-    import torch.multiprocessing as mp
-
     args = get_args()
     if args.distributed:
         # Need to use spawn method for CUDA runtime initialization

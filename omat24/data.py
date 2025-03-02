@@ -132,7 +132,7 @@ def get_dataloaders(
             shuffle=shuffle and not distributed,
             sampler=train_sampler,
             num_workers=train_workers,
-            pin_memory=True,
+            pin_memory=torch.cuda.is_available(),
         )
         val_loader = PyGDataLoader(
             val_dataset,
@@ -140,15 +140,9 @@ def get_dataloaders(
             shuffle=False,
             sampler=val_sampler,
             num_workers=val_workers,
-            pin_memory=True,
+            pin_memory=torch.cuda.is_available(),
         )
     else:
-        # Set maximum number of atoms for padding
-        if len(dataset_paths) > 1:
-            max_n_atoms = 180
-        else:
-            max_n_atoms = dataset.max_n_atoms
-
         # Create collate function instances
         if batch_padded:
             collate_fn = BatchPaddedCollate(factorize)
@@ -163,7 +157,7 @@ def get_dataloaders(
             collate_fn=collate_fn,
             num_workers=train_workers,
             persistent_workers=train_workers > 0,
-            pin_memory=True,
+            pin_memory=torch.cuda.is_available(),
         )
         val_loader = DataLoader(
             val_dataset,
@@ -173,7 +167,7 @@ def get_dataloaders(
             collate_fn=collate_fn,
             num_workers=val_workers,
             persistent_workers=val_workers > 0,
-            pin_memory=True,
+            pin_memory=torch.cuda.is_available(),
         )
 
     return train_loader, val_loader
@@ -213,18 +207,24 @@ class OMat24Dataset(Dataset):
         augment: bool = False,
         graph: bool = False,
         debug: bool = False,
+        rank: int = None,
+        world_size: int = None,
     ):
-        self.dataset_paths = dataset_paths  # Store paths instead of dataset
+        self.dataset_paths = dataset_paths
         self.config_kwargs = config_kwargs
-        self.dataset = AseDBDataset(config=dict(src=dataset_paths, **config_kwargs))
         self.architecture = architecture
         self.augment = augment
         self.graph = graph
         self.debug = debug
 
+        # Shard the dataset if using DDP
+        self.rank = rank
+        self.world_size = world_size
+
         # Initialize the dataset
         self._init_dataset()
 
+        # Set max atoms
         if len(dataset_paths) > 1:
             self.max_n_atoms = 180
         else:
@@ -233,10 +233,20 @@ class OMat24Dataset(Dataset):
             self.max_n_atoms = DATASET_INFO[split_name][dataset_name]["max_n_atoms"]
 
     def _init_dataset(self):
-        """Initialize the ASE dataset"""
-        self.dataset = AseDBDataset(
-            config=dict(src=self.dataset_paths, **self.config_kwargs)
-        )
+        """Initialize the ASE dataset with optional sharding"""
+        if self.rank is not None and self.world_size is not None:
+            # Create a sharded dataset config
+            shard_config = dict(
+                src=self.dataset_paths,
+                shard_id=self.rank,
+                num_shards=self.world_size,
+                **self.config_kwargs
+            )
+            self.dataset = AseDBDataset(config=shard_config)
+        else:
+            self.dataset = AseDBDataset(
+                config=dict(src=self.dataset_paths, **self.config_kwargs)
+            )
 
     def __getstate__(self):
         """Custom pickling method"""
