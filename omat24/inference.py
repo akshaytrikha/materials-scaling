@@ -21,7 +21,7 @@ warnings.filterwarnings(
 # Internal
 from data import get_dataloaders
 from data_utils import download_dataset, VALID_DATASETS
-from train_utils import forward_pass
+from train_utils import forward_pass, collect_samples_for_visualizing
 from models.fcn import FCNModel
 from models.transformer_models import XTransformerModel
 from models.schnet import SchNet
@@ -66,7 +66,7 @@ def parse_args():
         "--batch_size", type=int, default=64, help="Batch size for inference"
     )
     parser.add_argument(
-        "--num_samples", type=int, default=5, help="Number of samples to visualize"
+        "--num_samples", type=int, default=0, help="Number of samples to visualize"
     )
     parser.add_argument(
         "--fairchem_model",
@@ -79,8 +79,7 @@ def parse_args():
 
 
 def fetch_fairchem_eqV2_config(config_name):
-    """
-    Fetch FAIRChem EquiformerV2 config from GitHub and save it locally.
+    """Fetch FAIRChem's EquiformerV2 config from GitHub and save it locally.
 
     Args:
         config_name (str): Name of the config to fetch (eqV2_31M, eqV2_86M, or eqV2_153M)
@@ -145,8 +144,7 @@ def fetch_fairchem_eqV2_config(config_name):
 
 
 def load_fairchem_eqV2(config_name, device):
-    """
-    Load a FAIRChem EquiformerV2 model.
+    """Load a pretrained FAIRChem EquiformerV2 model.
 
     Args:
         config_name (str): Name of the config to use
@@ -477,134 +475,6 @@ def compute_metrics(loader, model, device, graph=False, factorize=False):
     }
 
 
-def save_visualizations(samples, output_dir):
-    """Save visualizations of the predictions."""
-    output_dir.mkdir(parents=True, exist_ok=True)
-
-    for i, sample in enumerate(samples):
-        # Get chemical symbols from atomic numbers
-        atom_symbols = [chemical_symbols[z] for z in sample["atomic_numbers"]]
-
-        # Plot energy predictions
-        plt.figure(figsize=(10, 6))
-        plt.title(f"Sample {i+1}: Energy Prediction")
-        plt.bar(
-            ["True", "Predicted"], [sample["true"]["energy"], sample["pred"]["energy"]]
-        )
-        plt.ylabel("Energy (eV)")
-        plt.grid(axis="y", linestyle="--", alpha=0.7)
-        plt.savefig(output_dir / f"sample_{i+1}_energy.png")
-        plt.close()
-
-        # Plot force vectors (magnitude)
-        plt.figure(figsize=(12, 6))
-        true_force_mag = np.linalg.norm(sample["true"]["forces"], axis=1)
-        pred_force_mag = np.linalg.norm(sample["pred"]["forces"], axis=1)
-
-        x = np.arange(len(atom_symbols))
-        width = 0.35
-
-        plt.bar(x - width / 2, true_force_mag, width, label="True")
-        plt.bar(x + width / 2, pred_force_mag, width, label="Predicted")
-
-        plt.xlabel("Atom")
-        plt.ylabel("Force Magnitude (eV/Å)")
-        plt.title(f"Sample {i+1}: Force Magnitude Comparison")
-        plt.xticks(x, atom_symbols)
-        plt.legend()
-        plt.grid(axis="y", linestyle="--", alpha=0.7)
-        plt.savefig(output_dir / f"sample_{i+1}_forces.png")
-        plt.close()
-
-        # Plot stress components
-        plt.figure(figsize=(12, 6))
-        stress_labels = ["σxx", "σyy", "σzz", "σyz", "σxz", "σxy"]
-
-        x = np.arange(len(stress_labels))
-        width = 0.35
-
-        plt.bar(x - width / 2, sample["true"]["stress"], width, label="True")
-        plt.bar(x + width / 2, sample["pred"]["stress"], width, label="Predicted")
-
-        plt.xlabel("Component")
-        plt.ylabel("Stress (GPa)")
-        plt.title(f"Sample {i+1}: Stress Components")
-        plt.xticks(x, stress_labels)
-        plt.legend()
-        plt.grid(axis="y", linestyle="--", alpha=0.7)
-        plt.savefig(output_dir / f"sample_{i+1}_stress.png")
-        plt.close()
-
-    print(f"Saved visualizations to {output_dir}")
-
-
-def collect_samples(model, dataset, device, num_samples, graph):
-    """Collect samples with predictions for visualization."""
-    samples = []
-    indices = np.random.choice(
-        len(dataset), min(num_samples, len(dataset)), replace=False
-    )
-
-    for idx in indices:
-        if graph:
-            batch = torch.utils.data.dataloader.default_collate([dataset[idx]])
-            positions = batch.pos
-            atomic_numbers = batch.atomic_numbers
-            sample_length = len(atomic_numbers)
-        else:
-            batch = {
-                k: torch.unsqueeze(v, 0) if isinstance(v, torch.Tensor) else v
-                for k, v in dataset[idx].items()
-            }
-            positions = batch["positions"].squeeze(0)
-            atomic_numbers = batch["atomic_numbers"].squeeze(0)
-            sample_length = (batch["atomic_numbers"] != 0).sum(dim=1)[0].item()
-
-        with torch.no_grad():
-            (
-                pred_forces,
-                pred_energy,
-                pred_stress,
-                true_forces,
-                true_energy,
-                true_stress,
-                _,
-                _,
-            ) = forward_pass(
-                model=model,
-                batch=batch,
-                graph=graph,
-                training=False,
-                device=device,
-                factorize=False,
-            )
-
-        if not graph:
-            pred_forces = pred_forces.squeeze(0)
-            true_forces = true_forces.squeeze(0)
-            pred_stress = pred_stress.squeeze(0)
-            true_stress = true_stress.squeeze(0)
-
-        samples.append(
-            {
-                "atomic_numbers": atomic_numbers[:sample_length].cpu().tolist(),
-                "positions": positions[:sample_length].cpu().tolist(),
-                "true": {
-                    "forces": true_forces[:sample_length].cpu().tolist(),
-                    "energy": true_energy.cpu().item(),
-                    "stress": true_stress.cpu().tolist(),
-                },
-                "pred": {
-                    "forces": pred_forces[:sample_length].cpu().tolist(),
-                    "energy": pred_energy.cpu().item(),
-                    "stress": pred_stress.cpu().tolist(),
-                },
-            }
-        )
-
-    return samples
-
-
 def main():
     # Parse arguments
     args = parse_args()
@@ -680,15 +550,25 @@ def main():
     ) as f:
         json.dump(metrics, f, indent=4)
 
-    # # Optional: collect and save sample visualizations if needed
-    # if args.num_samples > 0:
-    #     dataset = loader.dataset
-    #     samples = collect_samples(model, dataset, device, args.num_samples, graph)
-    #     save_visualizations(samples, output_dir / "visualizations")
+    # Optional: collect sample visualizations if needed
+    if args.num_samples > 0:
+        # Use the collect_samples_for_visualizing function from train_utils.py
+        samples = collect_samples_for_visualizing(
+            model,
+            graph,
+            train_loader,
+            val_loader,
+            device,
+            args.num_samples,
+        )
 
-    #     # Save sample data for further analysis
-    #     with open(output_dir / f"{model_name}_samples.json", "w") as f:
-    #         json.dump(samples, f, indent=4)
+        # Save sample data for further analysis
+        with open(output_dir / f"{model_name}_samples.json", "w") as f:
+            json.dump(samples, f, indent=4)
+
+        print(
+            f"Saved {args.num_samples} visualization samples to {output_dir / f'{model_name}_samples.json'}"
+        )
 
     print(f"\nInference completed. Results saved to {output_dir}")
 
