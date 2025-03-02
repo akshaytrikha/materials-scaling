@@ -6,10 +6,8 @@ import json
 import yaml
 import numpy as np
 from tqdm import tqdm
-import matplotlib.pyplot as plt
 import requests
 import warnings
-from ase.data import chemical_symbols
 from fairchem.core.common.registry import Registry
 
 # Filter warnings
@@ -26,6 +24,21 @@ from models.fcn import FCNModel
 from models.transformer_models import XTransformerModel
 from models.schnet import SchNet
 from models.equiformer_v2 import EquiformerS2EF
+
+# Set seed & device
+SEED = 1024
+torch.manual_seed(SEED)
+if torch.cuda.is_available():
+    DEVICE = torch.device("cuda")
+    torch.cuda.manual_seed(SEED)
+    torch.cuda.manual_seed_all(SEED)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+    torch.backends.cuda.enable_flash_sdp(True)
+elif torch.backends.mps.is_available():
+    DEVICE = torch.device("mps")
+else:
+    DEVICE = torch.device("cpu")
 
 
 def parse_args():
@@ -482,16 +495,19 @@ def main():
     output_dir.mkdir(parents=True, exist_ok=True)
 
     # Set device
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print(f"Using device: {device}")
+    # elif args.architecture == "EquiformerV2":
+    #     if DEVICE == torch.device("mps"):
+    #         print("MPS is not supported for EquiformerV2. Switching to CPU.")
+    #         DEVICE = torch.device("cpu")
+    # print(f"Using device: {DEVICE}")
 
     # Load model - either from checkpoint or FAIRChem
     if args.fairchem_model:
         # Load FAIRChem model
-        model, architecture = load_fairchem_eqV2(args.fairchem_model, device)
+        model, architecture = load_fairchem_eqV2(args.fairchem_model, DEVICE)
     else:
         # Load model from checkpoint
-        model, architecture = load_checkpoint_model(args.checkpoint, device)
+        model, architecture = load_checkpoint_model(args.checkpoint, DEVICE)
 
     # Determine if model is graph-based
     graph = architecture in ["SchNet", "EquiformerV2"]
@@ -528,7 +544,7 @@ def main():
 
     # Compute metrics in a batched manner
     metrics = compute_metrics(
-        loader=loader, model=model, device=device, graph=graph, factorize=False
+        loader=loader, model=model, device=DEVICE, graph=graph, factorize=False
     )
 
     # Print metrics
@@ -558,7 +574,7 @@ def main():
             graph,
             train_loader,
             val_loader,
-            device,
+            DEVICE,
             args.num_samples,
         )
 
