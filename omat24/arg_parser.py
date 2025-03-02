@@ -128,6 +128,11 @@ def get_args():
         default="./datasets",
         help="Base path for dataset storage",
     )
+    parser.add_argument(
+        "--use_fsdp",
+        action="store_true",
+        help="Use Fully Sharded Data Parallel instead of DDP",
+    )
 
     return parser.parse_args()
 

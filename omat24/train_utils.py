@@ -6,6 +6,8 @@ from typing import Union
 from torch.utils.flop_counter import FlopCounterMode
 from contextlib import nullcontext
 import torch.distributed as dist
+import torch.distributed.fsdp as fsdp
+from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
 
 # Internal
 from loss import compute_loss
@@ -323,6 +325,7 @@ def train(
     gradient_clip=1,
     validate_every=500,
     visualize_every=500,
+    use_fsdp=False,
 ):
     """
     Train model with validation at epoch 0 and every 'validate_every' epochs.
@@ -332,94 +335,116 @@ def train(
         model (nn.Module): The PyTorch model to train.
         train_loader (DataLoader): DataLoader for training data.
         val_loader (DataLoader): DataLoader for validation data.
-        optimizer (torch.optim.Optimizer): The optimizer for training.
-        scheduler (torch.optim.lr_scheduler): Learning rate scheduler, or None.
-        pbar (tqdm): A tqdm progress bar initialized with the total number of epochs.
-        device (torch.device): The device to run training on.
+        optimizer (Optimizer): PyTorch optimizer.
+        scheduler (LRScheduler, optional): Learning rate scheduler.
+        pbar (tqdm.tqdm): Progress bar for tracking epochs.
+        graph (bool): Whether the model architecture is graph-based.
+        device (torch.device): Device to run training on.
         distributed (bool, optional): Whether to use distributed training.
-        rank (int, optional): The rank of the process.
-        patience (int): Early stopping patience (number of checks with no improvement).
-        results_path (str, optional): Path to JSON results file. If provided, partial logs are written.
-        experiment_results (dict, optional): Dict for storing experiment results.
-        data_size_key (str, optional): Key to label experiment_results by dataset size.
-        run_entry (dict, optional): Dictionary describing the current run (e.g., model_name, config).
-        writer (SummaryWriter, optional): TensorBoard writer for logging.
-        tensorboard_prefix (str, optional): Prefix for naming logs in TensorBoard.
-        num_visualization_samples (int, optional): Number of samples to visualize in logs.
-        gradient_clip (int, optional): Gradient clipping value.
-        validate_every (int, optional): Frequency (in epochs) to run validation.
-        visualize_every (int, optional): Frequency (in epochs) to collect visualization samples.
+        rank (int, optional): Process rank for distributed training.
+        patience (int, optional): Number of epochs to wait for improvement before early stopping.
+        factorize (bool, optional): Whether to use factorized distance matrices.
+        results_path (Path, optional): Path to save training results.
+        experiment_results (dict, optional): Experiment results dictionary to update.
+        data_size_key (str, optional): Key for dataset size in experiment_results.
+        run_entry (dict, optional): Run entry to update in experiment_results.
+        writer (SummaryWriter, optional): TensorBoard writer.
+        tensorboard_prefix (str, optional): Prefix for TensorBoard metrics.
+        num_visualization_samples (int, optional): Number of samples to visualize.
+        gradient_clip (float, optional): Maximum gradient norm for clipping.
+        validate_every (int, optional): Validate every this many epochs.
+        visualize_every (int, optional): Visualize every this many epochs.
+        use_fsdp (bool, optional): Whether to use FSDP mode.
 
     Returns:
-        (nn.Module, dict): The trained model and a dictionary of recorded losses.
+        tuple: (trained_model, losses dictionary)
     """
-    model.to(device)
-    can_write_partial = all(
-        [results_path, experiment_results, data_size_key, run_entry]
-    )
+    is_main_process = (not distributed) or (rank == 0)
+    can_write_partial = results_path is not None and is_main_process
+
+    # Initialize losses dictionary
     losses = {}
-
-    is_main_process = not distributed or rank == 0
-    n_train_batches = len(train_loader)
-    total_epochs = len(pbar) if is_main_process else pbar[-1] + 1
-
-    # Initial validation at epoch 0
-    (
-        val_loss,
-        val_energy_loss,
-        val_force_loss,
-        val_stress_iso_loss,
-        val_stress_aniso_loss,
-    ) = run_validation(model, val_loader, graph, device, factorize)
-    losses[0] = {"val_loss": float(val_loss)}
-    if writer is not None:
-        # Logging each metric individually using log_tb_metrics
-        log_tb_metrics(
-            {
-                "": val_loss,
-                "energy": val_energy_loss,
-                "force": val_force_loss,
-                "stress_iso": val_stress_iso_loss,
-                "stress_aniso": val_stress_aniso_loss,
-            },
-            writer,
-            0,
-            tensorboard_prefix,
-            train=False,
-        )
-
-    # Write partial JSON if everything is provided
-    if can_write_partial:
-        partial_json_log(
-            experiment_results,
-            data_size_key,
-            run_entry,
-            0,
-            float("nan"),
-            val_loss,
-            results_path,
-        )
-
-    # Early stopping setup
-    best_val_loss = val_loss
-    best_val_model = copy.deepcopy(model)
-    best_val_loss_dict = copy.deepcopy(losses)
+    best_val_loss = float("inf")
     epochs_since_improvement = 0
+    best_val_model = None
+    best_val_loss_dict = None
+    val_loss = float("inf")
 
-    samples = None
+    # Check if we need to validate at epoch 0
+    if validate_every > 0:
+        (
+            val_loss,
+            val_energy_loss,
+            val_force_loss,
+            val_stress_iso_loss,
+            val_stress_aniso_loss,
+        ) = run_validation(model, val_loader, graph, device, factorize)
+
+        if distributed:
+            val_loss_tensor = torch.tensor(val_loss, device=device)
+            val_energy_loss_tensor = torch.tensor(val_energy_loss, device=device)
+            val_force_loss_tensor = torch.tensor(val_force_loss, device=device)
+            val_stress_iso_loss_tensor = torch.tensor(
+                val_stress_iso_loss, device=device
+            )
+            val_stress_aniso_loss_tensor = torch.tensor(
+                val_stress_aniso_loss, device=device
+            )
+
+            if use_fsdp:
+                # For FSDP we use fsdp.all_reduce
+                val_loss = fsdp.all_reduce(val_loss_tensor).item()
+                val_energy_loss = fsdp.all_reduce(val_energy_loss_tensor).item()
+                val_force_loss = fsdp.all_reduce(val_force_loss_tensor).item()
+                val_stress_iso_loss = fsdp.all_reduce(val_stress_iso_loss_tensor).item()
+                val_stress_aniso_loss = fsdp.all_reduce(
+                    val_stress_aniso_loss_tensor
+                ).item()
+            else:
+                # For DDP we use our reduce_losses function
+                val_loss = reduce_losses(val_loss_tensor, average=True).item()
+                val_energy_loss = reduce_losses(
+                    val_energy_loss_tensor, average=True
+                ).item()
+                val_force_loss = reduce_losses(
+                    val_force_loss_tensor, average=True
+                ).item()
+                val_stress_iso_loss = reduce_losses(
+                    val_stress_iso_loss_tensor, average=True
+                ).item()
+                val_stress_aniso_loss = reduce_losses(
+                    val_stress_aniso_loss_tensor, average=True
+                ).item()
+
+        losses[0] = {"val_loss": val_loss}
+        best_val_loss = val_loss
+        best_val_model = copy.deepcopy(model)
+        best_val_loss_dict = copy.deepcopy(losses)
+
+        if writer is not None:
+            log_tb_metrics(
+                {
+                    "": val_loss,
+                    "energy": val_energy_loss,
+                    "force": val_force_loss,
+                    "stress_iso": val_stress_iso_loss,
+                    "stress_aniso": val_stress_aniso_loss,
+                },
+                writer,
+                0,
+                tensorboard_prefix,
+                train=False,
+            )
+
+    # Calculate the number of batches
     n_train_batches = len(train_loader)
+
+    # Use FlopCounterMode to count FLOPs, but only once and only for the first epoch
+    flops_per_epoch = 0
+    flop_counter = FlopCounterMode()
 
     # Training loop
-    flop_counter = FlopCounterMode(display=False)
-    flops_per_epoch = 0
-    for epoch in range(1, total_epochs):
-        if (
-            distributed
-            and hasattr(train_loader, "sampler")
-            and hasattr(train_loader.sampler, "set_epoch")
-        ):
-            train_loader.sampler.set_epoch(epoch)
-
+    for epoch in range(1, num_epochs + 1):
         model.train()
         train_loss_sum = 0.0
         energy_loss_sum = 0.0
@@ -474,13 +499,24 @@ def train(
                 total_train_loss.backward()
 
                 if distributed:
-                    # Synchronize gradients across processes
-                    for param in model.parameters():
-                        if param.grad is not None:
-                            dist.all_reduce(param.grad.data, op=dist.ReduceOp.SUM)
-                            param.grad.data /= dist.get_world_size()
+                    if use_fsdp:
+                        # FSDP handles gradient synchronization internally
+                        pass
+                    else:
+                        # DDP needs manual gradient synchronization
+                        for param in model.parameters():
+                            if param.grad is not None:
+                                dist.all_reduce(param.grad.data, op=dist.ReduceOp.SUM)
+                                param.grad.data /= dist.get_world_size()
 
-                torch.nn.utils.clip_grad_norm_(model.parameters(), gradient_clip)
+                # Handle gradient clipping differently for FSDP
+                if use_fsdp:
+                    # FSDP requires a different clipping approach
+                    FSDP.clip_grad_norm_(model, gradient_clip)
+                else:
+                    # Standard gradient clipping
+                    torch.nn.utils.clip_grad_norm_(model.parameters(), gradient_clip)
+
                 optimizer.step()
 
                 train_loss_sum += total_train_loss.item()
@@ -494,6 +530,7 @@ def train(
                     pbar.set_description(
                         f"train_loss={current_avg_loss:.2f} val_loss={val_loss:.2f}"
                     )
+
         if epoch == 1:
             flops_per_epoch = flop_counter.get_total_flops()
 
@@ -510,15 +547,24 @@ def train(
                 stress_aniso_loss_sum, device=device
             )
 
-            train_loss_sum = reduce_losses(train_loss_tensor, average=True).item()
-            energy_loss_sum = reduce_losses(energy_loss_tensor, average=True).item()
-            force_loss_sum = reduce_losses(force_loss_tensor, average=True).item()
-            stress_iso_loss_sum = reduce_losses(
-                stress_iso_loss_tensor, average=True
-            ).item()
-            stress_aniso_loss_sum = reduce_losses(
-                stress_aniso_loss_tensor, average=True
-            ).item()
+            if use_fsdp:
+                # For FSDP we use fsdp.all_reduce
+                train_loss_sum = fsdp.all_reduce(train_loss_tensor).item()
+                energy_loss_sum = fsdp.all_reduce(energy_loss_tensor).item()
+                force_loss_sum = fsdp.all_reduce(force_loss_tensor).item()
+                stress_iso_loss_sum = fsdp.all_reduce(stress_iso_loss_tensor).item()
+                stress_aniso_loss_sum = fsdp.all_reduce(stress_aniso_loss_tensor).item()
+            else:
+                # For DDP we use our reduce_losses function
+                train_loss_sum = reduce_losses(train_loss_tensor, average=True).item()
+                energy_loss_sum = reduce_losses(energy_loss_tensor, average=True).item()
+                force_loss_sum = reduce_losses(force_loss_tensor, average=True).item()
+                stress_iso_loss_sum = reduce_losses(
+                    stress_iso_loss_tensor, average=True
+                ).item()
+                stress_aniso_loss_sum = reduce_losses(
+                    stress_aniso_loss_tensor, average=True
+                ).item()
 
         avg_epoch_train_loss = train_loss_sum / n_train_batches
         avg_epoch_energy_loss = energy_loss_sum / n_train_batches
@@ -527,97 +573,36 @@ def train(
         avg_epoch_stress_aniso_loss = stress_aniso_loss_sum / n_train_batches
 
         losses[epoch] = {"train_loss": float(avg_epoch_train_loss)}
-        # TensorBoard logging for training loss
-        if writer is not None:
-            # Log parameter norms (example usage) using log_tb_metrics
-            log_tb_metrics(
-                {
-                    "": avg_epoch_train_loss,
-                    "energy": avg_epoch_energy_loss,
-                    "force": avg_epoch_force_loss,
-                    "stress_iso": avg_epoch_stress_iso_loss,
-                    "stress_aniso": avg_epoch_stress_aniso_loss,
-                },
-                writer,
-                epoch,
-                tensorboard_prefix,
-                train=True,
-            )
-            # Simple gradient logging for debugging (skip bias layers)
-            for name, param in model.named_parameters():
-                if (
-                    param is not None
-                    and param.requires_grad
-                    and param.grad is not None
-                    and not name.endswith("bias")
-                ):  # Skip bias layers
-                    # Log mean gradient - key indicator for vanishing/exploding gradients
-                    grad_mean = param.grad.abs().mean().item()
-                    writer.add_scalar(
-                        f"{tensorboard_prefix}/Grads/{name}",
-                        grad_mean,
-                        global_step=epoch,
-                    )
 
-                    # Log gradient-to-weight ratio - indicates if updates are well-scaled
-                    grad_to_weight = (
-                        param.grad.abs().mean() / (param.data.abs().mean() + 1e-8)
-                    ).item()
-                    writer.add_scalar(
-                        f"{tensorboard_prefix}/G2W/{name}",
-                        grad_to_weight,
-                        global_step=epoch,
-                    )
-        # Validate every 'validate_every' epochs
+        # When collecting validation loss:
         if epoch % validate_every == 0:
-            (
-                val_loss,
-                val_energy_loss,
-                val_force_loss,
-                val_stress_iso_loss,
-                val_stress_aniso_loss,
-            ) = run_validation(model, val_loader, graph, device, factorize)
-
+            # Inside the validate_every block, use FSDP-specific code for validation loss reduction:
             if distributed:
-                val_loss_tensor = torch.tensor(val_loss, device=device)
-                val_energy_loss_tensor = torch.tensor(val_energy_loss, device=device)
-                val_force_loss_tensor = torch.tensor(val_force_loss, device=device)
-                val_stress_iso_loss_tensor = torch.tensor(
-                    val_stress_iso_loss, device=device
-                )
-                val_stress_aniso_loss_tensor = torch.tensor(
-                    val_stress_aniso_loss, device=device
-                )
-
-                val_loss = reduce_losses(val_loss_tensor, average=True).item()
-                val_energy_loss = reduce_losses(
-                    val_energy_loss_tensor, average=True
-                ).item()
-                val_force_loss = reduce_losses(
-                    val_force_loss_tensor, average=True
-                ).item()
-                val_stress_iso_loss = reduce_losses(
-                    val_stress_iso_loss_tensor, average=True
-                ).item()
-                val_stress_aniso_loss = reduce_losses(
-                    val_stress_aniso_loss_tensor, average=True
-                ).item()
-
-            if writer is not None:
-                log_tb_metrics(
-                    {
-                        "": val_loss,
-                        "energy": val_energy_loss,
-                        "force": val_force_loss,
-                        "stress_iso": val_stress_iso_loss,
-                        "stress_aniso": val_stress_aniso_loss,
-                    },
-                    writer,
-                    epoch,
-                    tensorboard_prefix,
-                    train=False,
-                )
-            losses[epoch]["val_loss"] = val_loss
+                if use_fsdp:
+                    val_loss = fsdp.all_reduce(val_loss_tensor).item()
+                    val_energy_loss = fsdp.all_reduce(val_energy_loss_tensor).item()
+                    val_force_loss = fsdp.all_reduce(val_force_loss_tensor).item()
+                    val_stress_iso_loss = fsdp.all_reduce(
+                        val_stress_iso_loss_tensor
+                    ).item()
+                    val_stress_aniso_loss = fsdp.all_reduce(
+                        val_stress_aniso_loss_tensor
+                    ).item()
+                else:
+                    # Your existing DDP code...
+                    val_loss = reduce_losses(val_loss_tensor, average=True).item()
+                    val_energy_loss = reduce_losses(
+                        val_energy_loss_tensor, average=True
+                    ).item()
+                    val_force_loss = reduce_losses(
+                        val_force_loss_tensor, average=True
+                    ).item()
+                    val_stress_iso_loss = reduce_losses(
+                        val_stress_iso_loss_tensor, average=True
+                    ).item()
+                    val_stress_aniso_loss = reduce_losses(
+                        val_stress_aniso_loss_tensor, average=True
+                    ).item()
 
             # Early stopping check
             if val_loss < best_val_loss:

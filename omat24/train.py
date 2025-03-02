@@ -23,6 +23,22 @@ import torch.distributed as dist
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data.distributed import DistributedSampler
 
+# FSDP imports
+from torch.distributed.fsdp import (
+    FullyShardedDataParallel as FSDP,
+    MixedPrecision,
+    BackwardPrefetch,
+    ShardingStrategy,
+    CPUOffload,
+)
+from torch.distributed.fsdp.wrap import (
+    transformer_auto_wrap_policy,
+    size_based_auto_wrap_policy,
+    enable_wrap,
+    wrap,
+)
+from torch.distributed.fsdp.fully_sharded_data_parallel import StateDictType
+
 # Internal
 from data import get_dataloaders
 from data_utils import download_dataset, VALID_DATASETS
@@ -64,19 +80,42 @@ def cleanup_ddp():
     dist.destroy_process_group()
 
 
-def main(rank=None, world_size=None):
+def get_fsdp_config():
+    """Returns a configuration dictionary for FSDP wrapping."""
+    return {
+        # Enable mixed precision for better performance
+        "mixed_precision": MixedPrecision(
+            param_dtype=torch.float16,
+            reduce_dtype=torch.float16,
+            buffer_dtype=torch.float16,
+        ),
+        # Prefetch next backward pass to overlap communication
+        "backward_prefetch": BackwardPrefetch.BACKWARD_PRE,
+        # Sharding strategy
+        "sharding_strategy": ShardingStrategy.FULL_SHARD,
+        # CPU offloading (uncomment if needed)
+        # "cpu_offload": CPUOffload(offload_params=True),
+        # Choose parameter wrapping policy based on model size
+        "auto_wrap_policy": size_based_auto_wrap_policy(min_num_params=100_000),
+        # Enable activation checkpointing for memory efficiency
+        "use_orig_params": True,  # Required for gradient clipping
+        "device_id": torch.cuda.current_device(),
+    }
+
+
+def main(rank=None, world_size=None, use_fsdp=False):
     is_main_process = rank == 0 if world_size is not None else True
     args = get_args()
     log = not args.no_log
     global DEVICE
 
-    # DDP setup if world_size is provided
+    # DDP or FSDP setup if world_size is provided
     if world_size is not None:
         setup_ddp(rank, world_size)
         DEVICE = torch.device(f"cuda:{rank}")
         dist.barrier()
 
-    # Convinience for running all datasets
+    # Convenience for running all datasets
     if args.datasets[0] == "all":
         args.datasets = VALID_DATASETS
 
@@ -176,7 +215,7 @@ def main(rank=None, world_size=None):
 
             model.to(DEVICE)
 
-            # Store original model attributes before DDP wrapping
+            # Store original model attributes before DDP/FSDP wrapping
             num_params = model.num_params if hasattr(model, "num_params") else None
             embedding_dim = getattr(model, "embedding_dim", None)
             depth = getattr(model, "depth", None)
@@ -184,13 +223,23 @@ def main(rank=None, world_size=None):
             optimizer = optim.AdamW(model.parameters(), lr=lr)
 
             if world_size is not None:
-                # Wrap model in DDP to use multiple GPUs
-                model = DDP(
-                    model,
-                    device_ids=[rank],
-                    find_unused_parameters=True,
-                    broadcast_buffers=False,
-                )
+                if use_fsdp:
+                    # Wrap model with FSDP
+                    fsdp_config = get_fsdp_config()
+
+                    # FSDP wrap
+                    model = FSDP(model, **fsdp_config)
+
+                    # If using FSDP, we need to recreate the optimizer after wrapping
+                    optimizer = optim.AdamW(model.parameters(), lr=lr)
+                else:
+                    # Use traditional DDP
+                    model = DDP(
+                        model,
+                        device_ids=[rank],
+                        find_unused_parameters=True,
+                        broadcast_buffers=False,
+                    )
 
             lambda_schedule = lambda epoch: 0.5 * (
                 1 + math.cos(math.pi * epoch / num_epochs)
@@ -199,11 +248,15 @@ def main(rank=None, world_size=None):
 
             # Prepare run entry etc.
             model_name = f"model_ds{dataset_size}_p{int(num_params)}"
-            checkpoint_path = f"checkpoints/{args.architecture}_ds{dataset_size}_p{int(num_params)}_{timestamp}.pth"
+            parallelism_type = (
+                "fsdp" if use_fsdp else "ddp" if world_size is not None else "none"
+            )
+            checkpoint_path = f"checkpoints/{args.architecture}_{parallelism_type}_ds{dataset_size}_p{int(num_params)}_{timestamp}.pth"
             run_entry = {
                 "model_name": model_name,
                 "config": {
                     "architecture": args.architecture,
+                    "parallelism": parallelism_type,
                     "embedding_dim": embedding_dim,
                     "depth": depth,
                     "num_params": num_params,
@@ -249,6 +302,7 @@ def main(rank=None, world_size=None):
                 "gradient_clip": args.gradient_clip,
                 "validate_every": args.val_every,
                 "visualize_every": args.vis_every,
+                "use_fsdp": use_fsdp,  # Pass the FSDP flag to train_utils
             }
 
             if log and is_main_process:
@@ -266,11 +320,21 @@ def main(rank=None, world_size=None):
             # Save checkpoint
             if is_main_process:  # Only save on main process
                 Path("checkpoints").mkdir(exist_ok=True)
-                model_state = (
-                    trained_model.module.state_dict()
-                    if isinstance(trained_model, DDP)
-                    else trained_model.state_dict()
-                )
+
+                if use_fsdp:
+                    # FSDP requires special checkpoint saving
+                    with FSDP.state_dict_type(
+                        trained_model, StateDictType.FULL_STATE_DICT
+                    ):
+                        model_state = trained_model.state_dict()
+                else:
+                    # Regular model or DDP
+                    model_state = (
+                        trained_model.module.state_dict()
+                        if isinstance(trained_model, DDP)
+                        else trained_model.state_dict()
+                    )
+
                 torch.save(
                     {
                         "model_state_dict": model_state,
@@ -313,6 +377,6 @@ if __name__ == "__main__":
         # Need to use spawn method for CUDA runtime initialization
         mp.set_start_method("spawn")
         world_size = torch.cuda.device_count()
-        mp.spawn(main, args=(world_size,), nprocs=world_size, join=True)
+        mp.spawn(main, args=(world_size, args.use_fsdp), nprocs=world_size, join=True)
     else:
         main()
