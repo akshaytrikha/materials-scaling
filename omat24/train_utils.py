@@ -6,7 +6,6 @@ from typing import Union
 from torch.utils.flop_counter import FlopCounterMode
 from contextlib import nullcontext
 import torch.distributed as dist
-from tqdm import tqdm
 
 # Internal
 from loss import compute_loss
@@ -14,7 +13,7 @@ from log_utils import partial_json_log, log_tb_metrics
 from torch_geometric.data import Batch
 
 
-def reduce_tensor(tensor, average=True):
+def reduce_losses(tensor, average=True):
     rt = tensor.clone()
     dist.all_reduce(rt, op=dist.ReduceOp.SUM)
     if average:
@@ -511,13 +510,13 @@ def train(
                 stress_aniso_loss_sum, device=device
             )
 
-            train_loss_sum = reduce_tensor(train_loss_tensor, average=True).item()
-            energy_loss_sum = reduce_tensor(energy_loss_tensor, average=True).item()
-            force_loss_sum = reduce_tensor(force_loss_tensor, average=True).item()
-            stress_iso_loss_sum = reduce_tensor(
+            train_loss_sum = reduce_losses(train_loss_tensor, average=True).item()
+            energy_loss_sum = reduce_losses(energy_loss_tensor, average=True).item()
+            force_loss_sum = reduce_losses(force_loss_tensor, average=True).item()
+            stress_iso_loss_sum = reduce_losses(
                 stress_iso_loss_tensor, average=True
             ).item()
-            stress_aniso_loss_sum = reduce_tensor(
+            stress_aniso_loss_sum = reduce_losses(
                 stress_aniso_loss_tensor, average=True
             ).item()
 
@@ -571,18 +570,39 @@ def train(
                     )
         # Validate every 'validate_every' epochs
         if epoch % validate_every == 0:
-            val_loss = run_validation(model, val_loader, graph, device, factorize)
-            if distributed:
-                val_loss = reduce_tensor(
-                    torch.tensor(val_loss, device=device), average=True
-                )
             (
                 val_loss,
                 val_energy_loss,
                 val_force_loss,
                 val_stress_iso_loss,
                 val_stress_aniso_loss,
-            ) = val_loss
+            ) = run_validation(model, val_loader, graph, device, factorize)
+
+            if distributed:
+                val_loss_tensor = torch.tensor(val_loss, device=device)
+                val_energy_loss_tensor = torch.tensor(val_energy_loss, device=device)
+                val_force_loss_tensor = torch.tensor(val_force_loss, device=device)
+                val_stress_iso_loss_tensor = torch.tensor(
+                    val_stress_iso_loss, device=device
+                )
+                val_stress_aniso_loss_tensor = torch.tensor(
+                    val_stress_aniso_loss, device=device
+                )
+
+                val_loss = reduce_losses(val_loss_tensor, average=True).item()
+                val_energy_loss = reduce_losses(
+                    val_energy_loss_tensor, average=True
+                ).item()
+                val_force_loss = reduce_losses(
+                    val_force_loss_tensor, average=True
+                ).item()
+                val_stress_iso_loss = reduce_losses(
+                    val_stress_iso_loss_tensor, average=True
+                ).item()
+                val_stress_aniso_loss = reduce_losses(
+                    val_stress_aniso_loss_tensor, average=True
+                ).item()
+
             if writer is not None:
                 log_tb_metrics(
                     {
