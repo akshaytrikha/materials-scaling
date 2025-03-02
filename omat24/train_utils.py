@@ -5,11 +5,20 @@ import torch.nn as nn
 from typing import Union
 from torch.utils.flop_counter import FlopCounterMode
 from contextlib import nullcontext
+import torch.distributed as dist
 
 # Internal
 from loss import compute_loss
 from log_utils import partial_json_log, log_tb_metrics
 from torch_geometric.data import Batch
+
+
+def reduce_losses(tensor, average=True):
+    rt = tensor.clone()
+    dist.all_reduce(rt, op=dist.ReduceOp.SUM)
+    if average:
+        rt /= dist.get_world_size()
+    return rt
 
 
 def forward_pass(
@@ -35,6 +44,13 @@ def forward_pass(
     else:
         context_manager = torch.no_grad()
 
+    # Get the model name, handling both regular models and DDP-wrapped models
+    model_name = (
+        model.name
+        if hasattr(model, "name")
+        else model.module.name if hasattr(model, "module") else None
+    )
+
     with context_manager:
         if type(batch) == dict:
 
@@ -44,7 +60,7 @@ def forward_pass(
             true_energy = batch["energy"].to(device, non_blocking=True)
             true_stress = batch["stress"].to(device, non_blocking=True)
             mask = atomic_numbers != 0
-            natoms = mask.sum(dim=1)
+            natoms = mask.sum(dim=1).to(device)
 
             if factorize:
                 factorized_distances = batch["factorized_matrix"].to(
@@ -67,9 +83,16 @@ def forward_pass(
             true_energy = batch.energy.to(device, non_blocking=True)
             true_stress = batch.stress.to(device, non_blocking=True)
             mask = None
-            natoms = batch.natoms
+            if hasattr(batch, "natoms"):
+                natoms = (
+                    batch.natoms.to(device)
+                    if hasattr(batch.natoms, "to")
+                    else torch.tensor(batch.natoms, device=device)
+                )
+            else:
+                natoms = None
 
-            if model.name == "SchNet":
+            if model_name == "SchNet":
                 edge_index = batch.edge_index.to(device, non_blocking=True)
                 structure_index = batch.batch.to(device, non_blocking=True)
 
@@ -79,7 +102,7 @@ def forward_pass(
                     edge_index,
                     structure_index,
                 )
-            elif model.name == "EquiformerV2":
+            elif model_name == "EquiformerV2":
                 # equiformer constructs graphs internally
                 batch = batch.to(device)
                 pred_forces, pred_energy, pred_stress = model(batch)
@@ -194,9 +217,11 @@ def run_validation(model, val_loader, graph, device, factorize):
         model (nn.Module): The PyTorch model to validate.
         val_loader (DataLoader): The validation data loader.
         device (torch.device): The device to run validation on.
+        graph (bool): Whether the model is graph-based.
+        factorize (bool): Whether to use factorized distance matrices.
 
     Returns:
-        float: The average validation loss across the validation set.
+        tuple: The average validation losses (total, energy, force, stress_iso, stress_aniso).
     """
     model.to(device)
     model.eval()
@@ -226,8 +251,25 @@ def run_validation(model, val_loader, graph, device, factorize):
             factorize=factorize,
         )
 
+        # Ensure natoms is on the correct device
+        if natoms is not None and natoms.device != device:
+            natoms = natoms.to(device)
+
         # Mapping atoms to their respective structures (for graphs)
         structure_index = batch.batch if graph and hasattr(batch, "batch") else []
+
+        # Fix: Check if structure_index is a non-empty tensor before checking device
+        is_tensor = isinstance(structure_index, torch.Tensor)
+        has_elements = is_tensor and structure_index.numel() > 0
+        wrong_device = (
+            has_elements
+            and hasattr(structure_index, "device")
+            and structure_index.device != device
+        )
+
+        if wrong_device:
+            structure_index = structure_index.to(device)
+
         val_loss_dict = compute_loss(
             pred_forces,
             pred_energy,
@@ -267,6 +309,8 @@ def train(
     pbar,
     graph,
     device,
+    distributed=False,
+    rank=0,
     patience=5,
     factorize=False,
     results_path=None,
@@ -292,6 +336,8 @@ def train(
         scheduler (torch.optim.lr_scheduler): Learning rate scheduler, or None.
         pbar (tqdm): A tqdm progress bar initialized with the total number of epochs.
         device (torch.device): The device to run training on.
+        distributed (bool, optional): Whether to use distributed training.
+        rank (int, optional): The rank of the process.
         patience (int): Early stopping patience (number of checks with no improvement).
         results_path (str, optional): Path to JSON results file. If provided, partial logs are written.
         experiment_results (dict, optional): Dict for storing experiment results.
@@ -312,6 +358,10 @@ def train(
         [results_path, experiment_results, data_size_key, run_entry]
     )
     losses = {}
+
+    is_main_process = not distributed or rank == 0
+    n_train_batches = len(train_loader)
+    total_epochs = len(pbar) if is_main_process else pbar[-1] + 1
 
     # Initial validation at epoch 0
     (
@@ -357,11 +407,19 @@ def train(
     epochs_since_improvement = 0
 
     samples = None
+    n_train_batches = len(train_loader)
 
     # Training loop
     flop_counter = FlopCounterMode(display=False)
     flops_per_epoch = 0
-    for epoch in range(1, len(pbar) + 1):
+    for epoch in range(1, total_epochs):
+        if (
+            distributed
+            and hasattr(train_loader, "sampler")
+            and hasattr(train_loader.sampler, "set_epoch")
+        ):
+            train_loader.sampler.set_epoch(epoch)
+
         model.train()
         train_loss_sum = 0.0
         energy_loss_sum = 0.0
@@ -369,7 +427,6 @@ def train(
         stress_iso_loss_sum = 0.0
         stress_aniso_loss_sum = 0.0
 
-        n_train_batches = len(train_loader)
         context = flop_counter if epoch == 1 else nullcontext()
         with context:
             for batch_idx, batch in enumerate(train_loader):
@@ -392,6 +449,11 @@ def train(
                     factorize=factorize,
                 )
                 # Mapping atoms to their respective structures (for graphs)
+                model_name = (
+                    model.name
+                    if hasattr(model, "name")
+                    else model.module.name if hasattr(model, "module") else None
+                )
                 structure_index = (
                     batch.batch if graph and hasattr(batch, "batch") else []
                 )
@@ -410,6 +472,14 @@ def train(
                 )
                 total_train_loss = train_loss_dict["total_loss"]
                 total_train_loss.backward()
+
+                if distributed:
+                    # Synchronize gradients across processes
+                    for param in model.parameters():
+                        if param.grad is not None:
+                            dist.all_reduce(param.grad.data, op=dist.ReduceOp.SUM)
+                            param.grad.data /= dist.get_world_size()
+
                 torch.nn.utils.clip_grad_norm_(model.parameters(), gradient_clip)
                 optimizer.step()
 
@@ -420,15 +490,35 @@ def train(
                 stress_aniso_loss_sum += train_loss_dict["stress_aniso_loss"].item()
                 current_avg_loss = train_loss_sum / (batch_idx + 1)
 
-                pbar.set_description(
-                    f"train_loss={current_avg_loss:.2f} val_loss={val_loss:.2f}"
-                )
+                if is_main_process:
+                    pbar.set_description(
+                        f"train_loss={current_avg_loss:.2f} val_loss={val_loss:.2f}"
+                    )
         if epoch == 1:
             flops_per_epoch = flop_counter.get_total_flops()
 
         # Step the scheduler if provided
         if scheduler is not None:
             scheduler.step()
+
+        if distributed:
+            train_loss_tensor = torch.tensor(train_loss_sum, device=device)
+            energy_loss_tensor = torch.tensor(energy_loss_sum, device=device)
+            force_loss_tensor = torch.tensor(force_loss_sum, device=device)
+            stress_iso_loss_tensor = torch.tensor(stress_iso_loss_sum, device=device)
+            stress_aniso_loss_tensor = torch.tensor(
+                stress_aniso_loss_sum, device=device
+            )
+
+            train_loss_sum = reduce_losses(train_loss_tensor, average=True).item()
+            energy_loss_sum = reduce_losses(energy_loss_tensor, average=True).item()
+            force_loss_sum = reduce_losses(force_loss_tensor, average=True).item()
+            stress_iso_loss_sum = reduce_losses(
+                stress_iso_loss_tensor, average=True
+            ).item()
+            stress_aniso_loss_sum = reduce_losses(
+                stress_aniso_loss_tensor, average=True
+            ).item()
 
         avg_epoch_train_loss = train_loss_sum / n_train_batches
         avg_epoch_energy_loss = energy_loss_sum / n_train_batches
@@ -487,6 +577,32 @@ def train(
                 val_stress_iso_loss,
                 val_stress_aniso_loss,
             ) = run_validation(model, val_loader, graph, device, factorize)
+
+            if distributed:
+                val_loss_tensor = torch.tensor(val_loss, device=device)
+                val_energy_loss_tensor = torch.tensor(val_energy_loss, device=device)
+                val_force_loss_tensor = torch.tensor(val_force_loss, device=device)
+                val_stress_iso_loss_tensor = torch.tensor(
+                    val_stress_iso_loss, device=device
+                )
+                val_stress_aniso_loss_tensor = torch.tensor(
+                    val_stress_aniso_loss, device=device
+                )
+
+                val_loss = reduce_losses(val_loss_tensor, average=True).item()
+                val_energy_loss = reduce_losses(
+                    val_energy_loss_tensor, average=True
+                ).item()
+                val_force_loss = reduce_losses(
+                    val_force_loss_tensor, average=True
+                ).item()
+                val_stress_iso_loss = reduce_losses(
+                    val_stress_iso_loss_tensor, average=True
+                ).item()
+                val_stress_aniso_loss = reduce_losses(
+                    val_stress_aniso_loss_tensor, average=True
+                ).item()
+
             if writer is not None:
                 log_tb_metrics(
                     {
@@ -540,6 +656,7 @@ def train(
                 flops_per_epoch * epoch,
             )
 
-        pbar.update(1)
+        if is_main_process:
+            pbar.update(1)
 
     return model, losses
