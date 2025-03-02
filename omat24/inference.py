@@ -3,10 +3,20 @@ import torch
 import argparse
 from pathlib import Path
 import json
+import yaml
 import numpy as np
 from tqdm import tqdm
 import matplotlib.pyplot as plt
+import requests
+import warnings
 from ase.data import chemical_symbols
+from fairchem.core.common.registry import Registry
+
+# Filter warnings
+warnings.filterwarnings("ignore", category=FutureWarning)
+warnings.filterwarnings(
+    "ignore", category=UserWarning, module="torch_geometric.deprecation"
+)
 
 # Internal
 from data import get_dataloaders
@@ -58,7 +68,136 @@ def parse_args():
     parser.add_argument(
         "--num_samples", type=int, default=5, help="Number of samples to visualize"
     )
+    parser.add_argument(
+        "--fairchem_model",
+        type=str,
+        default=None,
+        choices=["eqV2_31M", "eqV2_86M", "eqV2_153M"],
+        help="Name of the FAIRChem model config to use (if using FAIRChem models)",
+    )
     return parser.parse_args()
+
+
+def fetch_fairchem_eqV2_config(config_name):
+    """
+    Fetch FAIRChem EquiformerV2 config from GitHub and save it locally.
+
+    Args:
+        config_name (str): Name of the config to fetch (eqV2_31M, eqV2_86M, or eqV2_153M)
+
+    Returns:
+        tuple: (config_dict, output_path) - The loaded config as a dictionary and the path where it was saved
+    """
+    # Create configs directory if it doesn't exist
+    configs_dir = Path("fairchem_configs")
+    configs_dir.mkdir(exist_ok=True)
+
+    # Determine output path based on config name
+    output_path = configs_dir / f"{config_name}_config.yml"
+
+    # Check if file already exists
+    if output_path.exists():
+        print(f"Config file {output_path} already exists, loading from disk.")
+        with open(output_path, "r") as f:
+            config = yaml.safe_load(f)
+        print(f"Config loaded from {output_path}")
+        return config, output_path
+
+    # Map config names to their URLs
+    config_urls = {
+        "eqV2_31M": "https://raw.githubusercontent.com/FAIR-Chem/fairchem/main/configs/omat24/mptrj/eqV2_31M_mptrj.yml",
+        "eqV2_86M": "https://raw.githubusercontent.com/FAIR-Chem/fairchem/main/configs/omat24/all/eqV2_86M.yml",
+        "eqV2_153M": "https://raw.githubusercontent.com/FAIR-Chem/fairchem/main/configs/omat24/all/eqV2_153M.yml",
+    }
+
+    if config_name not in config_urls:
+        raise ValueError(
+            f"Unknown config name: {config_name}. Available options: {list(config_urls.keys())}"
+        )
+
+    # Get the URL for the specified config
+    config_url = config_urls[config_name]
+
+    try:
+        # If it's a GitHub UI URL, convert to raw format
+        if "github.com" in config_url and "/blob/" in config_url:
+            config_url = config_url.replace(
+                "github.com", "raw.githubusercontent.com"
+            ).replace("/blob/", "/")
+
+        # Fetch the config
+        response = requests.get(config_url)
+        response.raise_for_status()  # Ensure the request was successful
+
+        # Load the YAML
+        config = yaml.safe_load(response.text)
+
+        # Save to disk
+        with open(output_path, "w") as f:
+            yaml.dump(config, f)
+
+        print(f"{config['model']['name']} config loaded and saved to {output_path}")
+        return config, output_path
+
+    except (requests.RequestException, yaml.YAMLError) as e:
+        print(f"Error fetching or parsing config: {e}")
+        raise
+
+
+def load_fairchem_eqV2(config_name, device):
+    """
+    Load a FAIRChem EquiformerV2 model.
+
+    Args:
+        config_name (str): Name of the config to use
+        device (torch.device): Device to load the model on
+
+    Returns:
+        tuple: (model, architecture) where model is the loaded model and architecture is the model name
+    """
+    # Fetch the config
+    config, config_path = fetch_fairchem_eqV2_config(config_name)
+
+    # Get the model configuration
+    model_config = config["model"]
+
+    # Remove the stress head to avoid the error with rank2_symmetric_head if present
+    if "heads" in model_config and "stress" in model_config["heads"]:
+        print(
+            "Warning: Removing stress head as 'rank2_symmetric_head' is not registered in the fairchem registry"
+        )
+        del model_config["heads"]["stress"]
+
+    try:
+        # Get the model class from FAIRChem's registry
+        ModelClass = Registry.get_model_class(
+            model_config["name"]
+        )  # e.g., "hydra" -> HydraModel class
+
+        # Instantiate the model with backbone and other parameters from the config
+        model = ModelClass(
+            backbone=model_config.get("backbone"),
+            heads=model_config.get("heads"),
+            otf_graph=model_config.get("otf_graph", True),
+            pass_through_head_outputs=model_config.get(
+                "pass_through_head_outputs", False
+            ),
+        )
+
+        # Set model name and architecture
+        model.name = f"FAIREquiformerV2"
+        architecture = "EquiformerV2"
+
+        # Move model to device
+        model.to(device)
+        model.eval()
+
+        print(f"Loaded FAIRChem {architecture} model")
+        return model, architecture
+
+    except Exception as e:
+        print(f"Error loading FAIRChem model: {e}")
+        raise
 
 
 def load_checkpoint_model(checkpoint_path, device):
@@ -476,14 +615,19 @@ def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
 
-    # Load model
-    model, architecture = load_checkpoint_model(args.checkpoint, device)
+    # Load model - either from checkpoint or FAIRChem
+    if args.fairchem_model:
+        # Load FAIRChem model
+        model, architecture = load_fairchem_eqV2(args.fairchem_model, device)
+    else:
+        # Load model from checkpoint
+        model, architecture = load_checkpoint_model(args.checkpoint, device)
 
     # Determine if model is graph-based
     graph = architecture in ["SchNet", "EquiformerV2"]
 
     # Load dataset
-    # Convinience for running all datasets
+    # Convenience for running all datasets
     if args.datasets[0] == "all":
         args.datasets = VALID_DATASETS
 
@@ -522,8 +666,13 @@ def main():
     for metric, value in metrics.items():
         print(f"{metric}: {value:.6f}")
 
+    # Determine model name for saving results
+    if args.fairchem_model:
+        model_name = f"FAIREquiformerV2"
+    else:
+        model_name = Path(args.checkpoint).name.replace(".pth", "")
+
     # Save metrics to file
-    model_name = Path(args.checkpoint).name.replace(".pth", "")
     with open(
         output_dir
         / f"{model_name}_eval_{args.split_name}_df={args.data_fraction}.json",
@@ -538,7 +687,7 @@ def main():
     #     save_visualizations(samples, output_dir / "visualizations")
 
     #     # Save sample data for further analysis
-    #     with open(output_dir / "samples.json", "w") as f:
+    #     with open(output_dir / f"{model_name}_samples.json", "w") as f:
     #         json.dump(samples, f, indent=4)
 
     print(f"\nInference completed. Results saved to {output_dir}")

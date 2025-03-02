@@ -102,11 +102,18 @@ def forward_pass(
                     edge_index,
                     structure_index,
                 )
-            elif model_name == "EquiformerV2":
+            elif "EquiformerV2" in model_name:
                 # equiformer constructs graphs internally
                 batch = batch.to(device)
                 natoms = natoms.to(device, non_blocking=True)
-                pred_forces, pred_energy, pred_stress = model(batch)
+
+                if model_name == "FAIREquiformerV2":
+                    output = model(batch)
+                    pred_forces = output["forces"]
+                    pred_energy = output["energy"]
+                    pred_stress = torch.tensor([0.0], device=device)
+                else:
+                    pred_forces, pred_energy, pred_stress = model(batch)
 
     return (
         pred_forces,

@@ -27,3 +27,5 @@ omat24/colab-scaling.ipynb
 omat24/scaling-laws.ipynb
 omat24/datasets
 metadata
+fairchem_configs
+*eval_val_df*.json
