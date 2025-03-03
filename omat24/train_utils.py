@@ -361,6 +361,7 @@ def train(
     """
     is_main_process = (not distributed) or (rank == 0)
     can_write_partial = results_path is not None and is_main_process
+    total_epochs = len(pbar) if is_main_process else pbar[-1] + 1
 
     # Initialize losses dictionary
     losses = {}
@@ -444,7 +445,7 @@ def train(
     flop_counter = FlopCounterMode()
 
     # Training loop
-    for epoch in range(1, num_epochs + 1):
+    for epoch in range(1, total_epochs):
         model.train()
         train_loss_sum = 0.0
         energy_loss_sum = 0.0
@@ -498,16 +499,16 @@ def train(
                 total_train_loss = train_loss_dict["total_loss"]
                 total_train_loss.backward()
 
-                if distributed:
-                    if use_fsdp:
-                        # FSDP handles gradient synchronization internally
-                        pass
-                    else:
-                        # DDP needs manual gradient synchronization
-                        for param in model.parameters():
-                            if param.grad is not None:
-                                dist.all_reduce(param.grad.data, op=dist.ReduceOp.SUM)
-                                param.grad.data /= dist.get_world_size()
+                # if distributed:
+                #     if use_fsdp:
+                #         # FSDP handles gradient synchronization internally
+                #         pass
+                #     else:
+                #         # DDP needs manual gradient synchronization
+                #         for param in model.parameters():
+                #             if param.grad is not None:
+                #                 dist.all_reduce(param.grad.data, op=dist.ReduceOp.SUM)
+                #                 param.grad.data /= dist.get_world_size()
 
                 # Handle gradient clipping differently for FSDP
                 if use_fsdp:

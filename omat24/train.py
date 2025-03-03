@@ -96,7 +96,12 @@ def get_fsdp_config():
         # CPU offloading (uncomment if needed)
         # "cpu_offload": CPUOffload(offload_params=True),
         # Choose parameter wrapping policy based on model size
-        "auto_wrap_policy": size_based_auto_wrap_policy(min_num_params=100_000),
+        "auto_wrap_policy": lambda module, recurse, nonwrapped_numel: size_based_auto_wrap_policy(
+            module=module,
+            recurse=recurse,
+            nonwrapped_numel=nonwrapped_numel,
+            min_num_params=100_000
+        ),
         # Enable activation checkpointing for memory efficiency
         "use_orig_params": True,  # Required for gradient clipping
         "device_id": torch.cuda.current_device(),
