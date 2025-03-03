@@ -9,6 +9,7 @@ from tqdm import tqdm
 import requests
 import warnings
 from fairchem.core.common.registry import Registry
+from fairchem.core.modules.evaluator import Evaluator
 
 # Filter warnings
 warnings.filterwarnings("ignore", category=FutureWarning)
@@ -27,18 +28,18 @@ from models.equiformer_v2 import EquiformerS2EF
 
 # Set seed & device
 SEED = 1024
-torch.manual_seed(SEED)
-if torch.cuda.is_available():
-    DEVICE = torch.device("cuda")
-    torch.cuda.manual_seed(SEED)
-    torch.cuda.manual_seed_all(SEED)
-    torch.backends.cudnn.deterministic = True
-    torch.backends.cudnn.benchmark = False
-    torch.backends.cuda.enable_flash_sdp(True)
-elif torch.backends.mps.is_available():
-    DEVICE = torch.device("mps")
-else:
-    DEVICE = torch.device("cpu")
+# torch.manual_seed(SEED)
+# if torch.cuda.is_available():
+#     DEVICE = torch.device("cuda")
+#     torch.cuda.manual_seed(SEED)
+#     torch.cuda.manual_seed_all(SEED)
+#     torch.backends.cudnn.deterministic = True
+#     torch.backends.cudnn.benchmark = False
+#     torch.backends.cuda.enable_flash_sdp(True)
+# elif torch.backends.mps.is_available():
+#     DEVICE = torch.device("mps")
+# else:
+DEVICE = torch.device("cpu")
 
 
 def parse_args():
@@ -315,7 +316,7 @@ def load_checkpoint_model(checkpoint_path, device):
 
 
 def compute_metrics(loader, model, device, graph=False, factorize=False):
-    """Compute evaluation metrics in a batched manner without loading the entire dataset.
+    """Compute evaluation metrics using fairchem's Evaluator.
 
     Args:
         loader: DataLoader for the evaluation data
@@ -325,31 +326,28 @@ def compute_metrics(loader, model, device, graph=False, factorize=False):
         factorize: Whether using factorized distances
 
     Returns:
-        dict: Metrics dictionary with values in meV units, matching the paper's metrics
+        dict: Metrics dictionary
     """
     model.eval()
 
-    # Initialize accumulators for metrics
-    sum_force_abs_error = 0.0
-    sum_force_sq_error = 0.0
-    sum_energy_abs_error_per_atom = 0.0
-    sum_energy_sq_error_per_atom = 0.0
-    sum_stress_abs_error = 0.0
-    sum_stress_sq_error = 0.0
+    # Configure the evaluator with the desired metrics
+    eval_config = {
+        "energy": ["mae"],
+        "forces": [
+            "mae",
+            "forcesx_mae",
+            "forcesy_mae",
+            "forcesz_mae",
+            "cosine_similarity",
+        ],
+        "stress": ["mae"],
+    }
 
-    # For R² calculation
-    sum_energy = 0.0
-    sum_energy_squared = 0.0
-    sum_energy_pred_error_squared = 0.0
+    # Initialize the FAIRChem evaluator
+    evaluator = Evaluator(task="s2ef", eval_metrics=eval_config)
 
-    # For force cosine similarity
-    sum_force_cos_sim = 0.0
-    count_force_vectors = 0
-
-    # Total counts for averaging
-    total_atoms = 0
-    total_structures = 0
-    total_stress_components = 0
+    # Keep track of metrics across batches
+    metrics = {}
 
     with torch.no_grad():
         for batch in tqdm(loader, desc="Computing metrics"):
@@ -372,120 +370,56 @@ def compute_metrics(loader, model, device, graph=False, factorize=False):
                 factorize=factorize,
             )
 
-            # Convert to meV (multiply by 1000)
-            pred_forces_meV = pred_forces * 1000
-            true_forces_meV = true_forces * 1000
-            pred_energy_meV = pred_energy * 1000
-            true_energy_meV = true_energy * 1000
-            pred_stress_meV = pred_stress * 1000
-            true_stress_meV = true_stress * 1000
+            # For non-graph models with padding, we need to apply the mask
+            if not graph and mask is not None:
+                # Create a flat index of valid atoms
+                batch_size = pred_forces.shape[0]
+                valid_forces_pred = []
+                valid_forces_target = []
 
-            # Get batch size
-            batch_size = pred_energy.shape[0]
-            total_structures += batch_size
+                # Process each structure in the batch
+                for i in range(batch_size):
+                    # Select only valid atoms based on mask
+                    valid_mask = mask[i].bool()
+                    valid_forces_pred.append(pred_forces[i, valid_mask])
+                    valid_forces_target.append(true_forces[i, valid_mask])
 
-            # Force metrics
-            if mask is not None and not graph:
-                # Apply mask to forces for non-graph models
-                mask = mask.unsqueeze(-1).expand_as(pred_forces)
-                pred_forces_flat = pred_forces_meV.masked_select(mask).reshape(-1, 3)
-                true_forces_flat = true_forces_meV.masked_select(mask).reshape(-1, 3)
-            elif len(pred_forces_meV.shape) == 3:  # batch x atoms x 3
-                # Reshape to [total_atoms, 3]
-                pred_forces_flat = pred_forces_meV.reshape(-1, 3)
-                true_forces_flat = true_forces_meV.reshape(-1, 3)
-            else:  # Already [N_atoms, 3]
-                pred_forces_flat = pred_forces_meV
-                true_forces_flat = true_forces_meV
+                # Concatenate all valid forces
+                pred_forces = torch.cat(valid_forces_pred, dim=0)
+                true_forces = torch.cat(valid_forces_target, dim=0)
 
-            # Count total atoms in this batch for forces
-            batch_atoms = pred_forces_flat.shape[0]
-            total_atoms += batch_atoms
+            # Prepare the predictions and targets in the format expected by FAIRChem's evaluator
+            predictions = {
+                "energy": pred_energy,
+                "forces": pred_forces,
+                "stress": pred_stress,
+                "natoms": natoms,
+            }
 
-            # Force MAE and MSE
-            force_abs_error = (
-                torch.abs(pred_forces_flat - true_forces_flat).sum().item()
-            )
-            force_sq_error = ((pred_forces_flat - true_forces_flat) ** 2).sum().item()
+            targets = {
+                "energy": true_energy,
+                "forces": true_forces,
+                "stress": true_stress,
+                "natoms": natoms,
+            }
 
-            sum_force_abs_error += force_abs_error
-            sum_force_sq_error += force_sq_error
+            # Update metrics for this batch
+            metrics = evaluator.eval(predictions, targets, prev_metrics=metrics)
 
-            # Force cosine similarity
-            for i in range(pred_forces_flat.shape[0]):
-                true_norm = torch.norm(true_forces_flat[i])
-                pred_norm = torch.norm(pred_forces_flat[i])
+    # Extract the final metrics
+    final_metrics = {}
+    for key, value in metrics.items():
+        if isinstance(value, dict) and "metric" in value:
+            final_metrics[key] = value["metric"]
 
-                # Skip atoms with near-zero force
-                if true_norm > 1e-6 and pred_norm > 1e-6:
-                    cos_sim = torch.dot(true_forces_flat[i], pred_forces_flat[i]) / (
-                        true_norm * pred_norm
-                    )
-                    sum_force_cos_sim += cos_sim.item()
-                    count_force_vectors += 1
+    # Convert to meV if needed (multiplying by 1000)
+    for key in final_metrics:
+        if key.startswith(
+            ("energy", "forces", "forcesx", "forcesy", "forcesz", "stress")
+        ) and not key.endswith(("cosine_similarity")):
+            final_metrics[key] *= 1000  # Convert from eV to meV
 
-            # Energy per-atom metrics
-            energy_abs_err = torch.abs(pred_energy_meV - true_energy_meV)
-            energy_sq_err = (pred_energy_meV - true_energy_meV) ** 2
-
-            # Normalize by number of atoms in each structure
-            energy_abs_err_per_atom = energy_abs_err / natoms
-            energy_sq_err_per_atom = energy_sq_err / natoms
-
-            sum_energy_abs_error_per_atom += energy_abs_err_per_atom.sum().item()
-            sum_energy_sq_error_per_atom += energy_sq_err_per_atom.sum().item()
-
-            # For R² calculation
-            sum_energy += true_energy.sum().item()
-            sum_energy_squared += (true_energy**2).sum().item()
-            sum_energy_pred_error_squared += (
-                ((true_energy - pred_energy) ** 2).sum().item()
-            )
-
-            # Stress metrics
-            # Count total stress components
-            batch_stress_components = pred_stress.numel()
-            total_stress_components += batch_stress_components
-
-            stress_abs_error = torch.abs(pred_stress_meV - true_stress_meV).sum().item()
-            stress_sq_error = ((pred_stress_meV - true_stress_meV) ** 2).sum().item()
-
-            sum_stress_abs_error += stress_abs_error
-            sum_stress_sq_error += stress_sq_error
-
-    # Calculate final metrics
-    # Force metrics
-    force_mae = sum_force_abs_error / (
-        total_atoms * 3
-    )  # Divide by total vector components
-    force_rmse = np.sqrt(sum_force_sq_error / (total_atoms * 3))
-    force_cos = (
-        sum_force_cos_sim / count_force_vectors if count_force_vectors > 0 else 0
-    )
-
-    # Energy metrics
-    energy_mae = sum_energy_abs_error_per_atom / total_structures
-    energy_rmse = np.sqrt(sum_energy_sq_error_per_atom / total_structures)
-
-    # Calculate R²
-    energy_mean = sum_energy / total_structures
-    energy_ss_tot = sum_energy_squared - total_structures * (energy_mean**2)
-    energy_r2 = 1 - (sum_energy_pred_error_squared / energy_ss_tot)
-
-    # Stress metrics
-    stress_mae = sum_stress_abs_error / total_stress_components
-    stress_rmse = np.sqrt(sum_stress_sq_error / total_stress_components)
-
-    return {
-        "force_mae": force_mae,  # meV/Å
-        "energy_mae": energy_mae,  # meV/atom
-        "stress_mae": stress_mae,  # meV/Å³
-        "force_rmse": force_rmse,  # meV/Å
-        "energy_rmse": energy_rmse,  # meV/atom
-        "stress_rmse": stress_rmse,  # meV/Å³
-        "energy_r2": energy_r2,  # dimensionless
-        "force_cos": force_cos,  # dimensionless (higher is better)
-    }
+    return final_metrics
 
 
 def main():
@@ -493,13 +427,6 @@ def main():
     args = parse_args()
     output_dir = Path("inference_results")
     output_dir.mkdir(parents=True, exist_ok=True)
-
-    # Set device
-    # elif args.architecture == "EquiformerV2":
-    #     if DEVICE == torch.device("mps"):
-    #         print("MPS is not supported for EquiformerV2. Switching to CPU.")
-    #         DEVICE = torch.device("cpu")
-    # print(f"Using device: {DEVICE}")
 
     # Load model - either from checkpoint or FAIRChem
     if args.fairchem_model:
@@ -542,7 +469,7 @@ def main():
     # Select the appropriate loader
     loader = train_loader if args.split_name == "train" else val_loader
 
-    # Compute metrics in a batched manner
+    # Compute metrics using fairchem's Evaluator
     metrics = compute_metrics(
         loader=loader, model=model, device=DEVICE, graph=graph, factorize=False
     )
@@ -554,7 +481,7 @@ def main():
 
     # Determine model name for saving results
     if args.fairchem_model:
-        model_name = f"FAIREquiformerV2"
+        model_name = f"FAIREquiformerV2_{args.fairchem_model}"
     else:
         model_name = Path(args.checkpoint).name.replace(".pth", "")
 
