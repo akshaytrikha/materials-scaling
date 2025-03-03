@@ -392,30 +392,16 @@ def train(
                 val_stress_aniso_loss, device=device
             )
 
-            if use_fsdp:
-                # For FSDP we use fsdp.all_reduce
-                val_loss = fsdp.all_reduce(val_loss_tensor).item()
-                val_energy_loss = fsdp.all_reduce(val_energy_loss_tensor).item()
-                val_force_loss = fsdp.all_reduce(val_force_loss_tensor).item()
-                val_stress_iso_loss = fsdp.all_reduce(val_stress_iso_loss_tensor).item()
-                val_stress_aniso_loss = fsdp.all_reduce(
-                    val_stress_aniso_loss_tensor
-                ).item()
-            else:
-                # For DDP we use our reduce_losses function
-                val_loss = reduce_losses(val_loss_tensor, average=True).item()
-                val_energy_loss = reduce_losses(
-                    val_energy_loss_tensor, average=True
-                ).item()
-                val_force_loss = reduce_losses(
-                    val_force_loss_tensor, average=True
-                ).item()
-                val_stress_iso_loss = reduce_losses(
-                    val_stress_iso_loss_tensor, average=True
-                ).item()
-                val_stress_aniso_loss = reduce_losses(
-                    val_stress_aniso_loss_tensor, average=True
-                ).item()
+            # Use reduce_losses for both DDP and FSDP
+            val_loss = reduce_losses(val_loss_tensor, average=True).item()
+            val_energy_loss = reduce_losses(val_energy_loss_tensor, average=True).item()
+            val_force_loss = reduce_losses(val_force_loss_tensor, average=True).item()
+            val_stress_iso_loss = reduce_losses(
+                val_stress_iso_loss_tensor, average=True
+            ).item()
+            val_stress_aniso_loss = reduce_losses(
+                val_stress_aniso_loss_tensor, average=True
+            ).item()
 
         losses[0] = {"val_loss": val_loss}
         best_val_loss = val_loss
@@ -548,24 +534,16 @@ def train(
                 stress_aniso_loss_sum, device=device
             )
 
-            if use_fsdp:
-                # For FSDP we use fsdp.all_reduce
-                train_loss_sum = fsdp.all_reduce(train_loss_tensor).item()
-                energy_loss_sum = fsdp.all_reduce(energy_loss_tensor).item()
-                force_loss_sum = fsdp.all_reduce(force_loss_tensor).item()
-                stress_iso_loss_sum = fsdp.all_reduce(stress_iso_loss_tensor).item()
-                stress_aniso_loss_sum = fsdp.all_reduce(stress_aniso_loss_tensor).item()
-            else:
-                # For DDP we use our reduce_losses function
-                train_loss_sum = reduce_losses(train_loss_tensor, average=True).item()
-                energy_loss_sum = reduce_losses(energy_loss_tensor, average=True).item()
-                force_loss_sum = reduce_losses(force_loss_tensor, average=True).item()
-                stress_iso_loss_sum = reduce_losses(
-                    stress_iso_loss_tensor, average=True
-                ).item()
-                stress_aniso_loss_sum = reduce_losses(
-                    stress_aniso_loss_tensor, average=True
-                ).item()
+            # For DDP we use our reduce_losses function
+            train_loss_sum = reduce_losses(train_loss_tensor, average=True).item()
+            energy_loss_sum = reduce_losses(energy_loss_tensor, average=True).item()
+            force_loss_sum = reduce_losses(force_loss_tensor, average=True).item()
+            stress_iso_loss_sum = reduce_losses(
+                stress_iso_loss_tensor, average=True
+            ).item()
+            stress_aniso_loss_sum = reduce_losses(
+                stress_aniso_loss_tensor, average=True
+            ).item()
 
         avg_epoch_train_loss = train_loss_sum / n_train_batches
         avg_epoch_energy_loss = energy_loss_sum / n_train_batches
@@ -579,31 +557,19 @@ def train(
         if epoch % validate_every == 0:
             # Inside the validate_every block, use FSDP-specific code for validation loss reduction:
             if distributed:
-                if use_fsdp:
-                    val_loss = fsdp.all_reduce(val_loss_tensor).item()
-                    val_energy_loss = fsdp.all_reduce(val_energy_loss_tensor).item()
-                    val_force_loss = fsdp.all_reduce(val_force_loss_tensor).item()
-                    val_stress_iso_loss = fsdp.all_reduce(
-                        val_stress_iso_loss_tensor
-                    ).item()
-                    val_stress_aniso_loss = fsdp.all_reduce(
-                        val_stress_aniso_loss_tensor
-                    ).item()
-                else:
-                    # Your existing DDP code...
-                    val_loss = reduce_losses(val_loss_tensor, average=True).item()
-                    val_energy_loss = reduce_losses(
-                        val_energy_loss_tensor, average=True
-                    ).item()
-                    val_force_loss = reduce_losses(
-                        val_force_loss_tensor, average=True
-                    ).item()
-                    val_stress_iso_loss = reduce_losses(
-                        val_stress_iso_loss_tensor, average=True
-                    ).item()
-                    val_stress_aniso_loss = reduce_losses(
-                        val_stress_aniso_loss_tensor, average=True
-                    ).item()
+                val_loss = reduce_losses(val_loss_tensor, average=True).item()
+                val_energy_loss = reduce_losses(
+                    val_energy_loss_tensor, average=True
+                ).item()
+                val_force_loss = reduce_losses(
+                    val_force_loss_tensor, average=True
+                ).item()
+                val_stress_iso_loss = reduce_losses(
+                    val_stress_iso_loss_tensor, average=True
+                ).item()
+                val_stress_aniso_loss = reduce_losses(
+                    val_stress_aniso_loss_tensor, average=True
+                ).item()
 
             # Early stopping check
             if val_loss < best_val_loss:
