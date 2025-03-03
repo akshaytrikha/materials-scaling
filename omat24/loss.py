@@ -65,33 +65,62 @@ def unvoigt_stress(voigt_stress_batch):
     return isotropic_stress, anisotropic_stress
 
 
+# def compute_graph_force_loss(pred_forces, true_forces, structure_index, natoms):
+#     """
+#     Args:
+#         pred_forces (Tensor): Predicted forces [N, 3].
+#         true_forces (Tensor): True forces [N, 3].
+#         structure_index (list): A list of structure indices for each atom in the graph batch.
+#         natoms (Tensor): Number of atoms per structure [B].
+#     """
+#     # 1) MSE "per-atom" (sum over x,y,z)
+#     #    shape => [N]
+#     force_loss_fn = nn.MSELoss(reduction="none")
+#     force_loss_per_atom = force_loss_fn(pred_forces, true_forces)
+
+#     # 2) Scatter across structures
+#     #    shape => [B]
+#     #    We sum per structure if we want to do the same normalization
+#     #    that the FCN/Transformer does.
+#     force_sum_struct = scatter(
+#         force_loss_per_atom, structure_index, dim=0, reduce="sum"
+#     )
+
+#     # 3) Divide per structure by (3 * number_of_atoms_in_that_structure)
+#     #    shape => [B]
+#     #    This matches the “force_loss = sum over atoms / (3 * natoms)”
+#     force_avg_struct = force_sum_struct / (3.0 * natoms.unsqueeze(1))
+
+#     # 4) Finally, average over the B structures
+#     force_loss = force_avg_struct.mean()
+
+
+#     return force_loss
 def compute_graph_force_loss(pred_forces, true_forces, structure_index, natoms):
     """
     Args:
         pred_forces (Tensor): Predicted forces [N, 3].
         true_forces (Tensor): True forces [N, 3].
-        structure_index (list): A list of structure indices for each atom in the graph batch.
+        structure_index (Tensor): Tensor of structure indices for each atom [N].
         natoms (Tensor): Number of atoms per structure [B].
     """
-    # 1) MSE "per-atom" (sum over x,y,z)
-    #    shape => [N]
+    # 1) Compute per-atom MSE loss, summing over x, y, z dimensions
     force_loss_fn = nn.MSELoss(reduction="none")
-    force_loss_per_atom = force_loss_fn(pred_forces, true_forces)
+    force_loss_per_atom = force_loss_fn(pred_forces, true_forces).sum(dim=1)  # [N]
 
-    # 2) Scatter across structures
-    #    shape => [B]
-    #    We sum per structure if we want to do the same normalization
-    #    that the FCN/Transformer does.
-    force_sum_struct = scatter(
-        force_loss_per_atom, structure_index, dim=0, reduce="sum"
+    # 2) Manually sum losses per structure without torch_scatter
+    unique_indices, inverse_indices = torch.unique(structure_index, return_inverse=True)
+    force_sum_struct = torch.zeros(
+        len(unique_indices),
+        device=force_loss_per_atom.device,
+        dtype=force_loss_per_atom.dtype,
     )
+    force_sum_struct.index_add_(0, inverse_indices, force_loss_per_atom)  # [B]
 
-    # 3) Divide per structure by (3 * number_of_atoms_in_that_structure)
-    #    shape => [B]
-    #    This matches the “force_loss = sum over atoms / (3 * natoms)”
-    force_avg_struct = force_sum_struct / (3.0 * natoms.unsqueeze(1))
+    # 3) Normalize by number of atoms (times 3 for x, y, z)
+    force_avg_struct = force_sum_struct / (3.0 * natoms)  # [B]
 
-    # 4) Finally, average over the B structures
+    # 4) Average over structures
     force_loss = force_avg_struct.mean()
 
     return force_loss
@@ -178,7 +207,10 @@ def compute_loss(
     stress_anisotropic_loss = torch.mean(stress_anisotropic_loss)  # Mean over batch
 
     total_loss = (
-        2.5 * energy_loss + 20 * force_loss + 5 * stress_isotropic_loss + 5 * stress_anisotropic_loss
+        2.5 * energy_loss
+        + 20 * force_loss
+        + 5 * stress_isotropic_loss
+        + 5 * stress_anisotropic_loss
     )
 
     loss_dict = {
