@@ -195,6 +195,21 @@ def load_fairchem_eqV2(config_name, device):
         model.name = f"FAIREquiformerV2"
         architecture = "EquiformerV2"
 
+        # Load weights from local path
+        local_weights_path = "eqV2_31M_omat.pt"
+        print(f"Loading model weights from {local_weights_path}")
+
+        # Load the state dictionary
+        weights = torch.load(local_weights_path, map_location=device)
+
+        # Check if the loaded file contains 'model_state_dict' key (checkpoint format)
+        if isinstance(weights, dict) and "model_state_dict" in weights:
+            weights = weights["model_state_dict"]
+
+        # Load the weights into the model
+        model.load_state_dict(weights, strict=True)
+        print(f"Successfully loaded weights from {local_weights_path}")
+
         # Move model to device
         model.to(device)
         model.eval()
