@@ -19,7 +19,7 @@ from models.fcn import MetaFCNModels
 from models.transformer_models import MetaTransformerModels
 from models.schnet import MetaSchNetModels
 from models.equiformer_v2 import MetaEquiformerV2Models
-from train_utils import train, lr_schedule
+from train_utils import train
 
 # Set seed & device
 SEED = 1024
@@ -135,7 +135,10 @@ def main():
             model.to(DEVICE)
             optimizer = optim.AdamW(model.parameters(), lr=lr)
 
-            scheduler = LambdaLR(optimizer, lr_lambda=lambda epoch: lr_schedule(epoch, num_epochs, lr))
+            lambda_schedule = lambda epoch: 0.5 * (
+                1 + math.cos(math.pi * epoch / num_epochs)
+            )
+            scheduler = LambdaLR(optimizer, lr_lambda=lambda_schedule)
 
             # Prepare run entry etc.
             model_name = f"model_ds{dataset_size}_p{int(model.num_params)}"
