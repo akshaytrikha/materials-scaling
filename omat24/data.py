@@ -126,8 +126,9 @@ def get_dataloaders(
         train_subsets.append(train_subset)
         val_subsets.append(val_subset)
 
-    train_dataset = ConcatDataset(train_subsets)
-    val_dataset = ConcatDataset(val_subsets)
+    # Instead of using raw ConcatDataset, wrap in ConcatAseDBDataset
+    train_dataset = ConcatAseDBDataset(train_subsets)
+    val_dataset = ConcatAseDBDataset(val_subsets)
 
     # Configure samplers for DDP
     if distributed:
@@ -268,6 +269,10 @@ class OMat24Dataset(Dataset):
         # Reinitialize the dataset when unpickling
         self._init_dataset()
 
+    # Minimal change: add a get_atoms() method.
+    def get_atoms(self, idx):
+        return self.dataset.get_atoms(idx)
+
     def __len__(self):
         return len(self.dataset)
 
@@ -354,3 +359,22 @@ class OMat24Dataset(Dataset):
             sample["source"] = atoms.info["calc_id"]
 
         return sample
+
+
+class ConcatAseDBDataset(ConcatDataset):
+    """A thin wrapper around ConcatDataset that provides a get_atoms() method
+    which gracefully handles Subset objects as well.
+
+    Used for training naive baseline models."""
+
+    def get_atoms(self, idx):
+        # Iterate over each sub-dataset in self.datasets:
+        for ds in self.datasets:
+            ds_len = len(ds)
+            if idx < ds_len:
+                if isinstance(ds, Subset):
+                    return ds.dataset.get_atoms(ds.indices[idx])
+                else:
+                    return ds.get_atoms(idx)
+            idx -= ds_len
+        raise IndexError("Index out of range in ConcatAseDBDataset")
