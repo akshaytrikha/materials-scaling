@@ -367,7 +367,10 @@ def train(
     losses = {}
     best_val_loss = float("inf")
     epochs_since_improvement = 0
+    
+    # For FSDP models, store state_dict instead of the model itself
     best_val_model = None
+    best_val_model_state = None
     best_val_loss_dict = None
     val_loss = float("inf")
 
@@ -405,7 +408,18 @@ def train(
 
         losses[0] = {"val_loss": val_loss}
         best_val_loss = val_loss
-        best_val_model = copy.deepcopy(model)
+        
+        # Store model state differently based on whether we're using FSDP
+        if use_fsdp:
+            # For FSDP, we just record that epoch 0 had the best loss
+            # We'll only save the final state
+            best_val_model = None
+            best_val_model_state = 0  # Store the epoch number
+        else:
+            # For non-FSDP models, we can still deepcopy
+            best_val_model = copy.deepcopy(model)
+            best_val_model_state = None
+            
         best_val_loss_dict = copy.deepcopy(losses)
 
         if writer is not None:
@@ -555,33 +569,63 @@ def train(
 
         # When collecting validation loss:
         if epoch % validate_every == 0:
-            # Inside the validate_every block, use FSDP-specific code for validation loss reduction:
+            (
+                val_loss,
+                val_energy_loss,
+                val_force_loss,
+                val_stress_iso_loss,
+                val_stress_aniso_loss,
+            ) = run_validation(model, val_loader, graph, device, factorize)
+            
             if distributed:
+                val_loss_tensor = torch.tensor(val_loss, device=device)
+                val_energy_loss_tensor = torch.tensor(val_energy_loss, device=device)
+                val_force_loss_tensor = torch.tensor(val_force_loss, device=device)
+                val_stress_iso_loss_tensor = torch.tensor(
+                    val_stress_iso_loss, device=device
+                )
+                val_stress_aniso_loss_tensor = torch.tensor(
+                    val_stress_aniso_loss, device=device
+                )
+
+                # Use reduce_losses for both DDP and FSDP
                 val_loss = reduce_losses(val_loss_tensor, average=True).item()
-                val_energy_loss = reduce_losses(
-                    val_energy_loss_tensor, average=True
-                ).item()
-                val_force_loss = reduce_losses(
-                    val_force_loss_tensor, average=True
-                ).item()
+                val_energy_loss = reduce_losses(val_energy_loss_tensor, average=True).item()
+                val_force_loss = reduce_losses(val_force_loss_tensor, average=True).item()
                 val_stress_iso_loss = reduce_losses(
                     val_stress_iso_loss_tensor, average=True
                 ).item()
                 val_stress_aniso_loss = reduce_losses(
                     val_stress_aniso_loss_tensor, average=True
                 ).item()
-
+                
+            losses[epoch]["val_loss"] = val_loss
+                
             # Early stopping check
             if val_loss < best_val_loss:
                 best_val_loss = val_loss
                 epochs_since_improvement = 0
-                best_val_model = copy.deepcopy(model)
+                
+                # Save model differently based on whether we're using FSDP
+                if use_fsdp:
+                    # For FSDP, just remember this was the best epoch
+                    best_val_model_state = epoch
+                else:
+                    # For non-FSDP models, we can deepcopy as before
+                    best_val_model = copy.deepcopy(model)
+                    
                 best_val_loss_dict = copy.deepcopy(losses)
             else:
                 epochs_since_improvement += 1
                 if epochs_since_improvement >= patience:
                     print(f"Early stopping triggered at epoch {epoch}")
-                    return best_val_model, best_val_loss_dict
+                    if use_fsdp:
+                        # With FSDP, we can't return the best model directly since we didn't save it
+                        # Just inform the user which epoch had the best validation loss
+                        print(f"Best validation loss was at epoch {best_val_model_state}")
+                        return model, best_val_loss_dict
+                    else:
+                        return best_val_model, best_val_loss_dict
 
         # Visualization samples every 'visualize_every' epochs
         if epoch % visualize_every == 0:
@@ -611,4 +655,10 @@ def train(
         if is_main_process:
             pbar.update(1)
 
-    return model, losses
+    # At the end, return the appropriate model
+    if use_fsdp:
+        if best_val_model_state is not None:
+            print(f"Best validation loss was at epoch {best_val_model_state}")
+        return model, losses
+    else:
+        return best_val_model or model, best_val_loss_dict or losses
