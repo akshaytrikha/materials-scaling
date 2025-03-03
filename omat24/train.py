@@ -92,7 +92,7 @@ def get_fsdp_config():
         # Prefetch next backward pass to overlap communication
         "backward_prefetch": BackwardPrefetch.BACKWARD_PRE,
         # Sharding strategy
-        "sharding_strategy": ShardingStrategy.FULL_SHARD,
+        "sharding_strategy": ShardingStrategy.SHARD_GRAD_OP,
         # CPU offloading (uncomment if needed)
         # "cpu_offload": CPUOffload(offload_params=True),
         # Choose parameter wrapping policy based on model size
@@ -100,7 +100,7 @@ def get_fsdp_config():
             module=module,
             recurse=recurse,
             nonwrapped_numel=nonwrapped_numel,
-            min_num_params=100_000
+            min_num_params=100_000,
         ),
         # Enable activation checkpointing for memory efficiency
         "use_orig_params": True,  # Required for gradient clipping
