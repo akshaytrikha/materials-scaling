@@ -94,7 +94,7 @@ def get_fsdp_config():
         # Sharding strategy
         "sharding_strategy": ShardingStrategy.FULL_SHARD,
         # CPU offloading (uncomment if needed)
-        # "cpu_offload": CPUOffload(offload_params=True),
+        "cpu_offload": CPUOffload(offload_params=True),
         # Choose parameter wrapping policy based on model size
         "auto_wrap_policy": lambda module, recurse, nonwrapped_numel: size_based_auto_wrap_policy(
             module=module,
