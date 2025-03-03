@@ -94,7 +94,7 @@ def get_fsdp_config():
         # Sharding strategy
         "sharding_strategy": ShardingStrategy.FULL_SHARD,
         # CPU offloading (uncomment if needed)
-        "cpu_offload": CPUOffload(offload_params=True),
+        # "cpu_offload": CPUOffload(offload_params=True),
         # Choose parameter wrapping policy based on model size
         "auto_wrap_policy": lambda module, recurse, nonwrapped_numel: size_based_auto_wrap_policy(
             module=module,
@@ -218,8 +218,7 @@ def main(rank=None, world_size=None, use_fsdp=False):
                     f"\nModel {model_idx + 1}/{len(meta_models)} is on device {DEVICE} and has {model.num_params} parameters"
                 )
 
-            if not (world_size is not None and use_fsdp):
-                model.to(DEVICE)
+            model.to(DEVICE)
 
             # Store original model attributes before DDP/FSDP wrapping
             num_params = model.num_params if hasattr(model, "num_params") else None
