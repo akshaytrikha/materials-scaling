@@ -100,76 +100,65 @@ class MetaEquiformerV2Models:
             "cuda" if torch.cuda.is_available() else "cpu"
         ),
     ):
-        # self.luis_base_config = {
-        #     "regress_forces": True,
-        #     "use_pbc": True,
-        #     "use_pbc_single": True,
-        #     "otf_graph": True,
-        #     "enforce_max_neighbors_strictly": False,
-        #     "max_neighbors": 20,
-        #     "max_radius": 12.0,
-        #     "max_num_elements": 119,
-        #     "norm_type": "layer_norm_sh",
-        #     "grid_resolution": 18,
-        #     "num_sphere_samples": 128,
-        #     "edge_channels": 128,
-        #     "use_atom_edge_embedding": True,
-        #     "share_atom_edge_embedding": False,
-        #     "use_m_share_rad": False,
-        #     "distance_function": "gaussian",
-        #     "num_distance_basis": 512,
-        #     "attn_activation": "silu",
-        #     "use_s2_act_attn": False,
-        #     "use_attn_renorm": True,
-        #     "ffn_activation": "silu",
-        #     "use_gate_act": False,
-        #     "use_grid_mlp": True,
-        #     "use_sep_s2_act": True,
-        #     "alpha_drop": 0.1,
-        #     "drop_path_rate": 0.1,
-        #     "proj_drop": 0.0,
-        #     "weight_init": "uniform",
-        # }
+        self.luis_base_config = {
+            "model": "equiformer_v2_backbone",
+            "use_pbc": True,
+            "use_pbc_single": True,
+            "otf_graph": True,
+            "enforce_max_neighbors_strictly": False,
+            "max_neighbors": 20,
+            "max_radius": 12.0,
+            "max_num_elements": 96,
+            "avg_num_nodes": 31.17,
+            "avg_degree": 61.95,
+            "sphere_channels": 128,
+            "attn_hidden_channels": 64,
+            "num_heads": 8,
+            "attn_alpha_channels": 64,
+            "attn_value_channels": 16,
+            "ffn_hidden_channels": 128,
+            "norm_type": "layer_norm_sh",
+            "grid_resolution": 18,
+            "num_sphere_samples": 128,
+            "edge_channels": 128,
+            "use_atom_edge_embedding": True,
+            "distance_function": "gaussian",
+            "num_distance_basis": 512,
+            "attn_activation": "silu",
+            "use_s2_act_attn": False,
+            "ffn_activation": "silu",
+            "use_gate_act": False,
+            "use_grid_mlp": True,
+            "alpha_drop": 0.1,
+            "drop_path_rate": 0.1,
+            "proj_drop": 0.0,
+            "weight_init": "uniform",
+        }
 
-        # # Create Luis configurations with varying parameters
-        # self.luis_configurations = [
-        #     # Luis 31M (ours 58M)
-        #     {
-        #         "num_layers": 8,
-        #         "sphere_channels": 128,
-        #         "attn_hidden_channels": 64,
-        #         "num_heads": 8,
-        #         "attn_alpha_channels": 64,
-        #         "attn_value_channels": 16,
-        #         "ffn_hidden_channels": 128,
-        #         "lmax_list": [4],
-        #         "mmax_list": [2],
-        #     },
-        #     # Luis 86M (ours 196M)
-        #     {
-        #         "num_layers": 10,
-        #         "sphere_channels": 128,
-        #         "attn_hidden_channels": 64,
-        #         "num_heads": 8,
-        #         "attn_alpha_channels": 64,
-        #         "attn_value_channels": 16,
-        #         "ffn_hidden_channels": 128,
-        #         "lmax_list": [6],
-        #         "mmax_list": [4],
-        #     },
-        #     # Luis 153M (ours 263M)
-        #     {
-        #         "num_layers": 20,
-        #         "sphere_channels": 128,
-        #         "attn_hidden_channels": 64,
-        #         "num_heads": 8,
-        #         "attn_alpha_channels": 64,
-        #         "attn_value_channels": 16,
-        #         "ffn_hidden_channels": 128,
-        #         "lmax_list": [6],
-        #         "mmax_list": [3],
-        #     },
-        # ]
+        self.luis_configs = [
+            # eqV2-S: 31M params
+            {
+                "num_layers": 8,
+                "lmax_list": [4],
+                "mmax_list": [2],
+                "share_atom_edge_embedding": False,
+                "use_m_share_rad": False,
+                "use_attn_renorm": True,
+                "use_sep_s2_act": True,
+            },
+            # eqV2-M: 86M params
+            {
+                "num_layers": 10,
+                "lmax_list": [6],
+                "mmax_list": [4],
+                "share_atom_edge_embedding": False,
+                "use_m_share_rad": False,
+                "use_attn_renorm": True,
+                "use_sep_s2_act": True,
+            },
+            # eqV2-L: 153M params
+            {"num_layers": 20, "lmax_list": [6], "mmax_list": [3]},
+        ]
 
         self.base_config = {
             "regress_forces": True,
@@ -180,8 +169,6 @@ class MetaEquiformerV2Models:
             "max_neighbors": 20,
             "max_radius": 12.0,
             "max_num_elements": 119,
-            "attn_alpha_channels": 1,
-            "attn_value_channels": 1,
             "norm_type": "layer_norm_sh",
             "lmax_list": [4],
             "mmax_list": [2],
@@ -205,7 +192,7 @@ class MetaEquiformerV2Models:
             "weight_init": "uniform",
         }
 
-        self.configurations = [
+        self.configs = [
             # 3,168 params
             {
                 "ffn_hidden_channels": 1,
@@ -272,17 +259,17 @@ class MetaEquiformerV2Models:
                 "attn_alpha_channels": 48,
                 "attn_value_channels": 24,
             },
-            # # 244,426,818 params
-            # {
-            #     "ffn_hidden_channels": 128,
-            #     "edge_channels": 128,
-            #     "sphere_channels": 128,
-            #     "num_layers": 60,
-            #     "attn_hidden_channels": 128,
-            #     "num_heads": 16,
-            #     "attn_alpha_channels": 64,
-            #     "attn_value_channels": 32,
-            # },
+            # 244,426,818 params
+            {
+                "ffn_hidden_channels": 128,
+                "edge_channels": 128,
+                "sphere_channels": 128,
+                "num_layers": 60,
+                "attn_hidden_channels": 128,
+                "num_heads": 16,
+                "attn_alpha_channels": 64,
+                "attn_value_channels": 32,
+            },
         ]
 
         self.device = device
