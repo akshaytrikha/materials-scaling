@@ -4,10 +4,12 @@ import torch
 import ase
 import random
 from pathlib import Path
+import numpy as np
 from torch.utils.data import DataLoader, Subset, Dataset, ConcatDataset
 from fairchem.core.datasets import AseDBDataset
 from torch_geometric.data import Data
 from torch_geometric.data import DataLoader as PyGDataLoader
+from torch.utils.data.distributed import DistributedSampler
 
 # Internal
 from matrix import compute_distance_matrix, factorize_matrix, random_rotate_atoms
@@ -17,6 +19,21 @@ from data_utils import (
     generate_graph,
     DATASET_INFO,
 )
+
+
+# Define top-level wrapper functions for collate_fn
+def collate_fn_batch_padded_wrapper(batch):
+    """Top-level wrapper to make the function picklable for multiprocessing."""
+    # You'll need to have factorize as a global variable or pass it during initialization
+    global FACTORIZE  # This should be set at the module level before creating DataLoader
+    return custom_collate_fn_batch_padded(batch, FACTORIZE)
+
+
+def collate_fn_dataset_padded_wrapper(batch):
+    """Top-level wrapper to make the function picklable for multiprocessing."""
+    # You'll need to have these variables at the module level
+    global MAX_N_ATOMS, FACTORIZE  # These should be set at the module level
+    return custom_collate_fn_dataset_padded(batch, MAX_N_ATOMS, FACTORIZE)
 
 
 def split_dataset(dataset, train_data_fraction, val_data_fraction, seed):
@@ -39,6 +56,23 @@ def split_dataset(dataset, train_data_fraction, val_data_fraction, seed):
     return train_subset, val_subset, train_indices, val_indices
 
 
+class BatchPaddedCollate:
+    def __init__(self, factorize):
+        self.factorize = factorize
+
+    def __call__(self, batch):
+        return custom_collate_fn_batch_padded(batch, self.factorize)
+
+
+class DatasetPaddedCollate:
+    def __init__(self, max_n_atoms, factorize):
+        self.max_n_atoms = max_n_atoms
+        self.factorize = factorize
+
+    def __call__(self, batch):
+        return custom_collate_fn_dataset_padded(batch, self.max_n_atoms, self.factorize)
+
+
 def get_dataloaders(
     dataset_paths: List[str],
     train_data_fraction: float,
@@ -51,6 +85,7 @@ def get_dataloaders(
     val_workers: int = 0,
     graph: bool = False,
     factorize: bool = False,
+    distributed: bool = False,
 ):
     """Creates training and validation DataLoaders from a list of dataset paths.
     Each dataset is loaded, split into training and validation subsets, and then
@@ -68,12 +103,17 @@ def get_dataloaders(
         val_workers (int, optional): Number of worker processes for the validation DataLoader.
         graph (bool, optional): Whether to create PyG DataLoaders for graph datasets.
         factorize (bool, optional): Whether to factorize the distance matrix into a low-rank matrix.
+        distributed (bool, optional): Whether to use distributed training.
 
     Returns:
         tuple: (train_loader, val_loader)
     """
     train_subsets = []
     val_subsets = []
+
+    # Set max number of atoms per sample based on dataset split
+    split_name = dataset_paths[0].parent.name
+    max_n_atoms = max(info["max_n_atoms"] for info in DATASET_INFO[split_name].values())
 
     # Load each dataset from its path and split it individually
     for path in dataset_paths:
@@ -86,42 +126,49 @@ def get_dataloaders(
         train_subsets.append(train_subset)
         val_subsets.append(val_subset)
 
-    train_dataset = ConcatDataset(train_subsets)
-    val_dataset = ConcatDataset(val_subsets)
+    train_dataset = ConcatAseDBDataset(train_subsets)
+    val_dataset = ConcatAseDBDataset(val_subsets)
+
+    # Configure samplers for DDP
+    if distributed:
+        train_sampler = DistributedSampler(train_dataset, seed=seed)
+        val_sampler = DistributedSampler(val_dataset, seed=seed, shuffle=False)
+        shuffle = False
+    else:
+        train_sampler = None
+        val_sampler = None
+        shuffle = True
 
     if graph:
         # Create PyG DataLoaders
         train_loader = PyGDataLoader(
             train_dataset,
             batch_size=batch_size,
-            shuffle=True,
+            shuffle=shuffle and not distributed,
+            sampler=train_sampler,
             num_workers=train_workers,
+            pin_memory=torch.cuda.is_available(),
         )
         val_loader = PyGDataLoader(
             val_dataset,
             batch_size=batch_size,
             shuffle=False,
+            sampler=val_sampler,
             num_workers=val_workers,
+            pin_memory=torch.cuda.is_available(),
         )
     else:
-        # Set maximum number of atoms for padding
-        if len(dataset_paths) > 1:
-            max_n_atoms = 180
-        else:
-            max_n_atoms = dataset.max_n_atoms
-
-        # Select the appropriate collate function
+        # Create collate function instances
         if batch_padded:
-            collate_fn = lambda batch: custom_collate_fn_batch_padded(batch, factorize)
+            collate_fn = BatchPaddedCollate(factorize)
         else:
-            collate_fn = lambda batch: custom_collate_fn_dataset_padded(
-                batch, max_n_atoms, factorize
-            )
+            collate_fn = DatasetPaddedCollate(max_n_atoms, factorize)
 
         train_loader = DataLoader(
             train_dataset,
             batch_size=batch_size,
-            shuffle=True,
+            shuffle=shuffle and not distributed,
+            sampler=train_sampler,
             collate_fn=collate_fn,
             num_workers=train_workers,
             persistent_workers=train_workers > 0,
@@ -131,6 +178,7 @@ def get_dataloaders(
             val_dataset,
             batch_size=batch_size,
             shuffle=False,
+            sampler=val_sampler,
             collate_fn=collate_fn,
             num_workers=val_workers,
             persistent_workers=val_workers > 0,
@@ -144,9 +192,8 @@ class PyGData(Data):
     """Custom PyG Data class with additional attributes for running EquiformerV2 on OMat24 dataset."""
 
     def __cat_dim__(self, key, value, *args, **kwargs):
-        # For 'cell', return None so that PyG stores them as a Python list (no concat).
         if key == "cell":
-            return None
+            return 0
         return super().__cat_dim__(key, value, *args, **kwargs)
 
     def __inc__(self, key, value, *args, **kwargs):
@@ -175,19 +222,54 @@ class OMat24Dataset(Dataset):
         augment: bool = False,
         graph: bool = False,
         debug: bool = False,
+        rank: int = None,
+        world_size: int = None,
     ):
-        self.dataset = AseDBDataset(config=dict(src=dataset_paths, **config_kwargs))
+        self.dataset_paths = dataset_paths
+        self.config_kwargs = config_kwargs
         self.architecture = architecture
         self.augment = augment
         self.graph = graph
         self.debug = debug
 
-        if len(dataset_paths) > 1:
-            self.max_n_atoms = 180
+        # Shard the dataset if using DDP
+        self.rank = rank
+        self.world_size = world_size
+
+        # Initialize the dataset
+        self._init_dataset()
+
+    def _init_dataset(self):
+        """Initialize the ASE dataset with optional sharding"""
+        if self.rank is not None and self.world_size is not None:
+            # Create a sharded dataset config
+            shard_config = dict(
+                src=self.dataset_paths,
+                shard_id=self.rank,
+                num_shards=self.world_size,
+                **self.config_kwargs
+            )
+            self.dataset = AseDBDataset(config=shard_config)
         else:
-            split_name = dataset_paths[0].parent.name  # Parent directory's name
-            dataset_name = dataset_paths[0].name
-            self.max_n_atoms = DATASET_INFO[split_name][dataset_name]["max_n_atoms"]
+            self.dataset = AseDBDataset(
+                config=dict(src=self.dataset_paths, **self.config_kwargs)
+            )
+
+    def __getstate__(self):
+        """Custom pickling method"""
+        state = self.__dict__.copy()
+        # Don't pickle the ASE dataset
+        state["dataset"] = None
+        return state
+
+    def __setstate__(self, state):
+        """Custom unpickling method"""
+        self.__dict__.update(state)
+        # Reinitialize the dataset when unpickling
+        self._init_dataset()
+
+    def get_atoms(self, idx):
+        return self.dataset.get_atoms(idx)
 
     def __len__(self):
         return len(self.dataset)
@@ -207,7 +289,7 @@ class OMat24Dataset(Dataset):
         # Convert to tensors
         atomic_numbers = torch.tensor(atomic_numbers, dtype=torch.long)
         positions = torch.tensor(positions, dtype=torch.float)
-        cell = torch.tensor(cell, dtype=torch.float)
+        cell = torch.tensor(np.array(cell), dtype=torch.float)
 
         # Extract target properties (e.g., energy, forces, stress)
         energy = torch.tensor(atoms.get_potential_energy(), dtype=torch.float)
@@ -238,7 +320,7 @@ class OMat24Dataset(Dataset):
                 pyg_args["edge_index"] = edge_index
                 pyg_args["edge_attr"] = edge_attr
             elif self.architecture == "EquiformerV2":
-                pyg_args["cell"] = cell
+                pyg_args["cell"] = cell.unsqueeze(0)  # Shape: [1, 3, 3]
                 pyg_args["pbc"] = torch.tensor(atoms.get_pbc(), dtype=torch.float)
 
             # Create PyG Data object
@@ -275,3 +357,22 @@ class OMat24Dataset(Dataset):
             sample["source"] = atoms.info["calc_id"]
 
         return sample
+
+
+class ConcatAseDBDataset(ConcatDataset):
+    """A thin wrapper around ConcatDataset that provides a get_atoms() method
+    which gracefully handles Subset objects as well.
+
+    Used for training naive baseline models."""
+
+    def get_atoms(self, idx):
+        # Iterate over each sub-dataset in self.datasets:
+        for ds in self.datasets:
+            ds_len = len(ds)
+            if idx < ds_len:
+                if isinstance(ds, Subset):
+                    return ds.dataset.get_atoms(ds.indices[idx])
+                else:
+                    return ds.get_atoms(idx)
+            idx -= ds_len
+        raise IndexError("Index out of range in ConcatAseDBDataset")

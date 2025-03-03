@@ -4,7 +4,7 @@ import unittest
 
 # Internal
 from data import get_dataloaders, OMat24Dataset
-from data_utils import download_dataset
+from data_utils import download_dataset, DATASET_INFO
 
 # Load dataset
 split_name = "val"
@@ -230,7 +230,11 @@ class TestGetDataloaders(unittest.TestCase):
 
         batch = next(iter(train_loader))
         atoms_dim = batch["atomic_numbers"].size(1)
-        max_n_atoms = dataset.max_n_atoms
+
+        split_name = dataset_path.parent.name
+        max_n_atoms = max(
+            info["max_n_atoms"] for info in DATASET_INFO[split_name].values()
+        )
         self.assertEqual(
             atoms_dim,
             max_n_atoms,
