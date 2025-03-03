@@ -48,6 +48,9 @@ class EquiformerS2EF(nn.Module):
         self.num_params = sum(
             p.numel() for name, p in self.named_parameters() if "embedding" not in name
         )
+        
+        # Flag to detect if we're in FSDP mode
+        self.fsdp_mode = False
 
     def forward(self, batch):
         """
@@ -58,31 +61,63 @@ class EquiformerS2EF(nn.Module):
           energy  -> [N_structures]
           stress  -> [N_structures, 6]
         """
+        # Check if we're in FSDP mode by checking for wrapped parameters
+        # This is a robust way to detect FSDP without adding extra arguments
+        if not hasattr(self, '_checked_fsdp'):
+            for param in self.parameters():
+                if hasattr(param, '_is_sharded') and getattr(param, '_is_sharded', False):
+                    self.fsdp_mode = True
+                    break
+            self._checked_fsdp = True
+        
         out = self.backbone(batch)  # returns {"node_embedding", "graph"}
         node_emb = out["node_embedding"]
         graph = out["graph"]
 
         # Process the node embeddings to get a flat tensor
-        # node_emb is an SO3_Embedding object with node_emb.embedding of shape [N_atoms, total_coeffs, sphere_channels]
-        # We need to reshape this to [N_atoms, total_coeffs * sphere_channels]
+        # Use contiguous() to ensure proper memory layout before reshaping
+        # This is critical for FSDP compatibility
         x_shape = node_emb.embedding.shape
-        x = node_emb.embedding.reshape(x_shape[0], -1)  # Reshape to [N_atoms, in_dim]
+        x = node_emb.embedding.contiguous().view(x_shape[0], -1)  # Reshape to [N_atoms, in_dim]
 
         # Summation or scatter by structure index for energy
         e_per_node = self.energy_head(x).squeeze(-1)  # shape [N_atoms]
         structure_index = graph.batch_full  # e.g. shape [N_atoms]
-        energy = scatter(
-            e_per_node, structure_index, dim=0, reduce="add"
-        )  # [N_structures]
+        
+        # Ensure structure_index is on the correct device
+        structure_index = structure_index.to(e_per_node.device)
+        
+        # Use different implementation based on mode (FSDP vs regular)
+        if self.fsdp_mode:
+            # FSDP-friendly implementation that avoids torch_scatter
+            unique_indices = torch.unique(structure_index)
+            energy = torch.zeros(len(unique_indices), device=e_per_node.device)
+            
+            # Manual scatter add operation
+            for i, idx in enumerate(unique_indices):
+                mask = (structure_index == idx)
+                energy[i] = e_per_node[mask].sum()
+        else:
+            # Use torch_scatter as in the original implementation
+            energy = scatter(e_per_node, structure_index, dim=0, reduce="add")  # [N_structures]
 
         # Forces
         forces = self.force_head(x)  # shape [N_atoms, 3]
 
         # Stress
         s_per_node = self.stress_head(x)  # shape [N_atoms, 6]
-        stress = scatter(
-            s_per_node, structure_index, dim=0, reduce="add"
-        )  # [N_structures, 6]
+        
+        # Handle stress similarly to energy for FSDP compatibility
+        if self.fsdp_mode:
+            unique_indices = torch.unique(structure_index)
+            stress = torch.zeros(len(unique_indices), 6, device=s_per_node.device)
+            
+            # Manual scatter add operation
+            for i, idx in enumerate(unique_indices):
+                mask = (structure_index == idx)
+                stress[i] = s_per_node[mask].sum(dim=0)
+        else:
+            stress = scatter(s_per_node, structure_index, dim=0, reduce="add")  # [N_structures, 6]
 
         return forces, energy, stress
 

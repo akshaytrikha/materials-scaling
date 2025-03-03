@@ -80,32 +80,40 @@ def cleanup_ddp():
     dist.destroy_process_group()
 
 
-def get_fsdp_config():
+def get_fsdp_config(architecture="default"):
     """Returns a configuration dictionary for FSDP wrapping."""
-    return {
-        # Remove mixed precision config to use full precision (float32) everywhere
-        # "mixed_precision": MixedPrecision(
-        #     param_dtype=torch.float16,
-        #     reduce_dtype=torch.float16,
-        #     buffer_dtype=torch.float16,
-        # ),
-        # Prefetch next backward pass to overlap communication
-        "backward_prefetch": BackwardPrefetch.BACKWARD_PRE,
-        # Sharding strategy
-        "sharding_strategy": ShardingStrategy.FULL_SHARD,
-        # CPU offloading (uncomment if needed)
-        # "cpu_offload": CPUOffload(offload_params=True),
-        # Choose parameter wrapping policy based on model size
-        "auto_wrap_policy": lambda module, recurse, nonwrapped_numel: size_based_auto_wrap_policy(
-            module=module,
-            recurse=recurse,
-            nonwrapped_numel=nonwrapped_numel,
-            min_num_params=100_000
-        ),
-        # Enable activation checkpointing for memory efficiency
-        "use_orig_params": True,  # Required for gradient clipping
-        "device_id": torch.cuda.current_device(),
-    }
+    
+    # Special handling for EquiformerV2
+    if architecture == "EquiformerV2":
+        return {
+            # Use a simpler sharding strategy for EquiformerV2
+            "sharding_strategy": ShardingStrategy.SHARD_GRAD_OP,
+            # Use different backward prefetch timing
+            "backward_prefetch": BackwardPrefetch.BACKWARD_PRE,
+            # Simpler auto-wrap policy for EquiformerV2
+            "auto_wrap_policy": lambda module, recurse, nonwrapped_numel: size_based_auto_wrap_policy(
+                module=module,
+                recurse=recurse,
+                nonwrapped_numel=nonwrapped_numel,
+                min_num_params=1_000_000, # Use larger chunks
+            ),
+            "use_orig_params": True,
+            "device_id": torch.cuda.current_device(),
+        }
+    else:
+        # Regular config for other architectures
+        return {
+            "backward_prefetch": BackwardPrefetch.BACKWARD_PRE,
+            "sharding_strategy": ShardingStrategy.FULL_SHARD,
+            "auto_wrap_policy": lambda module, recurse, nonwrapped_numel: size_based_auto_wrap_policy(
+                module=module,
+                recurse=recurse,
+                nonwrapped_numel=nonwrapped_numel,
+                min_num_params=100_000,
+            ),
+            "use_orig_params": True,
+            "device_id": torch.cuda.current_device(),
+        }
 
 
 def main(rank=None, world_size=None, use_fsdp=False):
@@ -229,20 +237,20 @@ def main(rank=None, world_size=None, use_fsdp=False):
 
             if world_size is not None:
                 if use_fsdp:
-                    # Wrap model with FSDP
-                    fsdp_config = get_fsdp_config()
-
+                    # Pass architecture to get_fsdp_config
+                    fsdp_config = get_fsdp_config(args.architecture)
+                    
                     # FSDP wrap
                     model = FSDP(model, **fsdp_config)
-
-                    # If using FSDP, we need to recreate the optimizer after wrapping
+                    
+                    # If using FSDP, recreate the optimizer after wrapping
                     optimizer = optim.AdamW(model.parameters(), lr=lr)
                 else:
                     # Use traditional DDP
                     model = DDP(
                         model,
                         device_ids=[rank],
-                        find_unused_parameters=True,
+                        find_unused_parameters=True,  
                         broadcast_buffers=False,
                     )
 
