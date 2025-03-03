@@ -78,12 +78,6 @@ def parse_args():
         choices=["eqV2_31M", "eqV2_86M", "eqV2_153M"],
         help="Name of the FAIRChem model config to use (if using FAIRChem models)",
     )
-    parser.add_argument(
-        "--learning_rate",
-        type=float,
-        default=0.001,
-        help="Learning rate used during training (for visualization metadata)",
-    )
     return parser.parse_args()
 
 
@@ -550,7 +544,7 @@ def main():
                         "num_params": param_count,
                         "dataset_size": -1,
                         "architecture": architecture,
-                        "learning_rate": args.learning_rate,
+                        "learning_rate": -1,
                     },
                     "samples": {
                         args.split_name: formatted_samples,  # Ground truth data
