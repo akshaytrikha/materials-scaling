@@ -83,12 +83,12 @@ def cleanup_ddp():
 def get_fsdp_config():
     """Returns a configuration dictionary for FSDP wrapping."""
     return {
-        # Enable mixed precision for better performance
-        "mixed_precision": MixedPrecision(
-            param_dtype=torch.float16,
-            reduce_dtype=torch.float16,
-            buffer_dtype=torch.float16,
-        ),
+        # Remove mixed precision config to use full precision (float32) everywhere
+        # "mixed_precision": MixedPrecision(
+        #     param_dtype=torch.float16,
+        #     reduce_dtype=torch.float16,
+        #     buffer_dtype=torch.float16,
+        # ),
         # Prefetch next backward pass to overlap communication
         "backward_prefetch": BackwardPrefetch.BACKWARD_PRE,
         # Sharding strategy
