@@ -1,8 +1,6 @@
 import os
 
 filenames_to_include = [
-    "train_naive.py",
-    "inference_naive.py",
     "data.py",
     "data_utils.py",
     "loss.py",

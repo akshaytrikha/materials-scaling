@@ -126,7 +126,6 @@ def get_dataloaders(
         train_subsets.append(train_subset)
         val_subsets.append(val_subset)
 
-    # Instead of using raw ConcatDataset, wrap in ConcatAseDBDataset
     train_dataset = ConcatAseDBDataset(train_subsets)
     val_dataset = ConcatAseDBDataset(val_subsets)
 
@@ -269,7 +268,6 @@ class OMat24Dataset(Dataset):
         # Reinitialize the dataset when unpickling
         self._init_dataset()
 
-    # Minimal change: add a get_atoms() method.
     def get_atoms(self, idx):
         return self.dataset.get_atoms(idx)
 
