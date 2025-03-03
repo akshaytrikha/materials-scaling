@@ -23,11 +23,12 @@ if __name__ == "__main__":
     # Load dataset
     train_loader, val_loader = get_dataloaders(
         dataset_paths,
-        train_data_fraction=0.9,
+        train_data_fraction=1,
         batch_size=64,
         seed=1024,
+        architecture="FCN",
         batch_padded=False,
-        val_data_fraction=0.1,
+        val_data_fraction=0,
         train_workers=8,
         val_workers=8,
         graph=False,

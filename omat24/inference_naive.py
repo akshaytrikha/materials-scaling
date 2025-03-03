@@ -203,11 +203,12 @@ if __name__ == "__main__":
     # Load dataset
     train_loader, val_loader = get_dataloaders(
         dataset_paths,
-        train_data_fraction=0.1,
+        train_data_fraction=0,
         batch_size=64,
         seed=1024,
+        architecture="FCN",
         batch_padded=False,
-        val_data_fraction=0.1,
+        val_data_fraction=0.999,
         train_workers=8,
         val_workers=8,
         graph=False,
@@ -215,8 +216,10 @@ if __name__ == "__main__":
 
     val_dataset = val_loader.dataset
 
+    print(f"Running inference on {len(val_dataset)} structures")
+
     # # Setup k model
-    # k = 0
+    # k = 5
     # force_magnitude = False
 
     # if force_magnitude:
@@ -230,6 +233,6 @@ if __name__ == "__main__":
     mean_model = NaiveMeanModel.load(f"checkpoints/naive/all_val_naive_mean_model.pkl")
 
     # print(f"{k}: {force_magnitude}")
-    run_naive_k(mean_model, val_dataset, force_magnitude=False)
+    # run_naive_k(k_model, val_dataset, force_magnitude=False)
     # run_naive_zero(val_dataset, force_magnitude=False)
-    # run_naive_mean(mean_model, val_dataset)
+    run_naive_mean(mean_model, val_dataset)

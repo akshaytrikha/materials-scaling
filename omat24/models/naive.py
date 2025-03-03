@@ -60,10 +60,13 @@ class NaiveModel(ABC):
         """
         tuples_of_nearest_indices = []
         for distances in distance_matrix:
-            nearest = np.argpartition(distances, self.k + 1)[: self.k + 1]
+            # Add this check to handle structures with fewer atoms than k+1
+            max_k = min(self.k + 1, len(distances))
+            
+            nearest = np.argpartition(distances, max_k - 1)[:max_k]
             nearest = nearest[np.argsort(distances[nearest])]
             tuple_of_nearest_indices = [
-                nearest[:n].tolist() for n in range(1, self.k + 2)
+                nearest[:n].tolist() for n in range(1, max_k + 1)
             ]
             tuples_of_nearest_indices.append(tuple(tuple_of_nearest_indices))
         return tuples_of_nearest_indices
@@ -411,11 +414,11 @@ class NaiveMeanModel(NaiveModel):
 
         # Convert lists to PyTorch tensors
         predicted_energy_tensor = torch.tensor(
-            predicted_energy_list, dtype=torch.float32
+            np.array(predicted_energy_list), dtype=torch.float32
         )
-        predicted_forces_tensor = torch.tensor(padded_forces, dtype=torch.float32)
+        predicted_forces_tensor = torch.tensor(np.array(padded_forces), dtype=torch.float32)
         predicted_stress_tensor = torch.tensor(
-            predicted_stress_list, dtype=torch.float32
+            np.array(predicted_stress_list), dtype=torch.float32
         )
 
         return predicted_energy_tensor, predicted_forces_tensor, predicted_stress_tensor
