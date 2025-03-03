@@ -111,7 +111,9 @@ def forward_pass(
                     output = model(batch)
                     pred_forces = output["forces"]
                     pred_energy = output["energy"]
-                    pred_stress = torch.tensor([0.0], device=device)
+                    pred_stress = torch.tensor(
+                        [0.0, 0.0, 0.0, 0.0, 0.0, 0.0], device=device
+                    )
                 else:
                     pred_forces, pred_energy, pred_stress = model(batch)
 

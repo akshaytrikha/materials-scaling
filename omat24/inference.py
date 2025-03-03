@@ -20,7 +20,7 @@ warnings.filterwarnings(
 # Internal
 from data import get_dataloaders
 from data_utils import download_dataset, VALID_DATASETS
-from train_utils import forward_pass, collect_samples_for_visualizing
+from train_utils import forward_pass, collect_samples_helper
 from models.fcn import FCNModel
 from models.transformer_models import XTransformerModel
 from models.schnet import SchNet
@@ -28,17 +28,6 @@ from models.equiformer_v2 import EquiformerS2EF
 
 # Set seed & device
 SEED = 1024
-# torch.manual_seed(SEED)
-# if torch.cuda.is_available():
-#     DEVICE = torch.device("cuda")
-#     torch.cuda.manual_seed(SEED)
-#     torch.cuda.manual_seed_all(SEED)
-#     torch.backends.cudnn.deterministic = True
-#     torch.backends.cudnn.benchmark = False
-#     torch.backends.cuda.enable_flash_sdp(True)
-# elif torch.backends.mps.is_available():
-#     DEVICE = torch.device("mps")
-# else:
 DEVICE = torch.device("cpu")
 
 
@@ -88,6 +77,12 @@ def parse_args():
         default=None,
         choices=["eqV2_31M", "eqV2_86M", "eqV2_153M"],
         help="Name of the FAIRChem model config to use (if using FAIRChem models)",
+    )
+    parser.add_argument(
+        "--learning_rate",
+        type=float,
+        default=0.001,
+        help="Learning rate used during training (for visualization metadata)",
     )
     return parser.parse_args()
 
@@ -312,7 +307,7 @@ def load_checkpoint_model(checkpoint_path, device):
     model.to(device)
     model.eval()
 
-    return model, architecture
+    return model, architecture, param_count
 
 
 def compute_metrics(loader, model, device, graph=False, factorize=False):
@@ -432,9 +427,13 @@ def main():
     if args.fairchem_model:
         # Load FAIRChem model
         model, architecture = load_fairchem_eqV2(args.fairchem_model, DEVICE)
+        # Extract parameter count from model
+        param_count = sum(p.numel() for p in model.parameters())
     else:
         # Load model from checkpoint
-        model, architecture = load_checkpoint_model(args.checkpoint, DEVICE)
+        model, architecture, param_count = load_checkpoint_model(
+            args.checkpoint, DEVICE
+        )
 
     # Determine if model is graph-based
     graph = architecture in ["SchNet", "EquiformerV2"]
@@ -493,25 +492,68 @@ def main():
     ) as f:
         json.dump(metrics, f, indent=4)
 
-    # Optional: collect sample visualizations if needed
     if args.num_samples > 0:
-        # Use the collect_samples_for_visualizing function from train_utils.py
-        samples = collect_samples_for_visualizing(
-            model,
-            graph,
-            train_loader,
-            val_loader,
-            DEVICE,
-            args.num_samples,
+        # Select the correct dataset based on split_name
+        dataset = (
+            train_loader.dataset if args.split_name == "train" else val_loader.dataset
         )
 
-        # Save sample data for further analysis
-        with open(output_dir / f"{model_name}_samples.json", "w") as f:
-            json.dump(samples, f, indent=4)
-
-        print(
-            f"Saved {args.num_samples} visualization samples to {output_dir / f'{model_name}_samples.json'}"
+        # Use the existing collect_samples_helper to get raw samples
+        raw_samples = collect_samples_helper(
+            args.num_samples, dataset, model, graph, DEVICE
         )
+
+        # Transform samples to match the visualization script's expected format
+        formatted_samples = []
+        formatted_predictions = []
+
+        for sample_data in raw_samples:
+            # Format ground truth sample for visualization
+            formatted_sample = {
+                "positions": sample_data["positions"],
+                "atomic_numbers": sample_data["atomic_numbers"],
+                "forces": sample_data["true"]["forces"],
+                "energy": sample_data["true"]["energy"],
+                "stress": sample_data["true"]["stress"],
+            }
+            formatted_samples.append(formatted_sample)
+
+            # Format model predictions for visualization
+            formatted_prediction = {
+                "forces": sample_data["pred"]["forces"],
+                "energy": sample_data["pred"]["energy"],
+                "stress": sample_data["pred"]["stress"],
+            }
+            formatted_predictions.append(formatted_prediction)
+
+        # Format the data in the structure expected by the visualization code
+        samples_json = {
+            -1: [
+                {
+                    "model_name": model_name,
+                    "config": {
+                        "num_params": param_count,
+                        "dataset_size": -1,
+                        "architecture": architecture,
+                        "learning_rate": args.learning_rate,
+                    },
+                    "samples": {
+                        args.split_name: formatted_samples,  # Ground truth data
+                    },
+                    "losses": {
+                        "999": {  # Use a large epoch number for inference
+                            "pred": {
+                                args.split_name: formatted_predictions,  # Model predictions
+                            }
+                        }
+                    },
+                }
+            ]
+        }
+
+        # Save structured sample data for visualization
+        with open(output_dir / f"{model_name}_visualization_data.json", "w") as f:
+            json.dump(samples_json, f, indent=4)
 
     print(f"\nInference completed. Results saved to {output_dir}")
 
