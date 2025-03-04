@@ -275,17 +275,17 @@ class MetaEquiformerV2Models:
         self.device = device
 
     def __getitem__(self, idx: int) -> EquiformerS2EF:
-        if idx >= len(self.configurations):
+        if idx >= len(self.configs):
             raise IndexError("Configuration index out of range")
-        config = self.configurations[idx]
+        config = self.configs[idx]
         config.update(self.base_config)
         model = EquiformerS2EF(config)
         model.to(self.device)
         return model
 
     def __len__(self) -> int:
-        return len(self.configurations)
+        return len(self.configs)
 
     def __iter__(self):
-        for idx in range(len(self.configurations)):
+        for idx in range(len(self.configs)):
             yield self[idx]
