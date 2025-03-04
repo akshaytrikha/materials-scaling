@@ -542,3 +542,14 @@ def train(
         pbar.update(1)
 
     return model, losses
+
+def lr_schedule(epoch, num_epochs, warmup_epochs):
+    if epoch < warmup_epochs:
+        # Linear warmup from 0 to lr
+        return epoch / warmup_epochs
+    else:
+        # Cosine decay, starting from lr
+        decay_epoch = epoch - warmup_epochs
+        total_decay_epochs = num_epochs - warmup_epochs
+        return 0.9 * 0.5 * (1 + math.cos(math.pi * decay_epoch / total_decay_epochs)) + 0.1
+
