@@ -14,10 +14,6 @@ class FixedGaussianRBF(nn.Module):
         self.cutoff = cutoff
         self.num_basis = num_centers  # For compatibility with the interface
 
-        # Fixed centers evenly spaced from 0 to cutoff
-        # Note: We're not creating a parameter since these are fixed
-        # Instead we'll create them in forward() to match the device
-
     def forward(self, distances):
         """
         Apply fixed Gaussian RBF to distances
@@ -71,6 +67,102 @@ def compute_distance_matrix(positions):
     diff = positions.unsqueeze(2) - positions.unsqueeze(1)  # [batch, atom_i, atom_j, 3]
     dist = torch.sqrt(torch.sum(diff**2, dim=-1) + 1e-8)  # [batch, atom_i, atom_j]
     return dist
+
+
+# New function to compute vector features
+def compute_vector_features(positions):
+    """
+    Compute vector features between atoms including distance and direction
+
+    Args:
+        positions: Tensor of shape [batch_size, num_atoms, 3]
+
+    Returns:
+        distances: Tensor of shape [batch_size, num_atoms, num_atoms] containing pairwise distances
+        direction_vectors: Tensor of shape [batch_size, num_atoms, num_atoms, 3] containing normalized direction vectors
+    """
+    # Compute pairwise vector differences
+    pos_i = positions.unsqueeze(2)  # [batch, atom_i, 1, 3]
+    pos_j = positions.unsqueeze(1)  # [batch, 1, atom_j, 3]
+
+    # Vector differences
+    vecs = pos_j - pos_i  # [batch, atom_i, atom_j, 3]
+
+    # Distance magnitudes
+    dist = torch.norm(vecs, dim=-1)  # [batch, atom_i, atom_j]
+
+    # Normalized direction vectors (with epsilon to avoid division by zero)
+    dir_vecs = vecs / (dist.unsqueeze(-1) + 1e-8)  # [batch, atom_i, atom_j, 3]
+
+    return dist, dir_vecs
+
+
+class VectorRBFEmbedding(nn.Module):
+    """
+    Enhanced embedding layer that combines atom type embeddings with both
+    RBF-encoded interatomic distances and directional information
+    """
+
+    def __init__(
+        self, num_tokens, d_model, num_rbf_basis=50, cutoff=12.0, direction_dim=32
+    ):
+        super().__init__()
+        self.token_emb = nn.Embedding(num_tokens, d_model)
+        self.rbf = FixedGaussianRBF(num_centers=num_rbf_basis, cutoff=cutoff)
+        self.direction_dim = direction_dim
+
+        # Project RBF features to embedding dimension
+        self.rbf_projection = nn.Linear(num_rbf_basis, d_model // 2)
+
+        # Project direction vectors to embedding dimension
+        self.direction_projection = nn.Linear(3, direction_dim)
+
+        # Final projection to combine distance and direction information
+        self.combined_projection = nn.Linear(d_model // 2 + direction_dim, d_model)
+
+    def forward(self, atomic_numbers, positions):
+        """
+        Args:
+            atomic_numbers: Tensor of shape [batch_size, num_atoms] containing atomic numbers
+            positions: Tensor of shape [batch_size, num_atoms, 3] containing 3D atomic positions
+        Returns:
+            Tensor of shape [batch_size, num_atoms, d_model] containing combined embeddings
+        """
+        # Get atom type embeddings
+        token_embeddings = self.token_emb(atomic_numbers)  # [batch, atoms, d_model]
+
+        # Compute distance matrix and direction vectors
+        distances, direction_vectors = compute_vector_features(positions)
+
+        # Apply RBF encoding to distances
+        rbf_features = self.rbf(distances)  # [batch, atoms, atoms, num_basis]
+
+        # Project RBF features
+        rbf_proj = self.rbf_projection(
+            rbf_features
+        )  # [batch, atoms, atoms, d_model//2]
+
+        # Project direction vectors
+        batch_size, num_atoms = atomic_numbers.shape
+        dir_proj = self.direction_projection(
+            direction_vectors
+        )  # [batch, atoms, atoms, direction_dim]
+
+        # Combine distance and direction information
+        combined_features = torch.cat(
+            [rbf_proj, dir_proj], dim=-1
+        )  # [batch, atoms, atoms, d_model//2 + direction_dim]
+        geometry_emb = self.combined_projection(
+            combined_features
+        )  # [batch, atoms, atoms, d_model]
+
+        # Aggregate over neighboring atoms (mean pooling)
+        geometry_emb = geometry_emb.mean(dim=2)  # [batch, atoms, d_model]
+
+        # Combine with token embeddings
+        combined_emb = token_embeddings + geometry_emb
+
+        return combined_emb
 
 
 class RBFEmbedding(nn.Module):
@@ -142,20 +234,24 @@ class MetaTransformerModels:
         vocab_size,
         max_seq_len,
         use_factorized=False,
+        use_vector_attention=True,  # Add new parameter
     ):
         """Initializes TransformerModels with a list of configurations.
 
         Args:
             vocab_size (int): Number of unique tokens (atomic numbers).
             max_seq_len (int): Maximum sequence length for the transformer.
+            use_factorized (bool): Whether to use factorized features.
+            use_vector_attention (bool): Whether to use vector attention mechanism.
         """
         # fmt: off
         self.configurations = [
             # {"d_model": 16, "depth": 1, "n_heads": 1, "d_ff_mult": 2, "num_rbf": 16},  # ~4k params
             # {"d_model": 16, "depth": 2, "n_heads": 2, "d_ff_mult": 2, "num_rbf": 32},  # ~15k params
             # {"d_model": 32, "depth": 2, "n_heads": 4, "d_ff_mult": 2, "num_rbf": 32},  # ~40k params 
-            {"d_model": 32, "depth": 4, "n_heads": 4, "d_ff_mult": 4, "num_rbf": 128},  # ~100k params
+            # {"d_model": 32, "depth": 4, "n_heads": 4, "d_ff_mult": 4, "num_rbf": 128},  # ~100k params
         #     {"d_model": 64, "depth": 4, "n_heads": 4, "d_ff_mult": 4, "num_rbf": 48},  # ~300k params
+              {"d_model": 32, "depth": 8, "n_heads": 2, "d_ff_mult": 8, "num_rbf": 48}  # good scaling
         #     {"d_model": 64, "depth": 6, "n_heads": 8, "d_ff_mult": 8, "num_rbf": 64},  # ~500k params
         #     {"d_model": 96, "depth": 6, "n_heads": 8, "d_ff_mult": 8, "num_rbf": 64},  # ~1M params
         #     {"d_model": 128, "depth": 8, "n_heads": 8, "d_ff_mult": 8, "num_rbf": 96},  # ~3M params
@@ -168,6 +264,7 @@ class MetaTransformerModels:
         self.vocab_size = vocab_size
         self.max_seq_len = max_seq_len
         self.use_factorized = use_factorized
+        self.use_vector_attention = use_vector_attention  # Store the new parameter
 
     def __getitem__(self, idx):
         """Retrieves transformer model corresponding to the configuration at index `idx`.
@@ -184,15 +281,29 @@ class MetaTransformerModels:
         if idx >= len(self.configurations):
             raise IndexError("Configuration index out of range")
         config = self.configurations[idx]
-        return XTransformerRBFModel(
-            num_tokens=self.vocab_size,
-            d_model=config["d_model"],
-            depth=config["depth"],
-            n_heads=config["n_heads"],
-            d_ff_mult=config["d_ff_mult"],
-            num_rbf=config["num_rbf"],
-            use_factorized=self.use_factorized,
-        )
+
+        # Choose the appropriate model based on vector attention setting
+        if self.use_vector_attention:
+            print("Using Vector Transformer")
+            return XTransformerVectorModel(
+                num_tokens=self.vocab_size,
+                d_model=config["d_model"],
+                depth=config["depth"],
+                n_heads=config["n_heads"],
+                d_ff_mult=config["d_ff_mult"],
+                num_rbf=config["num_rbf"],
+                use_factorized=self.use_factorized,
+            )
+        else:
+            return XTransformerRBFModel(
+                num_tokens=self.vocab_size,
+                d_model=config["d_model"],
+                depth=config["depth"],
+                n_heads=config["n_heads"],
+                d_ff_mult=config["d_ff_mult"],
+                num_rbf=config["num_rbf"],
+                use_factorized=self.use_factorized,
+            )
 
     def __len__(self):
         """Returns the number of configurations."""
@@ -202,6 +313,136 @@ class MetaTransformerModels:
         """Allows iteration over all transformer models."""
         for idx in range(len(self.configurations)):
             yield self[idx]
+
+
+class XTransformerVectorModel(nn.Module):
+    """
+    Enhanced transformer model that uses vector attention mechanism
+    to better capture directional information for force prediction
+    """
+
+    def __init__(
+        self,
+        num_tokens,
+        d_model,
+        depth,
+        n_heads,
+        d_ff_mult,
+        num_rbf,
+        use_factorized=False,
+        direction_dim=32,
+    ):
+        """Initializes an XTransformerVectorModel with vector attention.
+
+        Args:
+            num_tokens (int): Number of unique tokens (atomic numbers).
+            d_model (int): Dimension of the token embeddings.
+            depth (int): Number of transformer layers.
+            n_heads (int): Number of attention heads.
+            d_ff_mult (int): Multiplier for the feed-forward network dimension.
+            num_rbf (int): Number of RBF basis functions.
+            use_factorized (bool): Whether to use factorized distances instead of positions.
+            direction_dim (int): Dimension for the direction vectors projection.
+        """
+        super().__init__()
+        self.embedding_dim = d_model
+        self.depth = depth
+        self.n_heads = n_heads
+        self.d_ff_mult = d_ff_mult
+        self.use_factorized = use_factorized
+        self.name = "VectorTransformer"
+        self.num_rbf = num_rbf
+        self.direction_dim = direction_dim
+
+        # Use Vector RBF embedding
+        self.token_emb = VectorRBFEmbedding(
+            num_tokens=num_tokens,
+            d_model=d_model,
+            num_rbf_basis=num_rbf,
+            cutoff=12.0,
+            direction_dim=direction_dim,
+        )
+
+        # Create Transformer encoder
+        self.transformer = Encoder(
+            dim=d_model,
+            depth=depth,
+            heads=n_heads,
+            ff_mult=d_ff_mult,
+            attn_flash=torch.cuda.is_available(),
+        )
+
+        # Predictors for Energy, Forces, and Stresses
+        self.energy_1 = nn.Linear(d_model, d_model)
+        self.energy_2 = nn.Linear(d_model, 1)  # Energy: [M, 1]
+        self.force_1 = nn.Linear(d_model, d_model)
+        self.force_2 = nn.Linear(d_model, 3)  # Forces: [M, A, 3]
+        self.stress_1 = nn.Linear(d_model, d_model)
+        self.stress_2 = nn.Linear(d_model, 6)  # Stresses: [M, 6]
+
+        # Initialize weights
+        for m in [
+            self.energy_1,
+            self.force_1,
+            self.stress_1,
+            self.energy_2,
+            self.force_2,
+            self.stress_2,
+        ]:
+            nn.init.xavier_normal_(m.weight)
+            if m.bias is not None:
+                nn.init.zeros_(m.bias)
+
+        # Count parameters
+        self.num_params = sum(
+            p.numel()
+            for name, p in self.named_parameters()
+            if "token_emb.token_emb" not in name
+        )
+
+    def forward(self, x, positions, distance_matrix=None, mask=None):
+        """Forward pass of the vector transformer model.
+
+        Args:
+            x (Tensor): Tensor of shape [M, A] containing atomic numbers.
+            positions (Tensor): Tensor of shape [M, A, 3] containing 3D atomic positions.
+            distance_matrix (Tensor, optional): Precomputed distance matrix.
+            mask (Tensor, optional): Tensor of shape [M, A] indicating padding.
+
+        Returns:
+            tuple: (forces, energy, stresses)
+                - forces (Tensor): [M, A, 3]
+                - energy (Tensor): [M]
+                - stresses (Tensor): [M, 6]
+        """
+        # Get combined Vector RBF embeddings
+        embeddings = self.token_emb(x, positions)  # [M, A, d_model]
+
+        # Pass embeddings to the transformer
+        output = self.transformer(x=embeddings, mask=mask)  # [M, A, d_model]
+
+        # Predict forces with vector information
+        forces = self.force_2(torch.tanh(self.force_1(output)))  # [M, A, 3]
+        if mask is not None:
+            expanded_mask = mask.unsqueeze(-1).expand(-1, -1, 3)
+            forces = forces * expanded_mask.float()  # Mask padded atoms
+
+        # Predict per-atom energy contributions and sum
+        energy_contrib = self.energy_2(torch.tanh(self.energy_1(output))).squeeze(
+            -1
+        )  # [M, A]
+        if mask is not None:
+            energy_contrib = energy_contrib * mask.float()
+        energy = energy_contrib.sum(dim=1)  # [batch_size]
+
+        # Predict per-atom stress contributions and sum
+        stress_contrib = self.stress_2(torch.tanh(self.stress_1(output)))  # [M, A, 6]
+        if mask is not None:
+            expanded_mask = mask.unsqueeze(-1).expand(-1, -1, 6)
+            stress_contrib = stress_contrib * expanded_mask.float()
+        stress = stress_contrib.sum(dim=1)  # [batch_size, 6]
+
+        return forces, energy, stress
 
 
 class XTransformerRBFModel(nn.Module):
