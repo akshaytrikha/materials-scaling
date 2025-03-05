@@ -154,7 +154,7 @@ class MetaTransformerModels:
             # {"d_model": 16, "depth": 1, "n_heads": 1, "d_ff_mult": 2, "num_rbf": 16},  # ~4k params
             # {"d_model": 16, "depth": 2, "n_heads": 2, "d_ff_mult": 2, "num_rbf": 32},  # ~15k params
             # {"d_model": 32, "depth": 2, "n_heads": 4, "d_ff_mult": 2, "num_rbf": 32},  # ~40k params 
-            {"d_model": 32, "depth": 4, "n_heads": 4, "d_ff_mult": 4, "num_rbf": 128},  # ~100k params
+            {"d_model": 32, "depth": 8, "n_heads": 2, "d_ff_mult": 8, "num_rbf": 128},  # ~100k params
         #     {"d_model": 64, "depth": 4, "n_heads": 4, "d_ff_mult": 4, "num_rbf": 48},  # ~300k params
         #     {"d_model": 64, "depth": 6, "n_heads": 8, "d_ff_mult": 8, "num_rbf": 64},  # ~500k params
         #     {"d_model": 96, "depth": 6, "n_heads": 8, "d_ff_mult": 8, "num_rbf": 64},  # ~1M params
