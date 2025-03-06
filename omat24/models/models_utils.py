@@ -17,7 +17,7 @@ class OutputModule(nn.Module):
             nn.init.zeros_(self.output_2.bias)
     
     def forward(self, output):
-        return self.output_2(F.leaky_relu(self.output_1(output), negative_slope=0.01))
+        return self.output_2(F.tanh(self.output_1(output)))
 
 # Example usage:
 # force_module = ForceModule(input_dim=..., hidden_dim=..., output_dim=...)
