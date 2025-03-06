@@ -32,38 +32,6 @@ def unvoigt_stress(voigt_stress_batch):
     return isotropic_stress, anisotropic_stress
 
 
-def compute_graph_force_loss(pred_forces, true_forces, structure_index, natoms):
-    """
-    Args:
-        pred_forces (Tensor): Predicted forces [N, 3].
-        true_forces (Tensor): True forces [N, 3].
-        structure_index (list): A list of structure indices for each atom in the graph batch.
-        natoms (Tensor): Number of atoms per structure [B].
-    """
-    # 1) MSE "per-atom" (sum over x,y,z)
-    #    shape => [N]
-    force_loss_fn = nn.MSELoss(reduction="none")
-    force_loss_per_atom = force_loss_fn(pred_forces, true_forces)
-
-    # 2) Scatter across structures
-    #    shape => [B]
-    #    We sum per structure if we want to do the same normalization
-    #    that the FCN/Transformer does.
-    force_sum_struct = scatter(
-        force_loss_per_atom, structure_index, dim=0, reduce="sum"
-    )
-
-    # 3) Divide per structure by (3 * number_of_atoms_in_that_structure)
-    #    shape => [B]
-    #    This matches the “force_loss = sum over atoms / (3 * natoms)”
-    force_avg_struct = force_sum_struct / (3.0 * natoms.unsqueeze(1))
-
-    # 4) Finally, average over the B structures
-    force_loss = force_avg_struct.mean()
-
-    return force_loss
-
-
 def compute_loss(
     pred_forces,
     pred_energy,
