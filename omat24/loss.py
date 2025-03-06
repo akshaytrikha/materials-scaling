@@ -1,6 +1,5 @@
 import torch
-import torch.nn as nn
-from torch_scatter import scatter
+from einops import rearrange
 from fairchem.core.modules.loss import DDPLoss
 
 
@@ -82,6 +81,10 @@ def compute_loss(
     stress_loss_fn = DDPLoss("mae", reduction="mean")
 
     energy_loss = energy_loss_fn(pred_energy, true_energy, natoms)
+    if graph == False:
+        # Reshape to [batch_size * max_atoms, 3] for consistency with graph data
+        pred_forces = rearrange(pred_forces, "b n d -> (b n) d")
+        true_forces = rearrange(true_forces, "b n d -> (b n) d")
     force_loss = forces_loss_fn(pred_forces, true_forces, natoms)
 
     # Compute stress loss for isotropic and anisotropic components
