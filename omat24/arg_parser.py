@@ -13,7 +13,7 @@ def get_args():
     parser.add_argument(
         "--architecture",
         type=str,
-        choices=["FCN", "Transformer", "SchNet"],
+        choices=["FCN", "Transformer", "SchNet", "EquiformerV2"],
         default="FCN",
         help="Model architecture to use",
     )
@@ -116,6 +116,11 @@ def get_args():
         nargs="+",
         default=["rattled-300-subsampled"],
         help="Dataset(s) to use",
+    )
+    parser.add_argument(
+        "--distributed",
+        action="store_true",
+        help="Enable distributed training" "--datasets_base_path",
     )
     parser.add_argument(
         "--datasets_base_path",
