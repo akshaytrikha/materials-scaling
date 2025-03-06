@@ -78,11 +78,11 @@ def compute_loss(
     # Initialize loss components as specified in the eqV2-S config
     # https://github.com/FAIR-Chem/fairchem/blob/main/configs/omat24/all/eqV2_31M.yml
     energy_loss_fn = DDPLoss("per_atom_mae", reduction="mean")
-    # forces_loss_fn = DDPLoss("l2mae", reduction="mean")
+    forces_loss_fn = DDPLoss("l2mae", reduction="mean")
     stress_loss_fn = DDPLoss("mae", reduction="mean")
 
     energy_loss = energy_loss_fn(pred_energy, true_energy, natoms)
-    # force_loss = forces_loss_fn(pred_forces, true_forces, natoms)
+    force_loss = forces_loss_fn(pred_forces, true_forces, natoms)
 
     # Compute stress loss for isotropic and anisotropic components
     true_iso_stress, true_aniso_stress = unvoigt_stress(true_stress)
@@ -92,7 +92,7 @@ def compute_loss(
 
     total_loss = (
         2.5 * energy_loss
-        # + 20 * force_loss
+        + 20 * force_loss
         + 5 * stress_iso_loss
         + 5 * stress_aniso_loss
     )
