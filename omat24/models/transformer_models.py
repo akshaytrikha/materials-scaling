@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from x_transformers import TransformerWrapper, Encoder
+from models_utils import OutputModule
 
 
 class ConcatenatedEmbedding(nn.Module):
@@ -146,40 +147,9 @@ class XTransformerModel(TransformerWrapper):
         self.token_emb = ConcatenatedEmbedding(num_tokens, d_model)
 
         # Predictors for Energy, Forces, and Stresses
-        self.energy_1 = nn.Linear(
-            d_model + self.additional_dim, d_model + self.additional_dim
-        )
-        self.energy_2 = nn.Linear(d_model + self.additional_dim, 1)  # Energy: [M, 1]
-        self.force_1 = nn.Linear(
-            d_model + self.additional_dim, d_model + self.additional_dim
-        )
-        self.force_2 = nn.Linear(d_model + self.additional_dim, 3)  # Forces: [M, A, 3]
-        self.stress_1 = nn.Linear(
-            d_model + self.additional_dim, d_model + self.additional_dim
-        )
-        self.stress_2 = nn.Linear(d_model + self.additional_dim, 6)  # Stresses: [M, 6]
-
-        # Initialize weights in the __init__ method
-        # Initialize Linear 1 with Xavier initialization (normal distribution)
-        nn.init.xavier_normal_(self.energy_1.weight)
-        if self.energy_1.bias is not None:
-            nn.init.zeros_(self.energy_1.bias)
-        nn.init.xavier_normal_(self.force_1.weight)
-        if self.force_1.bias is not None:
-            nn.init.zeros_(self.force_1.bias)
-        nn.init.xavier_normal_(self.stress_1.weight)
-        if self.stress_1.bias is not None:
-            nn.init.zeros_(self.stress_1.bias)
-        # Initialize Linear 2 with Xavier initialization (normal distribution)
-        nn.init.xavier_normal_(self.energy_2.weight)
-        if self.energy_2.bias is not None:
-            nn.init.zeros_(self.energy_2.bias)
-        nn.init.xavier_normal_(self.force_2.weight)
-        if self.force_2.bias is not None:
-            nn.init.zeros_(self.force_2.bias)
-        nn.init.xavier_normal_(self.stress_2.weight)
-        if self.stress_2.bias is not None:
-            nn.init.zeros_(self.stress_2.bias)
+        force_output = OutputModule(d_model + self.additional_dim, d_model + self.additional_dim, 3)
+        energy_output = OutputModule(d_model + self.additional_dim, d_model + self.additional_dim, 1)
+        stress_output = OutputModule(d_model + self.additional_dim, d_model + self.additional_dim, 6)
 
         # Count parameters
         self.num_params = sum(
@@ -211,19 +181,19 @@ class XTransformerModel(TransformerWrapper):
         output = self.attn_layers(x=concatenated_emb, mask=mask)  # [M, A, d_model]
 
         # Predict forces
-        forces = self.force_2(F.leaky_relu(self.force_1(output), negative_slope=0.01))  # [M, A, 3]
+        forces = self.force_output(output)  # [M, A, 3]
         expanded_mask = mask.unsqueeze(-1).expand(-1, -1, 3)
         forces = forces * expanded_mask.float()  # Mask padded atoms
 
         # Predict per-atom energy contributions and sum
-        energy_contrib = self.energy_2(F.leaky_relu(self.energy_1(output), negative_slope=0.01)).squeeze(
+        energy_contrib = self.energy_output(output).squeeze(
             -1
         )  # [M, A]
         energy_contrib = energy_contrib * mask.squeeze(-1).float()
         energy = energy_contrib.sum(dim=1)  # [batch_size]
 
         # Predict per-atom stress contributions and sum
-        stress_contrib = self.stress_2(F.leaky_relu(self.stress_1(output), negative_slope=0.01))  # [M, A, 6]
+        stress_contrib = self.stress_output(output)  # [M, A, 6]
         expanded_mask = mask.unsqueeze(-1).expand(-1, -1, 6)
         stress_contrib = stress_contrib * expanded_mask.float()
         stress = stress_contrib.sum(dim=1)  # [batch_size, 6]
