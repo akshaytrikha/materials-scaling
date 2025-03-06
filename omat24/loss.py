@@ -3,6 +3,11 @@ from einops import rearrange
 from fairchem.core.modules.loss import DDPLoss
 
 
+ENERGY_COEF = 2.5
+FORCE_COEF = 20
+STRESS_COEF = 5
+
+
 def unvoigt_stress(voigt_stress_batch):
     """Separates stress tensors in Voigt notation into isotropic and anisotropic components for a batch.
 
@@ -94,10 +99,10 @@ def compute_loss(
     stress_aniso_loss = stress_loss_fn(pred_aniso_stress, true_aniso_stress, natoms)
 
     total_loss = (
-        2.5 * energy_loss
-        + 20 * force_loss
-        + 5 * stress_iso_loss
-        + 5 * stress_aniso_loss
+        ENERGY_COEF * energy_loss
+        + FORCE_COEF * force_loss
+        + STRESS_COEF * stress_iso_loss
+        + STRESS_COEF * stress_aniso_loss
     )
 
     loss_dict = {
