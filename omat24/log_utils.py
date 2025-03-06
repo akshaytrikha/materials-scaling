@@ -12,7 +12,8 @@ def partial_json_log(
     val_loss,
     results_path,
     samples=None,
-    flops=0
+    flops=0,
+    epoch_time=None
 ):
     """
     Append train_loss and val_loss for the given step to the specified run_entry in experiment_results,
@@ -35,7 +36,8 @@ def partial_json_log(
               train: [{forces, energy, stress}],
               val: [{forces, energy, stress}]
             }
-            flops: float
+            flops: float,
+            epoch_time: float
           }
         }
       }]
@@ -77,6 +79,10 @@ def partial_json_log(
             if not math.isnan(val_loss):
                 loss_entry["val_loss"] = float(val_loss)
             loss_entry["flops"] = flops
+            
+            # Add epoch time if provided
+            if epoch_time is not None:
+                loss_entry["epoch_time"] = float(epoch_time)
 
             # Add predictions if samples exist
             if samples:
@@ -135,6 +141,10 @@ def partial_json_log(
         if not math.isnan(val_loss):
             loss_entry["val_loss"] = float(val_loss)
         loss_entry["flops"] = flops
+        
+        # Add epoch time if provided
+        if epoch_time is not None:
+            loss_entry["epoch_time"] = float(epoch_time)
 
         # Add predictions if samples exist
         if samples:

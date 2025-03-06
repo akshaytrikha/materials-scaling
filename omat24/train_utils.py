@@ -6,6 +6,7 @@ from typing import Union
 from torch.utils.flop_counter import FlopCounterMode
 from contextlib import nullcontext
 import torch.distributed as dist
+import time
 
 # Internal
 from loss import compute_loss
@@ -413,6 +414,8 @@ def train(
     flop_counter = FlopCounterMode(display=False)
     flops_per_epoch = 0
     for epoch in range(1, total_epochs):
+        epoch_start_time = time.time()
+
         if (
             distributed
             and hasattr(train_loader, "sampler")
@@ -526,7 +529,13 @@ def train(
         avg_epoch_stress_iso_loss = stress_iso_loss_sum / n_train_batches
         avg_epoch_stress_aniso_loss = stress_aniso_loss_sum / n_train_batches
 
-        losses[epoch] = {"train_loss": float(avg_epoch_train_loss)}
+        # Calculate epoch time
+        epoch_time = round(time.time() - epoch_start_time, 3)
+
+        losses[epoch] = {
+            "train_loss": float(avg_epoch_train_loss),
+        }
+
         # TensorBoard logging for training loss
         if writer is not None:
             # Log parameter norms (example usage) using log_tb_metrics
@@ -537,6 +546,7 @@ def train(
                     "force": avg_epoch_force_loss,
                     "stress_iso": avg_epoch_stress_iso_loss,
                     "stress_aniso": avg_epoch_stress_aniso_loss,
+                    "time": epoch_time,
                 },
                 writer,
                 epoch,
@@ -654,6 +664,7 @@ def train(
                 results_path,
                 samples if epoch % visualize_every == 0 else None,
                 flops_per_epoch * epoch,
+                epoch_time,
             )
 
         if is_main_process:
