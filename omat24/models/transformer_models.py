@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from x_transformers import TransformerWrapper, Encoder
-from models_utils import OutputModule
+from models.models_utils import OutputModule
 
 
 class ConcatenatedEmbedding(nn.Module):
@@ -147,9 +147,9 @@ class XTransformerModel(TransformerWrapper):
         self.token_emb = ConcatenatedEmbedding(num_tokens, d_model)
 
         # Predictors for Energy, Forces, and Stresses
-        force_output = OutputModule(d_model + self.additional_dim, d_model + self.additional_dim, 3)
-        energy_output = OutputModule(d_model + self.additional_dim, d_model + self.additional_dim, 1)
-        stress_output = OutputModule(d_model + self.additional_dim, d_model + self.additional_dim, 6)
+        self.forces_output = OutputModule(d_model + self.additional_dim, d_model + self.additional_dim, 3)
+        self.energy_output = OutputModule(d_model + self.additional_dim, d_model + self.additional_dim, 1)
+        self.stresses_output = OutputModule(d_model + self.additional_dim, d_model + self.additional_dim, 6)
 
         # Count parameters
         self.num_params = sum(
@@ -181,7 +181,7 @@ class XTransformerModel(TransformerWrapper):
         output = self.attn_layers(x=concatenated_emb, mask=mask)  # [M, A, d_model]
 
         # Predict forces
-        forces = self.force_output(output)  # [M, A, 3]
+        forces = self.forces_output(output)  # [M, A, 3]
         expanded_mask = mask.unsqueeze(-1).expand(-1, -1, 3)
         forces = forces * expanded_mask.float()  # Mask padded atoms
 
@@ -193,7 +193,7 @@ class XTransformerModel(TransformerWrapper):
         energy = energy_contrib.sum(dim=1)  # [batch_size]
 
         # Predict per-atom stress contributions and sum
-        stress_contrib = self.stress_output(output)  # [M, A, 6]
+        stress_contrib = self.stresses_output(output)  # [M, A, 6]
         expanded_mask = mask.unsqueeze(-1).expand(-1, -1, 6)
         stress_contrib = stress_contrib * expanded_mask.float()
         stress = stress_contrib.sum(dim=1)  # [batch_size, 6]
