@@ -103,7 +103,7 @@ def compute_loss(
     loss_dict = {
         "total_loss": total_loss,
         "energy_loss": energy_loss,
-        "force_loss": torch.tensor(0),
+        "force_loss": force_loss,
         "stress_iso_loss": stress_iso_loss,
         "stress_aniso_loss": stress_aniso_loss,
     }
