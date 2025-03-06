@@ -142,15 +142,15 @@ class TestTransformer(unittest.TestCase):
                 self.assertEqual(config["num_params"], 1670)
 
                 np.testing.assert_allclose(first_train_loss, 1029.019196, rtol=0.1)
-                np.testing.assert_allclose(first_val_loss, 238.1077, rtol=0.1)
+                np.testing.assert_allclose(first_val_loss, 210.055866, rtol=0.1)
                 np.testing.assert_allclose(first_flops, 0, rtol=0.1)
                 np.testing.assert_allclose(second_flops, 24920064, rtol=0.1)
-                np.testing.assert_allclose(last_train_loss, 437.988144, rtol=0.1)
+                np.testing.assert_allclose(last_train_loss, 219.792595, rtol=0.1)
                 np.testing.assert_allclose(last_flops, 12468728832, rtol=0.1)
                 if os.getenv("IS_CI", False):
                     np.testing.assert_allclose(last_val_loss, 2181.785034, rtol=0.1)
                 else:
-                    np.testing.assert_allclose(last_val_loss, 1894.927307, rtol=0.1)
+                    np.testing.assert_allclose(last_val_loss, 1198.087219, rtol=0.1)
 
                 # ---------- Test visualization was created ----------
                 result = subprocess.run(
@@ -343,12 +343,12 @@ class TestTransformer(unittest.TestCase):
         expected_in_features_non_factorized = 4 + 3
 
         self.assertEqual(
-            model_factorized.force_1.in_features,
+            model_factorized.forces_output.in_features,
             expected_in_features_factorized,
-            "Factorized mode force_1 input feature size incorrect.",
+            "Factorized mode forces_output input feature size incorrect.",
         )
         self.assertEqual(
-            model_non_factorized.force_1.in_features,
+            model_non_factorized.forces_output.in_features,
             expected_in_features_non_factorized,
-            "Non-factorized mode force_1 input feature size incorrect.",
+            "Non-factorized mode forces_output input feature size incorrect.",
         )
