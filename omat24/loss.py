@@ -69,15 +69,8 @@ def compute_loss(
     Returns:
         dict: A dictionary containing the computed MAE losses for forces, energy, and stress.
     """
-    # Mask out padded atoms
-    if natoms is None:
-        natoms = torch.tensor(
-            data=[len(pred_forces[i]) for i in range(len(pred_forces))], device=device
-        )
-    if mask is not None:
-        mask = mask.unsqueeze(-1)  # Shape: [batch_size, max_atoms, 1]
-        pred_forces = pred_forces * mask.float()
-        true_forces = true_forces * mask.float()
+    if natoms is None: raise ValueError("natoms is None")
+    if mask is None: raise ValueError("mask is None")
 
     # Initialize loss components as specified in the eqV2-S config
     # https://github.com/FAIR-Chem/fairchem/blob/main/configs/omat24/all/eqV2_31M.yml
@@ -86,13 +79,21 @@ def compute_loss(
     stress_loss_fn = DDPLoss("mae", reduction="mean")
 
     energy_loss = energy_loss_fn(pred_energy, true_energy, natoms)
-    if graph == False:
-        # Reshape to [batch_size * max_atoms, 3] for consistency with graph data
-        pred_forces = rearrange(pred_forces, "b n d -> (b n) d")
-        true_forces = rearrange(true_forces, "b n d -> (b n) d")
-    force_loss = forces_loss_fn(pred_forces, true_forces, natoms)
+    
+    if graph:
+        mask = mask.unsqueeze(-1)  # Shape: [batch_size, max_atoms, 1]
+        pred_forces_filtered = pred_forces * mask.float()
+        true_forces_filtered = true_forces * mask.float()
+    else:
+        pred_flat = rearrange(pred_forces, "b n d -> (b n) d")
+        true_flat = rearrange(true_forces, "b n d -> (b n) d")
+        flat_mask = rearrange(mask, "b n -> (b n)")  # [batch_size * max_atoms]
+        real_indices = flat_mask.nonzero().squeeze(-1)
+        pred_forces_filtered = pred_flat[real_indices]
+        true_forces_filtered = true_flat[real_indices]
+    
+    force_loss = forces_loss_fn(pred_forces_filtered, true_forces_filtered, natoms)
 
-    # Compute stress loss for isotropic and anisotropic components
     true_iso_stress, true_aniso_stress = unvoigt_stress(true_stress)
     pred_iso_stress, pred_aniso_stress = unvoigt_stress(pred_stress)
     stress_iso_loss = stress_loss_fn(pred_iso_stress, true_iso_stress, natoms)
