@@ -180,6 +180,23 @@ class XTransformerModel(TransformerWrapper):
         if self.stress_2.bias is not None:
             nn.init.zeros_(self.stress_2.bias)
 
+        # --- Initialize to predict dataset mean ---
+        # For energy: if hidden activations are near 0, predict -9.773 per atom energy.
+        nn.init.zeros_(self.energy_2.weight)
+        self.energy_2.bias.data.fill_(-9.773)
+        # For forces: predict 0 force per atom.
+        nn.init.zeros_(self.force_2.weight)
+        self.force_2.bias.data.zero_()
+        # For stress: predict the dataset mean stress.
+        nn.init.zeros_(self.stress_2.weight)
+        self.stress_2.bias.data.copy_(
+            torch.tensor(
+                [-0.03071, -0.03048, -0.03014, 2.67e-6, -9.82e-6, -1.06e-4],
+                device=self.stress_2.bias.device,
+            )
+        )
+        # -----------------------------------------------------
+
         # Count parameters
         self.num_params = sum(
             p.numel() for name, p in self.named_parameters() if "token_emb" not in name
