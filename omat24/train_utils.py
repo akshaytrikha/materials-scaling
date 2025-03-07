@@ -354,6 +354,7 @@ def train(
     Returns:
         (nn.Module, dict): The trained model and a dictionary of recorded losses.
     """
+    print("Training model...")
     model.to(device)
     can_write_partial = all(
         [results_path, experiment_results, data_size_key, run_entry]
@@ -365,6 +366,7 @@ def train(
     total_epochs = len(pbar) if is_main_process else pbar[-1] + 1
 
     # Initial validation at epoch 0
+    print("Running initial validation...")
     (
         val_loss,
         val_energy_loss,
@@ -372,6 +374,7 @@ def train(
         val_stress_iso_loss,
         val_stress_aniso_loss,
     ) = run_validation(model, val_loader, graph, device, factorize)
+    print("Initial validation complete.")
     losses[0] = {"val_loss": float(val_loss)}
     if writer is not None:
         # Logging each metric individually using log_tb_metrics
@@ -413,8 +416,10 @@ def train(
     # Training loop
     flop_counter = FlopCounterMode(display=False)
     flops_per_epoch = 0
+    print("Starting training loop...")
     for epoch in range(1, total_epochs):
         epoch_start_time = time.time()
+        print(f"Epoch {epoch} started.")
 
         if (
             distributed
@@ -433,6 +438,7 @@ def train(
         context = flop_counter if epoch == 1 else nullcontext()
         with context:
             for batch_idx, batch in enumerate(train_loader):
+                print(f"Batch {batch_idx} started.")
                 optimizer.zero_grad()
                 (
                     pred_forces,
@@ -460,6 +466,7 @@ def train(
                 structure_index = (
                     batch.batch if graph and hasattr(batch, "batch") else []
                 )
+                print(f"Batch {batch_idx} compute_loss started.")
                 train_loss_dict = compute_loss(
                     pred_forces,
                     pred_energy,
@@ -477,6 +484,7 @@ def train(
                 total_train_loss.backward()
 
                 if distributed:
+                    print(f"Batch {batch_idx} synchronizing gradients.")
                     # Synchronize gradients across processes
                     for param in model.parameters():
                         if param.grad is not None:
@@ -493,12 +501,14 @@ def train(
                 stress_aniso_loss_sum += train_loss_dict["stress_aniso_loss"].item()
                 current_avg_loss = train_loss_sum / (batch_idx + 1)
 
+                print(f"Batch {batch_idx} updating pbar.")
                 if is_main_process:
                     pbar.set_description(
                         f"train_loss={current_avg_loss:.2f} val_loss={val_loss:.2f}"
                     )
         if epoch == 1:
             flops_per_epoch = flop_counter.get_total_flops()
+            print(f"Flops per epoch: {flops_per_epoch}")
 
         # Step the scheduler if provided
         if scheduler is not None:
