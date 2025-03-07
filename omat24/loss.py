@@ -80,19 +80,15 @@ def compute_loss(
 
     energy_loss = energy_loss_fn(pred_energy, true_energy, natoms)
     
-    if graph:
-        mask = mask.unsqueeze(-1)  # Shape: [batch_size, max_atoms, 1]
-        pred_forces_filtered = pred_forces * mask.float()
-        true_forces_filtered = true_forces * mask.float()
-    else:
+    if graph == False:
         pred_flat = rearrange(pred_forces, "b n d -> (b n) d")
         true_flat = rearrange(true_forces, "b n d -> (b n) d")
         flat_mask = rearrange(mask, "b n -> (b n)")  # [batch_size * max_atoms]
         real_indices = flat_mask.nonzero().squeeze(-1)
-        pred_forces_filtered = pred_flat[real_indices]
-        true_forces_filtered = true_flat[real_indices]
+        pred_forces = pred_flat[real_indices]
+        true_forces = true_flat[real_indices]
     
-    force_loss = forces_loss_fn(pred_forces_filtered, true_forces_filtered, natoms)
+    force_loss = forces_loss_fn(pred_forces, true_forces, natoms)
 
     true_iso_stress, true_aniso_stress = unvoigt_stress(true_stress)
     pred_iso_stress, pred_aniso_stress = unvoigt_stress(pred_stress)
