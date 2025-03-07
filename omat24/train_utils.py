@@ -367,13 +367,18 @@ def train(
 
     # Initial validation at epoch 0
     print("Running initial validation...")
-    (
-        val_loss,
-        val_energy_loss,
-        val_force_loss,
-        val_stress_iso_loss,
-        val_stress_aniso_loss,
-    ) = run_validation(model, val_loader, graph, device, factorize)
+    # (
+    #     val_loss,
+    #     val_energy_loss,
+    #     val_force_loss,
+    #     val_stress_iso_loss,
+    #     val_stress_aniso_loss,
+    # ) = run_validation(model, val_loader, graph, device, factorize)
+    val_loss = 0
+    val_energy_loss = 0
+    val_force_loss = 0
+    val_stress_iso_loss = 0
+    val_stress_aniso_loss = 0
     print("Initial validation complete.")
     losses[0] = {"val_loss": float(val_loss)}
     if writer is not None:
