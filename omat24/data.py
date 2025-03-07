@@ -121,22 +121,32 @@ def get_dataloaders(
     max_n_atoms = max(info["max_n_atoms"] for info in DATASET_INFO[split_name].values())
     
     # Load each dataset from its path and split it individually
-    for path in dataset_paths:
-        dataset = OMat24Dataset(
-            dataset_paths=[path], 
-            graph=graph, 
-            architecture=architecture,
-            rank=rank,
-            world_size=world_size if distributed else None
-        )
-        train_subset, val_subset, _, _ = split_dataset(
-            dataset, train_data_fraction, val_data_fraction, seed
-        )
-        train_subsets.append(train_subset)
-        val_subsets.append(val_subset)
+    # for path in dataset_paths:
+    #     dataset = OMat24Dataset(
+    #         dataset_paths=[path], 
+    #         graph=graph, 
+    #         architecture=architecture,
+    #         rank=rank,
+    #         world_size=world_size if distributed else None
+    #     )
+    #     train_subset, val_subset, _, _ = split_dataset(
+    #         dataset, train_data_fraction, val_data_fraction, seed
+    #     )
+    #     train_subsets.append(train_subset)
+    #     val_subsets.append(val_subset)
 
-    train_dataset = ConcatAseDBDataset(train_subsets)
-    val_dataset = ConcatAseDBDataset(val_subsets)
+    # train_dataset = ConcatAseDBDataset(train_subsets)
+    # val_dataset = ConcatAseDBDataset(val_subsets)
+    train_dataset = OMat24Dataset(
+        dataset_paths=dataset_paths,
+        graph=graph,
+        architecture=architecture,
+    )
+    val_dataset = OMat24Dataset(
+        dataset_paths=[dataset_paths[0]],
+        graph=graph,
+        architecture=architecture,
+    )
 
     # Configure samplers for DDP
     if distributed:
