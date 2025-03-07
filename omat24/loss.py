@@ -139,16 +139,11 @@ def compute_loss(
         mask = mask.unsqueeze(-1)  # Shape: [batch_size, max_atoms, 1]
         pred_forces = pred_forces * mask.float()
         true_forces = true_forces * mask.float()
-    
-    ENERGY_COEF = 2.5
-    FORCE_COEF = 20
-    STRESS_COEF = 5
 
     # Compute losses
     energy_loss_fn = PerAtomMAELoss()
     energy_loss = energy_loss_fn(pred=pred_energy, target=true_energy, natoms=natoms)
     energy_loss = torch.mean(energy_loss)  # Take mean over batch
-    scaled_energy_loss = ENERGY_COEF * energy_loss
 
     # Use reduction="none" to compute the loss per atom
     force_loss_fn = nn.MSELoss(reduction="none")
@@ -164,7 +159,6 @@ def compute_loss(
         )  # [B, N, 3] -> [B] / natoms
         # Then take the mean over the directions and then atoms [B, N, 3] -> [B]
         force_loss = torch.mean(force_loss)
-    scaled_force_loss = FORCE_COEF * force_loss
 
     true_isotropic_stress, true_anisotropic_stress = unvoigt_stress(true_stress)
     pred_isotropic_stress, pred_anisotropic_stress = unvoigt_stress(pred_stress)
@@ -175,7 +169,6 @@ def compute_loss(
         dim=-1
     )  # Mean over components
     stress_isotropic_loss = torch.mean(stress_isotropic_loss)  # Mean over batch
-    scaled_stress_isotropic_loss = STRESS_COEF * stress_isotropic_loss
 
     stress_anisotropic_loss = stress_loss_fn(
         pred=pred_anisotropic_stress, target=true_anisotropic_stress
@@ -183,18 +176,17 @@ def compute_loss(
         dim=-1
     )  # Mean over components
     stress_anisotropic_loss = torch.mean(stress_anisotropic_loss)  # Mean over batch
-    scaled_stress_anisotropic_loss = STRESS_COEF * stress_anisotropic_loss
 
     total_loss = (
-        scaled_energy_loss + scaled_force_loss + scaled_stress_isotropic_loss + scaled_stress_anisotropic_loss
+        2.5 * energy_loss + 20 * force_loss + 5 * stress_isotropic_loss + 5 * stress_anisotropic_loss
     )
 
     loss_dict = {
         "total_loss": total_loss,
-        "energy_loss": scaled_energy_loss,
-        "force_loss": scaled_force_loss,
-        "stress_iso_loss": scaled_stress_isotropic_loss,
-        "stress_aniso_loss": scaled_stress_anisotropic_loss,
+        "energy_loss": energy_loss,
+        "force_loss": force_loss,
+        "stress_iso_loss": stress_isotropic_loss,
+        "stress_aniso_loss": stress_anisotropic_loss,
     }
 
     return loss_dict
