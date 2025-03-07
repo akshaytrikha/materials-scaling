@@ -435,8 +435,11 @@ def train(
         stress_iso_loss_sum = 0.0
         stress_aniso_loss_sum = 0.0
 
-        context = flop_counter if epoch == 1 else nullcontext()
+        # context = flop_counter if epoch == 1 else nullcontext()
+        context = nullcontext()
+        print("Starting training loop...")
         with context:
+            print("Training loop started.")
             for batch_idx, batch in enumerate(train_loader):
                 print(f"Batch {batch_idx} started.")
                 optimizer.zero_grad()
