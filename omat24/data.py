@@ -10,6 +10,7 @@ from fairchem.core.datasets import AseDBDataset
 from torch_geometric.data import Data
 from torch_geometric.data import DataLoader as PyGDataLoader
 from torch.utils.data.distributed import DistributedSampler
+import torch.distributed as dist
 
 # Internal
 from matrix import compute_distance_matrix, factorize_matrix, random_rotate_atoms
@@ -110,15 +111,23 @@ def get_dataloaders(
     """
     train_subsets = []
     val_subsets = []
-
+    
+    # Get rank and world_size when using distributed training
+    rank = dist.get_rank() if distributed else None
+    world_size = dist.get_world_size() if distributed else None
+    
     # Set max number of atoms per sample based on dataset split
     split_name = dataset_paths[0].parent.name
     max_n_atoms = max(info["max_n_atoms"] for info in DATASET_INFO[split_name].values())
-
+    
     # Load each dataset from its path and split it individually
     for path in dataset_paths:
         dataset = OMat24Dataset(
-            dataset_paths=[path], graph=graph, architecture=architecture
+            dataset_paths=[path], 
+            graph=graph, 
+            architecture=architecture,
+            rank=rank,
+            world_size=world_size if distributed else None
         )
         train_subset, val_subset, _, _ = split_dataset(
             dataset, train_data_fraction, val_data_fraction, seed
