@@ -41,9 +41,9 @@ class MetaTransformerModels:
             {"d_model": 1, "depth": 1, "n_heads": 1, "d_ff_mult": 4}, # 1,778 params
             {"d_model": 8, "depth": 2, "n_heads": 1, "d_ff_mult": 4}, # 9,657 params
             {"d_model": 48, "depth": 3, "n_heads": 1, "d_ff_mult": 4}, # 119,758 params
-            {"d_model": 160, "depth": 3, "n_heads": 2, "d_ff_mult": 4}, # 1,019,086
-            {"d_model": 416, "depth": 5, "n_heads": 4, "d_ff_mult": 4}, # 9,939,528
-            {"d_model": 1024, "depth": 7, "n_heads": 20, "d_ff_mult": 4}, #  100,276,290
+            {"d_model": 160, "depth": 3, "n_heads": 2, "d_ff_mult": 4}, # 1,019,086 params
+            {"d_model": 416, "depth": 5, "n_heads": 4, "d_ff_mult": 4}, # 9,939,528 params
+            {"d_model": 800, "depth": 12, "n_heads": 12, "d_ff_mult": 4}, # 94,255,347 params
         ]
         # fmt: on
 
