@@ -42,8 +42,6 @@ class MetaTransformerModels:
             {"d_model": 8, "depth": 2, "n_heads": 1, "d_ff_mult": 4}, # 9,657 params
             {"d_model": 48, "depth": 3, "n_heads": 1, "d_ff_mult": 4}, # 119,758 params
             {"d_model": 160, "depth": 3, "n_heads": 2, "d_ff_mult": 4}, # 1,019,086 params
-            {"d_model": 416, "depth": 5, "n_heads": 4, "d_ff_mult": 4}, # 9,939,528 params
-            {"d_model": 800, "depth": 12, "n_heads": 12, "d_ff_mult": 4}, # 94,255,347 params
         ]
         # fmt: on
 
@@ -168,13 +166,15 @@ class XTransformerModel(TransformerWrapper):
 
         # --- Initialize to predict dataset mean ---
         # For energy: if hidden activations are near 0, predict -9.773 per atom energy.
-        nn.init.zeros_(self.energy_2.weight)
+        nn.init.normal_(self.energy_2.weight, mean=0, std=0.01)
         self.energy_2.bias.data.fill_(-9.773)
+
         # For forces: predict 0 force per atom.
-        nn.init.zeros_(self.force_2.weight)
+        nn.init.normal_(self.force_2.weight, mean=0, std=0.01)
         self.force_2.bias.data.zero_()
+
         # For stress: predict the dataset mean stress.
-        nn.init.zeros_(self.stress_2.weight)
+        nn.init.normal_(self.stress_2.weight, mean=0, std=0.01)
         self.stress_2.bias.data.copy_(
             torch.tensor(
                 [-0.03071, -0.03048, -0.03014, 2.67e-6, -9.82e-6, -1.06e-4],
