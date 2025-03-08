@@ -1,40 +1,11 @@
 import torch
-import torch.nn as nn
-from torch_scatter import scatter
+from einops import rearrange
+from fairchem.core.modules.loss import DDPLoss
 
 
-# This is from https://github.com/FAIR-Chem/fairchem/blob/main/src/fairchem/core/modules/loss.py
-class PerAtomMAELoss(nn.Module):
-    """Simply divide a loss by the number of atoms/nodes in the graph.
-    Currently this loss is intened to used with scalar values, not vectors or higher tensors.
-    """
-
-    def __init__(self) -> None:
-        super().__init__()
-        self.loss = nn.L1Loss()
-        # reduction should be none as it is handled in DDPLoss
-        self.loss.reduction = "none"
-
-    def forward(
-        self, pred: torch.Tensor, target: torch.Tensor, natoms: torch.Tensor
-    ) -> torch.Tensor:
-        return self.loss(pred / natoms, target / natoms)
-
-
-# This is from https://github.com/FAIR-Chem/fairchem/blob/main/src/fairchem/core/modules/loss.py
-class MAELoss(nn.Module):
-    def __init__(self) -> None:
-        super().__init__()
-        self.loss = nn.L1Loss()
-        # reduction should be none as it is handled in DDPLoss
-        self.loss.reduction = "none"
-
-    def forward(
-        self,
-        pred: torch.Tensor,
-        target: torch.Tensor,
-    ) -> torch.Tensor:
-        return self.loss(pred, target)
+ENERGY_COEF = 2.5
+FORCE_COEF = 20
+STRESS_COEF = 5
 
 
 def unvoigt_stress(voigt_stress_batch):
@@ -63,38 +34,6 @@ def unvoigt_stress(voigt_stress_batch):
     anisotropic_stress = voigt_stress_batch - isotropic_stress
 
     return isotropic_stress, anisotropic_stress
-
-
-def compute_graph_force_loss(pred_forces, true_forces, structure_index, natoms):
-    """
-    Args:
-        pred_forces (Tensor): Predicted forces [N, 3].
-        true_forces (Tensor): True forces [N, 3].
-        structure_index (list): A list of structure indices for each atom in the graph batch.
-        natoms (Tensor): Number of atoms per structure [B].
-    """
-    # 1) MSE "per-atom" (sum over x,y,z)
-    #    shape => [N]
-    force_loss_fn = nn.MSELoss(reduction="none")
-    force_loss_per_atom = force_loss_fn(pred_forces, true_forces)
-
-    # 2) Scatter across structures
-    #    shape => [B]
-    #    We sum per structure if we want to do the same normalization
-    #    that the FCN/Transformer does.
-    force_sum_struct = scatter(
-        force_loss_per_atom, structure_index, dim=0, reduce="sum"
-    )
-
-    # 3) Divide per structure by (3 * number_of_atoms_in_that_structure)
-    #    shape => [B]
-    #    This matches the “force_loss = sum over atoms / (3 * natoms)”
-    force_avg_struct = force_sum_struct / (3.0 * natoms.unsqueeze(1))
-
-    # 4) Finally, average over the B structures
-    force_loss = force_avg_struct.mean()
-
-    return force_loss
 
 
 def compute_loss(
@@ -130,63 +69,49 @@ def compute_loss(
     Returns:
         dict: A dictionary containing the computed MAE losses for forces, energy, and stress.
     """
-    # Mask out padded atoms
     if natoms is None:
-        natoms = torch.tensor(
-            data=[len(pred_forces[i]) for i in range(len(pred_forces))], device=device
-        )
-    if mask is not None:
-        mask = mask.unsqueeze(-1)  # Shape: [batch_size, max_atoms, 1]
-        pred_forces = pred_forces * mask.float()
-        true_forces = true_forces * mask.float()
+        raise ValueError("natoms is None")
 
-    # Compute losses
-    energy_loss_fn = PerAtomMAELoss()
-    energy_loss = energy_loss_fn(pred=pred_energy, target=true_energy, natoms=natoms)
-    energy_loss = torch.mean(energy_loss)  # Take mean over batch
+    # Initialize loss components as specified in the eqV2-S config
+    # https://github.com/FAIR-Chem/fairchem/blob/main/configs/omat24/all/eqV2_31M.yml
+    energy_loss_fn = DDPLoss("per_atom_mae", reduction="mean")
+    forces_loss_fn = DDPLoss("l2mae", reduction="mean")
+    stress_loss_fn = DDPLoss("mae", reduction="mean")
 
-    # Use reduction="none" to compute the loss per atom
-    force_loss_fn = nn.MSELoss(reduction="none")
-    force_loss = force_loss_fn(pred_forces, true_forces)
+    energy_loss = energy_loss_fn(pred_energy, true_energy, natoms)
 
-    if graph:
-        force_loss = compute_graph_force_loss(
-            pred_forces, true_forces, structure_index, natoms
-        )
-    else:
-        force_loss = force_loss.sum(dim=(2, 1)) / (
-            3 * natoms
-        )  # [B, N, 3] -> [B] / natoms
-        # Then take the mean over the directions and then atoms [B, N, 3] -> [B]
-        force_loss = torch.mean(force_loss)
+    if graph == False:
+        if mask is None:
+            raise ValueError("mask is None")
+        pred_flat = rearrange(pred_forces, "b n d -> (b n) d")
+        true_flat = rearrange(true_forces, "b n d -> (b n) d")
+        flat_mask = rearrange(mask, "b n -> (b n)")  # shape [batch_size * max_atoms]
+        # Obtain indices of non-zero elements in the mask
+        # Zeroes in the mask indicate padded atoms
+        nonzero_indices = flat_mask.nonzero().squeeze(-1)  # shape [num_nonzero]
+        pred_forces = pred_flat[nonzero_indices]
+        true_forces = true_flat[nonzero_indices]
 
-    true_isotropic_stress, true_anisotropic_stress = unvoigt_stress(true_stress)
-    pred_isotropic_stress, pred_anisotropic_stress = unvoigt_stress(pred_stress)
-    stress_loss_fn = MAELoss()
-    stress_isotropic_loss = stress_loss_fn(
-        pred=pred_isotropic_stress, target=true_isotropic_stress
-    ).mean(
-        dim=-1
-    )  # Mean over components
-    stress_isotropic_loss = torch.mean(stress_isotropic_loss)  # Mean over batch
+    force_loss = forces_loss_fn(pred_forces, true_forces, natoms)
 
-    stress_anisotropic_loss = stress_loss_fn(
-        pred=pred_anisotropic_stress, target=true_anisotropic_stress
-    ).mean(
-        dim=-1
-    )  # Mean over components
-    stress_anisotropic_loss = torch.mean(stress_anisotropic_loss)  # Mean over batch
+    true_iso_stress, true_aniso_stress = unvoigt_stress(true_stress)
+    pred_iso_stress, pred_aniso_stress = unvoigt_stress(pred_stress)
+    stress_iso_loss = stress_loss_fn(pred_iso_stress, true_iso_stress, natoms)
+    stress_aniso_loss = stress_loss_fn(pred_aniso_stress, true_aniso_stress, natoms)
 
     total_loss = (
-        2.5 * energy_loss + 20 * force_loss + 5 * stress_isotropic_loss + 5 * stress_anisotropic_loss
+        ENERGY_COEF * energy_loss
+        + FORCE_COEF * force_loss
+        + STRESS_COEF * stress_iso_loss
+        + STRESS_COEF * stress_aniso_loss
     )
 
     loss_dict = {
         "total_loss": total_loss,
-        "energy_loss": energy_loss,
-        "force_loss": force_loss,
-        "stress_iso_loss": stress_isotropic_loss,
-        "stress_aniso_loss": stress_anisotropic_loss,
+        "energy_loss": ENERGY_COEF * energy_loss,
+        "force_loss": FORCE_COEF * force_loss,
+        "stress_iso_loss": STRESS_COEF * stress_iso_loss,
+        "stress_aniso_loss": STRESS_COEF * stress_aniso_loss,
     }
 
     return loss_dict

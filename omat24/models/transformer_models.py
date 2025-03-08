@@ -38,26 +38,10 @@ class MetaTransformerModels:
         """
         # fmt: off
         self.configurations = [
-            {"d_model": 1, "depth": 1, "n_heads": 1, "d_ff_mult": 1},  # 1,670 params
-            {"d_model": 4, "depth": 2, "n_heads": 2, "d_ff_mult": 2},  # 8,753 params
-            {"d_model": 8, "depth": 2, "n_heads": 4, "d_ff_mult": 2},  # 25,541 params
-            {"d_model": 8, "depth": 4, "n_heads": 4, "d_ff_mult": 4},  # 51,171 params
-            {"d_model": 16, "depth": 4, "n_heads": 4, "d_ff_mult": 4},  # 93,851 params
-            {"d_model": 16, "depth": 6, "n_heads": 4, "d_ff_mult": 8},  # 156,589 params
-            {"d_model": 24, "depth": 6, "n_heads": 6, "d_ff_mult": 8},  # 327,061 params
-            {"d_model": 32, "depth": 8, "n_heads": 8, "d_ff_mult": 8},  # 742,815 params
-            {"d_model": 32, "depth": 12, "n_heads": 8, "d_ff_mult": 8},  # 1,109,475 params
-            {"d_model": 64, "depth": 6, "n_heads": 8, "d_ff_mult": 16},  # 1,719,565 params
-            {"d_model": 48, "depth": 12, "n_heads": 8, "d_ff_mult": 12},  # 2,028,739 params
-            {"d_model": 64, "depth": 8, "n_heads": 8, "d_ff_mult": 16},  # 2,283,839 params
-            {"d_model": 96, "depth": 8, "n_heads": 8, "d_ff_mult": 16},  # 4,198,303 params
-            {"d_model": 128, "depth": 8, "n_heads": 8, "d_ff_mult": 16},  # 6,645,247 params
-            {"d_model": 128, "depth": 10, "n_heads": 16, "d_ff_mult": 16},  # 10,967,985 params
-            {"d_model": 192, "depth": 8, "n_heads": 12, "d_ff_mult": 24},  # 19,613,695 params
-            {"d_model": 256, "depth": 6, "n_heads": 8, "d_ff_mult": 32},  # 29,298,349 params
-            {"d_model": 256, "depth": 8, "n_heads": 16, "d_ff_mult": 32},  # 43,207,167 params
-            {"d_model": 384, "depth": 8, "n_heads": 16, "d_ff_mult": 48},  # 128,511,487 params
-            {"d_model": 512, "depth": 8, "n_heads": 16, "d_ff_mult": 32},  # 153,943,295 params
+            {"d_model": 1, "depth": 1, "n_heads": 1, "d_ff_mult": 4}, # 1,778 params
+            {"d_model": 8, "depth": 2, "n_heads": 1, "d_ff_mult": 4}, # 9,657 params
+            {"d_model": 48, "depth": 3, "n_heads": 1, "d_ff_mult": 4}, # 119,758 params
+            {"d_model": 160, "depth": 3, "n_heads": 2, "d_ff_mult": 4}, # 1,019,086 params
         ]
         # fmt: on
 
@@ -179,6 +163,25 @@ class XTransformerModel(TransformerWrapper):
         nn.init.xavier_normal_(self.stress_2.weight)
         if self.stress_2.bias is not None:
             nn.init.zeros_(self.stress_2.bias)
+
+        # --- Initialize to predict dataset mean ---
+        # For energy: if hidden activations are near 0, predict -9.773 per atom energy.
+        nn.init.normal_(self.energy_2.weight, mean=0, std=0.01)
+        self.energy_2.bias.data.fill_(-9.773)
+
+        # For forces: predict 0 force per atom.
+        nn.init.normal_(self.force_2.weight, mean=0, std=0.01)
+        self.force_2.bias.data.zero_()
+
+        # For stress: predict the dataset mean stress.
+        nn.init.normal_(self.stress_2.weight, mean=0, std=0.01)
+        self.stress_2.bias.data.copy_(
+            torch.tensor(
+                [-0.03071, -0.03048, -0.03014, 2.67e-6, -9.82e-6, -1.06e-4],
+                device=self.stress_2.bias.device,
+            )
+        )
+        # -----------------------------------------------------
 
         # Count parameters
         self.num_params = sum(

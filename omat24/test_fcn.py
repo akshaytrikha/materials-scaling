@@ -145,11 +145,16 @@ class TestFCN(unittest.TestCase):
                 self.assertEqual(config["num_params"], 62)
 
                 np.testing.assert_allclose(
-                    first_train_loss, 1122.336365, rtol=0.1
+                    first_train_loss, 299.64583587646484, rtol=0.1
                 )
-                np.testing.assert_allclose(first_val_loss, 401.071281, rtol=0.1)
-                np.testing.assert_allclose(last_train_loss, 726.405075, rtol=0.1)
-                np.testing.assert_allclose(last_val_loss, 595.362289, rtol=0.1)
+                np.testing.assert_allclose(first_val_loss, 292.1522979736328, rtol=0.1)
+                np.testing.assert_allclose(
+                    last_train_loss, 137.36277389526367, rtol=0.1
+                )
+                if os.getenv("IS_CI", False):
+                    np.testing.assert_allclose(last_val_loss, 129.64451027, rtol=0.1)
+                else:
+                    np.testing.assert_allclose(last_val_loss, 108.93801498413086, rtol=0.1)
 
                 # ---------- Test visualization was created ----------
                 result = subprocess.run(

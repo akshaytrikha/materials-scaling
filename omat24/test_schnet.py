@@ -216,13 +216,15 @@ class TestSchNet(unittest.TestCase):
                 last_train_loss = result_json["3"][0]["losses"]["500"]["train_loss"]
                 last_val_loss = result_json["3"][0]["losses"]["500"]["val_loss"]
 
-                # For the Transformer, the first configuration (from MetaTransformerModels) is expected to be:
+                # First configuration (from MetaSchnetModels) is expected to be:
                 self.assertEqual(config["num_params"], 875)
 
-                np.testing.assert_allclose(first_train_loss, 313.881927, rtol=0.1)
-                np.testing.assert_allclose(first_val_loss, 60.315831, rtol=0.1)
-                np.testing.assert_allclose(last_train_loss, 329.380352, rtol=0.1)
-                np.testing.assert_allclose(last_val_loss, 189.697056, rtol=0.1)
+                np.testing.assert_allclose(
+                    first_train_loss, 149.10972213745117, rtol=0.1
+                )
+                np.testing.assert_allclose(first_val_loss, 62.56801795959473, rtol=0.1)
+                np.testing.assert_allclose(last_train_loss, 130.4478416442871, rtol=0.1)
+                np.testing.assert_allclose(last_val_loss, 239.79591369628906, rtol=0.1)
         finally:
             if os.path.exists(results_path):
                 os.remove(results_path)
