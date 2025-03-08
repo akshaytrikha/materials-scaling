@@ -69,7 +69,8 @@ def compute_loss(
     Returns:
         dict: A dictionary containing the computed MAE losses for forces, energy, and stress.
     """
-    if natoms is None: raise ValueError("natoms is None")
+    if natoms is None:
+        raise ValueError("natoms is None")
 
     # Initialize loss components as specified in the eqV2-S config
     # https://github.com/FAIR-Chem/fairchem/blob/main/configs/omat24/all/eqV2_31M.yml
@@ -78,16 +79,17 @@ def compute_loss(
     stress_loss_fn = DDPLoss("mae", reduction="mean")
 
     energy_loss = energy_loss_fn(pred_energy, true_energy, natoms)
-    
+
     if graph == False:
-        if mask is None: raise ValueError("mask is None")
+        if mask is None:
+            raise ValueError("mask is None")
         pred_flat = rearrange(pred_forces, "b n d -> (b n) d")
         true_flat = rearrange(true_forces, "b n d -> (b n) d")
         flat_mask = rearrange(mask, "b n -> (b n)")  # [batch_size * max_atoms]
         real_indices = flat_mask.nonzero().squeeze(-1)
         pred_forces = pred_flat[real_indices]
         true_forces = true_flat[real_indices]
-    
+
     force_loss = forces_loss_fn(pred_forces, true_forces, natoms)
 
     true_iso_stress, true_aniso_stress = unvoigt_stress(true_stress)
