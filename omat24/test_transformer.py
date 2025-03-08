@@ -141,8 +141,6 @@ class TestTransformer(unittest.TestCase):
                 self.assertEqual(config["depth"], 1)
                 self.assertEqual(config["num_params"], 1670)
 
-                breakpoint()
-
                 np.testing.assert_allclose(
                     first_train_loss, 156.27228546142578, rtol=0.1
                 )

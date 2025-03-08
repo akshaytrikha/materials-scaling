@@ -85,10 +85,12 @@ def compute_loss(
             raise ValueError("mask is None")
         pred_flat = rearrange(pred_forces, "b n d -> (b n) d")
         true_flat = rearrange(true_forces, "b n d -> (b n) d")
-        flat_mask = rearrange(mask, "b n -> (b n)")  # [batch_size * max_atoms]
-        real_indices = flat_mask.nonzero().squeeze(-1)
-        pred_forces = pred_flat[real_indices]
-        true_forces = true_flat[real_indices]
+        flat_mask = rearrange(mask, "b n -> (b n)")  # shape [batch_size * max_atoms]
+        # Obtain indices of non-zero elements in the mask
+        # Zeroes in the mask indicate padded atoms
+        nonzero_indices = flat_mask.nonzero().squeeze(-1)  # shape [num_nonzero]
+        pred_forces = pred_flat[nonzero_indices]
+        true_forces = true_flat[nonzero_indices]
 
     force_loss = forces_loss_fn(pred_forces, true_forces, natoms)
 
