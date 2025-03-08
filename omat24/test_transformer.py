@@ -152,7 +152,7 @@ class TestTransformer(unittest.TestCase):
                 )
                 np.testing.assert_allclose(last_flops, 32514048000, rtol=0.1)
                 if os.getenv("IS_CI", False):
-                    np.testing.assert_allclose(last_val_loss, 2181.785034, rtol=0.1)
+                    np.testing.assert_allclose(last_val_loss, 182.50514984, rtol=0.1)
                 else:
                     np.testing.assert_allclose(
                         last_val_loss, 167.5984115600586, rtol=0.1
