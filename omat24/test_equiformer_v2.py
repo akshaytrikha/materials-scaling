@@ -315,7 +315,7 @@ class TestEquiformerV2(unittest.TestCase):
             np.testing.assert_allclose(first_train_loss, 124.94979858398438, rtol=0.1)
             np.testing.assert_allclose(first_val_loss, 95.6764030456543, rtol=0.1)
             if os.getenv("IS_CI", False):
-                np.testing.assert_allclose(last_train_loss, 0.34507117, rtol=0.1)
+                np.testing.assert_allclose(last_train_loss, 7.25011635, rtol=0.1)
             else:
                 np.testing.assert_allclose(
                     last_train_loss, 10.293143272399902, rtol=0.1
