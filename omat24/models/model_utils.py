@@ -1,5 +1,9 @@
+# External
 import torch
 import torch.nn as nn
+
+# Internal
+from data_utils import DATASET_INFO
 
 
 def initialize_weights(module):
@@ -25,7 +29,9 @@ def initialize_weights(module):
         nn.init.constant_(module.bias, 0)
 
 
-def initialize_output_heads(energy_head, force_head=None, stress_head=None):
+def initialize_output_heads(
+    energy_head, force_head=None, stress_head=None, per_atom: bool = True
+):
     """
     Initialize output heads to predict dataset means.
 
@@ -34,10 +40,20 @@ def initialize_output_heads(energy_head, force_head=None, stress_head=None):
         force_head: Output head for force prediction (optional)
         stress_head: Output head for stress prediction (optional)
     """
+    if per_atom:
+        # Divide energies and stresses by 20 atoms to match per-atom values
+        DATASET_INFO["train"]["all"]["means"]["energy"] /= 20
+        # also divide stress by 10
+        DATASET_INFO["train"]["all"]["means"]["stress"] = [
+            x / 20 for x in DATASET_INFO["train"]["all"]["means"]["stress"]
+        ]
+
     # Initialize energy head
     if energy_head is not None:
         nn.init.normal_(energy_head.net[-1].weight, mean=0, std=0.01)
-        energy_head.net[-1].bias.data.fill_(-9.773)
+        energy_head.net[-1].bias.data.fill_(
+            DATASET_INFO["train"]["all"]["means"]["energy"]
+        )
 
     # Initialize force head
     if force_head is not None:
@@ -49,7 +65,7 @@ def initialize_output_heads(energy_head, force_head=None, stress_head=None):
         nn.init.normal_(stress_head.net[-1].weight, mean=0, std=0.01)
         stress_head.net[-1].bias.data.copy_(
             torch.tensor(
-                [-0.03071, -0.03048, -0.03014, 2.67e-6, -9.82e-6, -1.06e-4],
+                DATASET_INFO["train"]["all"]["means"]["stress"],
                 device=stress_head.net[-1].bias.device,
             )
         )

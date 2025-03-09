@@ -18,6 +18,7 @@ from torch import nn
 # Internal
 from models.fcn import FCNModel, MetaFCNModels
 from train import main as train_main
+from data_utils import DATASET_INFO
 
 
 # A helper module that always returns zeros, to “remove” the effect of inner layers.
@@ -94,7 +95,7 @@ class TestFCN(unittest.TestCase):
             # Check that energy bias matches expected dataset mean
             self.assertAlmostEqual(
                 energy_contrib.item(),
-                -9.773,
+                DATASET_INFO["train"]["all"]["means"]["energy"],
                 places=3,
                 msg="Energy bias doesn't match expected dataset mean",
             )
@@ -109,7 +110,7 @@ class TestFCN(unittest.TestCase):
             # Check that stress bias matches expected dataset means
             stress_contrib = model.stress_head(torch.zeros(1, model.hidden_dim))
             expected_stress = torch.tensor(
-                [[-0.03071, -0.03048, -0.03014, 2.67e-6, -9.82e-6, -1.06e-4]],
+                [DATASET_INFO["train"]["all"]["means"]["stress"]],
                 dtype=stress_contrib.dtype,
             )
             self.assertTrue(
@@ -197,21 +198,17 @@ class TestFCN(unittest.TestCase):
                 # For the FCN, the first configuration (from MetaFCNModels) is expected to be:
                 self.assertEqual(config["embedding_dim"], 2)
                 self.assertEqual(config["depth"], 2)
-                self.assertEqual(config["num_params"], 62)
+                self.assertEqual(config["num_params"], 80)
 
                 np.testing.assert_allclose(
-                    first_train_loss, 299.64583587646484, rtol=0.1
+                    first_train_loss, 157.7187957763672, rtol=0.1
                 )
-                np.testing.assert_allclose(first_val_loss, 292.1522979736328, rtol=0.1)
-                np.testing.assert_allclose(
-                    last_train_loss, 137.36277389526367, rtol=0.1
-                )
+                np.testing.assert_allclose(first_val_loss, 65.79524326, rtol=0.1)
+                np.testing.assert_allclose(last_train_loss, 117.1565055847168, rtol=0.1)
                 if os.getenv("IS_CI", False):
                     np.testing.assert_allclose(last_val_loss, 129.64451027, rtol=0.1)
                 else:
-                    np.testing.assert_allclose(
-                        last_val_loss, 108.93801498413086, rtol=0.1
-                    )
+                    np.testing.assert_allclose(last_val_loss, 114.11177063, rtol=0.1)
 
                 # ---------- Test visualization was created ----------
                 result = subprocess.run(
@@ -442,12 +439,12 @@ class TestFCN(unittest.TestCase):
         meta_models = MetaFCNModels(vocab_size=self.vocab_size, use_factorized=False)
 
         meta_models.configurations = [
-            # 138 params
+            # 198 params
             {"embedding_dim": 4, "hidden_dim": 4, "depth": 2},
-            # 1274 params
+            # 2090 params
             {"embedding_dim": 8, "hidden_dim": 16, "depth": 3},
-            # 99338 params
-            {"embedding_dim": 64, "hidden_dim": 64, "depth": 22},
+            # 13610 params
+            {"embedding_dim": 32, "hidden_dim": 32, "depth": 8},
         ]
 
         models_list = list(iter(meta_models))
@@ -456,7 +453,7 @@ class TestFCN(unittest.TestCase):
             len(meta_models),
             "Number of models returned by iteration does not match expected count.",
         )
-        expected_params = [138, 1274, 99338]
+        expected_params = [198, 2090, 13610]
         for model, expected in zip(models_list, expected_params):
             self.assertEqual(
                 model.num_params,

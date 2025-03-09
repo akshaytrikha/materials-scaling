@@ -21,6 +21,7 @@ from torch_geometric.data import Batch
 from models.equiformer_v2 import EquiformerS2EF
 from fairchem.core.models.equiformer_v2.so3 import SO3_Embedding
 from train import main as train_main
+from data_utils import DATASET_INFO
 
 
 class TestEquiformerV2(unittest.TestCase):
@@ -159,6 +160,74 @@ class TestEquiformerV2(unittest.TestCase):
 
         # Create dummy data
         self.create_dummy_data()
+
+    def test_initialization_predicts_means(self):
+        """Test that EquiformerV2 outputs predict dataset means at initialization."""
+        self.set_seed()
+
+        # For EquiformerV2, we'll focus on the output head initialization
+        # Since this is a more complex model, we'll directly examine the head parameters
+
+        # First verify the model structure has the expected output heads
+        self.assertIn(
+            "energy", self.model.output_heads, "Model missing 'energy' output head"
+        )
+        self.assertIn(
+            "forces", self.model.output_heads, "Model missing 'forces' output head"
+        )
+        self.assertIn(
+            "stress", self.model.output_heads, "Model missing 'stress' output head"
+        )
+
+        # Check the energy head bias initialization
+        # The energy head should have a final linear layer with bias set to dataset mean
+        energy_head = self.model.output_heads["energy"]
+        # Navigate to the final linear layer (structure may vary)
+        final_layers = [
+            m for m in energy_head.modules() if isinstance(m, torch.nn.Linear)
+        ]
+        energy_bias = final_layers[-1].bias.data
+
+        # The bias might be a single value or per-component, so we check the mean
+        energy_bias_mean = energy_bias.mean().item()
+        self.assertAlmostEqual(
+            energy_bias_mean,
+            DATASET_INFO["train"]["all"]["means"]["energy"],
+            places=1,
+            msg="Energy head bias doesn't approximate expected dataset mean",
+        )
+
+        # Check stress head bias
+        stress_head = self.model.output_heads["stress"]
+        final_stress_layers = [
+            m for m in stress_head.modules() if isinstance(m, torch.nn.Linear)
+        ]
+        stress_bias = final_stress_layers[-1].bias.data
+
+        # The exact structure depends on implementation, but we check if values are in the right range
+        expected_stress_mean = (
+            torch.tensor(DATASET_INFO["train"]["all"]["means"]["stress"]).mean().item()
+        )
+
+        self.assertLess(
+            abs(stress_bias.mean().item() - expected_stress_mean),
+            0.1,
+            msg="Stress head bias is too far from expected dataset mean",
+        )
+
+        # Full forward pass to verify initial predictions
+        with torch.no_grad():
+            outputs = self.model(self.batch)
+
+            # The exact values will depend on initialization, but should be influenced by the biases
+            if "energy" in outputs:
+                energy = outputs["energy"]
+                # Just check order of magnitude due to other factors at play
+                self.assertLess(
+                    abs(torch.mean(energy).item() + 9.773),
+                    20.0,
+                    msg="Mean energy is too far from expected dataset mean",
+                )
 
     def test_forward_output_shapes(self):
         # Run the forward pass
