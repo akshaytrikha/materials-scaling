@@ -1,8 +1,9 @@
+# External
 import torch
 import torch.nn as nn
-import math
 from x_transformers import TransformerWrapper, Encoder
 
+# Internal
 from models.model_utils import MLPOutput, initialize_output_heads, initialize_weights
 
 
@@ -17,67 +18,6 @@ class ConcatenatedEmbedding(nn.Module):
         token_embeddings = self.token_emb(x)
         concatenated_emb = torch.cat([token_embeddings, positions], dim=-1)
         return concatenated_emb
-
-
-class MetaTransformerModels:
-    def __init__(
-        self,
-        vocab_size,
-        max_seq_len,
-        use_factorized=False,
-    ):
-        """Initializes TransformerModels with a list of configurations.
-
-        Args:
-            vocab_size (int): Number of unique tokens (atomic numbers).
-            max_seq_len (int): Maximum sequence length for the transformer.
-            use_factorized (bool): Whether to use factorized distances instead of positions.
-        """
-        # fmt: off
-        self.configurations = [
-            {"d_model": 1, "depth": 1, "n_heads": 1, "d_ff_mult": 4}, # 1,778 params
-            {"d_model": 8, "depth": 2, "n_heads": 1, "d_ff_mult": 4}, # 9,657 params
-            {"d_model": 48, "depth": 3, "n_heads": 1, "d_ff_mult": 4}, # 119,758 params
-            {"d_model": 160, "depth": 3, "n_heads": 2, "d_ff_mult": 4}, # 1,019,086 params
-        ]
-        # fmt: on
-
-        self.vocab_size = vocab_size
-        self.max_seq_len = max_seq_len
-        self.use_factorized = use_factorized
-
-    def __getitem__(self, idx):
-        """Retrieves transformer model corresponding to the configuration at index `idx`.
-
-        Args:
-            idx (int): Index of the desired configuration.
-
-        Returns:
-            XTransformerModel: An instance of the transformer model with the specified configuration.
-
-        Raises:
-            IndexError: If the index is out of range.
-        """
-        if idx >= len(self.configurations):
-            raise IndexError("Configuration index out of range")
-        config = self.configurations[idx]
-        return XTransformerModel(
-            num_tokens=self.vocab_size,
-            d_model=config["d_model"],
-            depth=config["depth"],
-            n_heads=config["n_heads"],
-            d_ff_mult=config["d_ff_mult"],
-            use_factorized=self.use_factorized,
-        )
-
-    def __len__(self):
-        """Returns the number of configurations."""
-        return len(self.configurations)
-
-    def __iter__(self):
-        """Allows iteration over all transformer models."""
-        for idx in range(len(self.configurations)):
-            yield self[idx]
 
 
 class XTransformerModel(TransformerWrapper):
@@ -155,3 +95,64 @@ class XTransformerModel(TransformerWrapper):
         stress = stress_contrib.sum(dim=1)
 
         return forces, energy, stress
+
+
+class MetaTransformerModels:
+    def __init__(
+        self,
+        vocab_size,
+        max_seq_len,
+        use_factorized=False,
+    ):
+        """Initializes TransformerModels with a list of configurations.
+
+        Args:
+            vocab_size (int): Number of unique tokens (atomic numbers).
+            max_seq_len (int): Maximum sequence length for the transformer.
+            use_factorized (bool): Whether to use factorized distances instead of positions.
+        """
+        # fmt: off
+        self.configurations = [
+            {"d_model": 1, "depth": 1, "n_heads": 1, "d_ff_mult": 4}, # 1,778 params
+            {"d_model": 8, "depth": 2, "n_heads": 1, "d_ff_mult": 4}, # 9,657 params
+            {"d_model": 48, "depth": 3, "n_heads": 1, "d_ff_mult": 4}, # 119,758 params
+            {"d_model": 160, "depth": 3, "n_heads": 2, "d_ff_mult": 4}, # 1,019,086 params
+        ]
+        # fmt: on
+
+        self.vocab_size = vocab_size
+        self.max_seq_len = max_seq_len
+        self.use_factorized = use_factorized
+
+    def __getitem__(self, idx):
+        """Retrieves transformer model corresponding to the configuration at index `idx`.
+
+        Args:
+            idx (int): Index of the desired configuration.
+
+        Returns:
+            XTransformerModel: An instance of the transformer model with the specified configuration.
+
+        Raises:
+            IndexError: If the index is out of range.
+        """
+        if idx >= len(self.configurations):
+            raise IndexError("Configuration index out of range")
+        config = self.configurations[idx]
+        return XTransformerModel(
+            num_tokens=self.vocab_size,
+            d_model=config["d_model"],
+            depth=config["depth"],
+            n_heads=config["n_heads"],
+            d_ff_mult=config["d_ff_mult"],
+            use_factorized=self.use_factorized,
+        )
+
+    def __len__(self):
+        """Returns the number of configurations."""
+        return len(self.configurations)
+
+    def __iter__(self):
+        """Allows iteration over all transformer models."""
+        for idx in range(len(self.configurations)):
+            yield self[idx]

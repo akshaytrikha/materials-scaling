@@ -1,5 +1,8 @@
+# External
 import torch
 import torch.nn as nn
+
+# Internal
 from models.model_utils import MLPOutput, apply_initialization
 
 
@@ -104,3 +107,44 @@ class FCNModel(nn.Module):
         stress = stress_contrib.sum(dim=1)  # [batch_size, 6]
 
         return forces, energy, stress
+
+
+class MetaFCNModels:
+    def __init__(self, vocab_size=119, use_factorized=False):
+        self.configurations = [
+            # 970 params (includes embedding layer)
+            {"embedding_dim": 8, "hidden_dim": 16, "depth": 2},
+            # 11.6k parameters (includes embedding layer)
+            {"embedding_dim": 24, "hidden_dim": 48, "depth": 4},
+            # 104k parameters (includes embedding layer)
+            {"embedding_dim": 60, "hidden_dim": 108, "depth": 8},
+            # 470k parameters (includes embedding layer)
+            {"embedding_dim": 96, "hidden_dim": 192, "depth": 12},
+            # 1M parameters (includes embedding layer)
+            {"embedding_dim": 128, "hidden_dim": 256, "depth": 15},
+            # # 4.3M parameters (includes embedding layer)
+            # {"embedding_dim": 256, "hidden_dim": 512, "depth": 16},
+            # # 10.9M parameters (includes embedding layer)
+            # {"embedding_dim": 384, "hidden_dim": 768, "depth": 18},
+        ]
+        self.vocab_size = vocab_size
+        self.use_factorized = use_factorized
+
+    def __getitem__(self, idx):
+        if idx >= len(self.configurations):
+            raise IndexError("Configuration index out of range")
+        config = self.configurations[idx]
+        return FCNModel(
+            vocab_size=self.vocab_size,
+            embedding_dim=config["embedding_dim"],
+            hidden_dim=config["hidden_dim"],
+            depth=config["depth"],
+            use_factorized=self.use_factorized,
+        )
+
+    def __len__(self):
+        return len(self.configurations)
+
+    def __iter__(self):
+        for idx in range(len(self.configurations)):
+            yield self[idx]

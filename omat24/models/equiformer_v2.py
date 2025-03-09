@@ -1,6 +1,5 @@
 import torch
 import torch.nn as nn
-from torch_scatter import scatter
 from fairchem.core.common.registry import registry
 from fairchem.core.models.equiformer_v2.equiformer_v2 import EquiformerV2Backbone
 from fairchem.core.models.equiformer_v2.heads import EqV2ScalarHead, EqV2VectorHead

@@ -62,6 +62,61 @@ class TestFCN(unittest.TestCase):
         # Mask: valid (nonzero) atoms are True.
         self.mask = self.atomic_numbers != 0
 
+    def test_initialization_predicts_means(self):
+        """Test that FCN model outputs predict dataset means at initialization."""
+        self.set_seed()
+
+        # Create a model with small dimensions for testing
+        model = FCNModel(
+            vocab_size=self.vocab_size,
+            embedding_dim=6,
+            hidden_dim=6,
+            depth=4,
+            use_factorized=False,
+        )
+        model.eval()  # Set to evaluation mode
+
+        # Use zero-data to isolate the bias terms
+        # Create inputs of proper shape but with zeros
+        zero_positions = torch.zeros_like(self.positions)
+
+        with torch.no_grad():
+            forces, energy, stress = model(
+                self.atomic_numbers,
+                zero_positions,
+                distance_matrix=None,
+                mask=self.mask,
+            )
+
+            # Get per-atom energy contributions (before summing)
+            energy_contrib = model.energy_head(torch.zeros(1, model.hidden_dim))
+
+            # Check that energy bias matches expected dataset mean
+            self.assertAlmostEqual(
+                energy_contrib.item(),
+                -9.773,
+                places=3,
+                msg="Energy bias doesn't match expected dataset mean",
+            )
+
+            # Force initialization should be zero (it has no inherent bias)
+            force_contrib = model.force_head(torch.zeros(1, model.hidden_dim))
+            self.assertTrue(
+                torch.allclose(force_contrib, torch.zeros(1, 3), atol=1e-6),
+                msg="Force output is not initialized to zero",
+            )
+
+            # Check that stress bias matches expected dataset means
+            stress_contrib = model.stress_head(torch.zeros(1, model.hidden_dim))
+            expected_stress = torch.tensor(
+                [[-0.03071, -0.03048, -0.03014, 2.67e-6, -9.82e-6, -1.06e-4]],
+                dtype=stress_contrib.dtype,
+            )
+            self.assertTrue(
+                torch.allclose(stress_contrib, expected_stress, atol=1e-4),
+                msg="Stress bias doesn't match expected dataset means",
+            )
+
     def test_fixed_fcn_overfit(self):
         """Test that a minimal training job executes successfully and produces expected configuration and loss values."""
         self.set_seed()
@@ -154,7 +209,9 @@ class TestFCN(unittest.TestCase):
                 if os.getenv("IS_CI", False):
                     np.testing.assert_allclose(last_val_loss, 129.64451027, rtol=0.1)
                 else:
-                    np.testing.assert_allclose(last_val_loss, 108.93801498413086, rtol=0.1)
+                    np.testing.assert_allclose(
+                        last_val_loss, 108.93801498413086, rtol=0.1
+                    )
 
                 # ---------- Test visualization was created ----------
                 result = subprocess.run(
