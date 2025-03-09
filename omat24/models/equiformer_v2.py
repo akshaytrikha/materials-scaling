@@ -1,64 +1,104 @@
+# External import
 import torch
 import torch.nn as nn
 from fairchem.core.common.registry import registry
+from fairchem.core.models.base import HydraModel
 from fairchem.core.models.equiformer_v2.equiformer_v2 import EquiformerV2Backbone
-from fairchem.core.models.equiformer_v2.heads import EqV2ScalarHead, EqV2VectorHead
-from fairchem.core.models.equiformer_v2.heads.rank2 import Rank2SymmetricTensorHead
-from fairchem.core.models.base import GraphModelMixin, HeadInterface
+
+# Internal
+from models.model_utils import initialize_output_heads
 
 
-@registry.register_model("hydra")
-class EquiformerS2EF(nn.Module, GraphModelMixin):
-    """
-    Hydra-style model that combines an EquiformerV2 backbone with specialized heads
-    for energy, forces, and stress prediction, following fairchem's configuration structure.
-    """
+class EquiformerS2EFS(nn.Module):
+    """Model that combines an EquiformerV2 backbone with specialized heads for energy, forces, and stress prediction, following fairchem's configuration structure."""
 
-    def __init__(self, backbone, heads, pass_through_head_outputs=True, **kwargs):
+    def __init__(self, config: dict, **kwargs):
+        # Initialize the base class
         super().__init__()
 
-        # Instantiate the backbone
-        if isinstance(backbone, dict):
-            model_type = backbone.pop("model")
-            self.backbone = registry.get_model_class(model_type)(**backbone)
-        else:
-            self.backbone = backbone
+        # Register the backbone directly
+        registry.register("equiformer_v2_backbone", EquiformerV2Backbone)
 
-        # Set up output heads
-        self.output_heads = nn.ModuleDict()
-        self.pass_through_head_outputs = pass_through_head_outputs
+        # Create a copy of the config and modify the backbone model name
+        backbone_config = config.get("backbone", {}).copy()
+        backbone_config["model"] = "equiformer_v2_backbone"  # Use the registered model
 
-        for name, head_config in heads.items():
-            module_type = head_config.pop("module")
-            head_class = registry.get_model_class(module_type)
-            self.output_heads[name] = head_class(backbone=self.backbone, **head_config)
+        # Create HydraModel with our modified config
+        self.hydra_model = HydraModel(
+            backbone=backbone_config,
+            heads=config.get("heads"),
+            otf_graph=config.get("otf_graph", True),
+            pass_through_head_outputs=config.get("pass_through_head_outputs", True),
+        )
 
-        # Include kwargs to make the model compatible with fairchem's initialization
-        for key, value in kwargs.items():
-            setattr(self, key, value)
+        # Extract head references for convenience
+        self.backbone = self.hydra_model.backbone
+        self.output_heads = self.hydra_model.output_heads
+        self.energy_head = self.output_heads["energy"]
+        self.force_head = self.output_heads["forces"]
+        self.stress_head = self.output_heads["stress"]
+
+        # Initialize the output heads
+        initialize_output_heads(
+            self.energy_head,
+            self.force_head,
+            self.stress_head,
+            per_atom=True,
+        )
 
         # Calculate number of parameters
-        self.num_params = sum(
+        self.param_count = sum(
             p.numel() for name, p in self.named_parameters() if "embedding" not in name
         )
+
+    def merge_stress_components(self, stress_isotropic, stress_anisotropic):
+        """
+        Merge isotropic and anisotropic stress components into a single tensor
+        so that EqV2 outputs are consistent with the other architectures.
+        """
+        batch_size = stress_isotropic.shape[0]
+        # Create the full stress tensor in Voigt notation
+        voigt_stress = torch.zeros((batch_size, 6), device=stress_isotropic.device)
+        # Fill in the isotropic part (pressure) for the normal stress components
+        voigt_stress[:, 0] = stress_isotropic.squeeze()  # σxx
+        voigt_stress[:, 1] = stress_isotropic.squeeze()  # σyy
+        voigt_stress[:, 2] = stress_isotropic.squeeze()  # σzz
+        # Fill in the anisotropic components
+        if stress_anisotropic.shape[1] == 5:
+            voigt_stress[:, :5] += stress_anisotropic  # Add first 5 components
+        return voigt_stress
 
     def forward(self, batch):
         """
         Args:
-          batch: A PyG batch with .atomic_numbers, .pos, etc.
+            batch: A PyG batch with .atomic_numbers, .pos, etc.
         Returns:
-          Dict with model outputs (energy, forces, stress, etc.)
+            Tuple of (forces, energy, stress) tensors that are directly usable for loss computation
         """
-        # Get embeddings from backbone
-        emb = self.backbone(batch)
+        # Forward through the hydra model
+        outputs = self.hydra_model(batch)
 
-        # Apply all output heads
-        outputs = {}
-        for name, head in self.output_heads.items():
-            head_outputs = head(batch, emb)
-            outputs.update(head_outputs)
+        # Extract the actual tensors from the output dictionaries
+        forces = outputs["forces"]
+        energy = outputs["energy"]
+        iso_stress = outputs["stress_isotropic"]
+        aniso_stress = outputs["stress_anisotropic"]
 
-        return outputs
+        # Merge stress components
+        stress = self.merge_stress_components(iso_stress, aniso_stress)
+
+        return forces, energy, stress
+
+    # Delegate methods to hydra_model for proper device handling
+    def to(self, *args, **kwargs):
+        self.hydra_model = self.hydra_model.to(*args, **kwargs)
+        return self
+
+    def named_parameters(self, *args, **kwargs):
+        return self.hydra_model.named_parameters(*args, **kwargs)
+
+    def parameters(self, *args, **kwargs):
+        return self.hydra_model.parameters(*args, **kwargs)
 
 
 class MetaEquiformerV2Models:
@@ -67,12 +107,7 @@ class MetaEquiformerV2Models:
     Follows fairchem's hydra-style configuration.
     """
 
-    def __init__(
-        self,
-        device: torch.device = torch.device(
-            "cuda" if torch.cuda.is_available() else "cpu"
-        ),
-    ):
+    def __init__(self, device: torch.device):
         # Base configuration that matches fairchem's configuration
         self.base_config = {
             "pass_through_head_outputs": True,
@@ -86,7 +121,7 @@ class MetaEquiformerV2Models:
                 "max_neighbors": 20,
                 "max_radius": 12.0,
                 "max_num_elements": 96,
-                "avg_num_nodes": 31.17,  # This is where the 31.17 comes from
+                "avg_num_nodes": 31.17,
                 "avg_degree": 61.95,
                 "sphere_channels": 128,
                 "attn_hidden_channels": 64,
@@ -116,23 +151,6 @@ class MetaEquiformerV2Models:
                 "drop_path_rate": 0.1,
                 "proj_drop": 0.0,
                 "weight_init": "uniform",
-            },
-            "heads": {
-                "energy": {
-                    "module": "equiformerV2_scalar_head",
-                    "output_name": "energy",
-                    "reduce": "sum",
-                },
-                "forces": {
-                    "module": "equiformerV2_vector_head",
-                    "output_name": "forces",
-                },
-                "stress": {
-                    "module": "rank2_symmetric_head",
-                    "output_name": "stress",
-                    "use_source_target_embedding": True,
-                    "decompose": True,
-                },
             },
         }
 
@@ -262,7 +280,7 @@ class MetaEquiformerV2Models:
 
         self.device = device
 
-    def __getitem__(self, idx: int) -> EquiformerS2EF:
+    def __getitem__(self, idx: int) -> EquiformerS2EFS:
         if idx >= len(self.configs):
             raise IndexError("Configuration index out of range")
 
@@ -270,11 +288,11 @@ class MetaEquiformerV2Models:
         for key, value in self.configs[idx]["backbone"].items():
             config["backbone"][key] = value
 
-        model = EquiformerS2EF(**config)
+        model = EquiformerS2EFS(**config)
         model.to(self.device)
         return model
 
-    def get_paper_model(self, idx: int) -> EquiformerS2EF:
+    def get_luis_model(self, idx: int) -> EquiformerS2EFS:
         """Get one of the model configurations from the paper"""
         if idx >= len(self.luis_configs):
             raise IndexError("Configuration index out of range")
@@ -283,7 +301,7 @@ class MetaEquiformerV2Models:
         for key, value in self.luis_configs[idx]["backbone"].items():
             config["backbone"][key] = value
 
-        model = EquiformerS2EF(**config)
+        model = EquiformerS2EFS(**config)
         model.to(self.device)
         return model
 
