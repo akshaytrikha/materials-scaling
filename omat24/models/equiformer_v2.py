@@ -6,7 +6,7 @@ from fairchem.core.models.base import HydraModel
 from fairchem.core.models.equiformer_v2.equiformer_v2 import EquiformerV2Backbone
 
 # Internal
-from models.model_utils import initialize_output_heads
+from models.model_utils import initialize_eqV2_output_heads
 
 
 class EquiformerS2EFS(nn.Module):
@@ -39,7 +39,7 @@ class EquiformerS2EFS(nn.Module):
         self.stress_head = self.output_heads["stress"]
 
         # Initialize the output heads
-        initialize_output_heads(
+        initialize_eqV2_output_heads(
             self.energy_head,
             self.force_head,
             self.stress_head,
