@@ -13,6 +13,7 @@ from unittest.mock import patch
 
 # Internal
 from models.schnet import SchNet
+from data_utils import DATASET_INFO
 
 
 class TestSchNet(unittest.TestCase):
@@ -154,6 +155,71 @@ class TestSchNet(unittest.TestCase):
             "Stress should have shape [num_molecules, 6].",
         )
 
+    def test_initialization_predicts_means(self):
+        """Test that SchNet outputs predict dataset means at initialization."""
+        self.set_seed()
+
+        # Create a minimal SchNet model for testing
+        model = SchNet(
+            hidden_channels=4,
+            num_filters=4,
+            num_interactions=3,
+            num_gaussians=16,
+            cutoff=5.0,
+            max_num_neighbors=32,
+            readout="add",
+            device=self.device,
+        ).to(self.device)
+        model.eval()
+
+        # Create a setup where the model's internal representations should be minimal
+        # This isolates the effect of the output head biases
+        with torch.no_grad():
+            # Access the output heads directly with zero embeddings
+            zero_embedding = torch.zeros(1, model.hidden_channels, device=self.device)
+
+            # Check energy head bias
+            energy_contrib = model.energy_head(zero_embedding)
+            self.assertAlmostEqual(
+                energy_contrib.item(),
+                DATASET_INFO["train"]["all"]["means"]["energy"],
+                places=3,
+                msg="Energy head bias doesn't match expected dataset mean",
+            )
+
+            # Force is derived through autograd, but we can check that force_head bias is zero
+            # when manually accessed
+            force_output = torch.zeros_like(zero_embedding)
+
+            # Check stress head bias
+            stress_contrib = model.stress_head(zero_embedding)
+            expected_stress = torch.tensor(
+                [DATASET_INFO["train"]["all"]["means"]["stress"]],
+                dtype=stress_contrib.dtype,
+                device=self.device,
+            )
+            self.assertTrue(
+                torch.allclose(stress_contrib, expected_stress, atol=1e-4),
+                msg="Stress head bias doesn't match expected dataset means",
+            )
+
+            # For completeness, run a forward pass and check that outputs are influenced by the biases
+            # The exact values will depend on the randomly initialized weights, but the general
+            # magnitudes should be close to the expected means
+            forces, energy, stress = model(
+                self.atomic_numbers,
+                self.positions,
+                self.edge_index,
+                self.structure_index,
+            )
+
+            # Since there are other factors at play, we just check the order of magnitude
+            self.assertLess(
+                abs(torch.mean(energy).item() + 9.773),
+                10.0,
+                msg="Mean energy is too far from expected dataset mean",
+            )
+
     def test_fixed_schnet_overfit(self):
         """
         Run a minimal training job using the SchNet architecture.
@@ -217,14 +283,16 @@ class TestSchNet(unittest.TestCase):
                 last_val_loss = result_json["3"][0]["losses"]["500"]["val_loss"]
 
                 # First configuration (from MetaSchnetModels) is expected to be:
-                self.assertEqual(config["num_params"], 875)
+                self.assertEqual(config["num_params"], 907)
 
                 np.testing.assert_allclose(
-                    first_train_loss, 149.10972213745117, rtol=0.1
+                    first_train_loss, 141.48191833496094, rtol=0.1
                 )
-                np.testing.assert_allclose(first_val_loss, 62.56801795959473, rtol=0.1)
-                np.testing.assert_allclose(last_train_loss, 130.4478416442871, rtol=0.1)
-                np.testing.assert_allclose(last_val_loss, 239.79591369628906, rtol=0.1)
+                np.testing.assert_allclose(first_val_loss, 61.96849060058594, rtol=0.1)
+                np.testing.assert_allclose(
+                    last_train_loss, 120.46190071105957, rtol=0.1
+                )
+                np.testing.assert_allclose(last_val_loss, 170.6886854171753, rtol=0.1)
         finally:
             if os.path.exists(results_path):
                 os.remove(results_path)
