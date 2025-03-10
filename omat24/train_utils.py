@@ -1,548 +1,311 @@
+import warnings
+
+warnings.filterwarnings(
+    "ignore", message="You are using `torch.load` with `weights_only=False`"
+)
+warnings.filterwarnings("ignore", message="`torch.cuda.amp.autocast")
+
 # External
-import copy
 import torch
-import torch.nn as nn
-from typing import Union
-from torch.utils.flop_counter import FlopCounterMode
-from contextlib import nullcontext
+import torch.optim as optim
+import torch.multiprocessing as mp
+from torch.optim.lr_scheduler import LambdaLR
+from pathlib import Path
+import pprint
+import json
+import math
+from datetime import datetime
+from tqdm import tqdm
+from torch.utils.tensorboard import SummaryWriter
+import os
+import subprocess
+import torch.distributed as dist
+from torch.nn.parallel import DistributedDataParallel as DDP
+from torch.utils.data.distributed import DistributedSampler
 
 # Internal
-from loss import compute_loss
-from log_utils import partial_json_log, log_tb_metrics
-from torch_geometric.data import Batch
+from data import get_dataloaders
+from data_utils import download_dataset, VALID_DATASETS
+from arg_parser import get_args
+from models.fcn import MetaFCNModels
+from models.transformer_models import MetaTransformerModels
+from models.schnet import MetaSchNetModels
+from models.equiformer_v2 import MetaEquiformerV2Models
+from train_utils import train
+
+# Set seed & device
+SEED = 1024
+torch.manual_seed(SEED)
+if torch.cuda.is_available():
+    DEVICE = torch.device("cuda")
+    torch.cuda.manual_seed(SEED)
+    torch.cuda.manual_seed_all(SEED)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+    torch.backends.cuda.enable_flash_sdp(True)
+elif torch.backends.mps.is_available():
+    DEVICE = torch.device("mps")
+else:
+    DEVICE = torch.device("cpu")
 
 
-def forward_pass(
-    model: nn.Module,
-    batch: Union[dict, Batch],
-    graph: bool,
-    training: bool,
-    device: torch.device,
-    factorize: bool,
-):
-    """A common forward pass function for inference across different architectures & dataloaders.
+def setup_ddp(rank, world_size):
+    """Initialize DDP process group."""
+    os.environ["MASTER_ADDR"] = "localhost"
+    os.environ["MASTER_PORT"] = "12355"
 
-    Args:
-        model (nn.Module): PyTorch model to use.
-        batch (Union[Dict, Batch]): The batch of data to forward pass.
-        graph (bool): Whether the model is a graph-based model.
-        training (bool): Whether the model is in training mode.
-        device (torch.device): The device to run the model on.
-        factorize (bool): Whether to factorize the distance matrix.
-    """
-    if training or graph:
-        context_manager = torch.enable_grad()
-    else:
-        context_manager = torch.no_grad()
-
-    with context_manager:
-        if type(batch) == dict:
-
-            atomic_numbers = batch["atomic_numbers"].to(device, non_blocking=True)
-            positions = batch["positions"].to(device, non_blocking=True)
-            true_forces = batch["forces"].to(device, non_blocking=True)
-            true_energy = batch["energy"].to(device, non_blocking=True)
-            true_stress = batch["stress"].to(device, non_blocking=True)
-            mask = atomic_numbers != 0
-            natoms = mask.sum(dim=1)
-
-            if factorize:
-                factorized_distances = batch["factorized_matrix"].to(
-                    device, non_blocking=True
-                )
-                pred_forces, pred_energy, pred_stress = model(
-                    atomic_numbers, positions, factorized_distances, mask
-                )
-            else:
-                distance_matrix = batch["distance_matrix"].to(device, non_blocking=True)
-                pred_forces, pred_energy, pred_stress = model(
-                    atomic_numbers, positions, distance_matrix, mask
-                )
-
-        elif isinstance(batch, Batch):
-            # PyG Batch
-            atomic_numbers = batch.atomic_numbers.to(device, non_blocking=True)
-            positions = batch.pos.to(device, non_blocking=True)
-            true_forces = batch.forces.to(device, non_blocking=True)
-            true_energy = batch.energy.to(device, non_blocking=True)
-            true_stress = batch.stress.to(device, non_blocking=True)
-            mask = None
-            natoms = batch.natoms
-
-            if model.name == "SchNet":
-                edge_index = batch.edge_index.to(device, non_blocking=True)
-                structure_index = batch.batch.to(device, non_blocking=True)
-
-                pred_forces, pred_energy, pred_stress = model(
-                    atomic_numbers,
-                    positions,
-                    edge_index,
-                    structure_index,
-                )
-            elif model.name == "EquiformerV2":
-                # equiformer constructs graphs internally
-                pred_forces, pred_energy, pred_stress = model(batch)
-
-    return (
-        pred_forces,
-        pred_energy,
-        pred_stress,
-        true_forces,
-        true_energy,
-        true_stress,
-        mask,
-        natoms,
-    )
+    # Initialize the process group
+    dist.init_process_group("nccl", rank=rank, world_size=world_size)
+    torch.cuda.set_device(rank)
 
 
-def collect_samples_helper(num_visualization_samples, dataset, model, graph, device):
-    samples = []
-    for i in range(min(num_visualization_samples, len(dataset))):
-        if graph:
-            batch = Batch.from_data_list([dataset[i]])
-            positions = batch["pos"]
-            atomic_numbers = batch["atomic_numbers"]
-            sample_length = len(atomic_numbers)
-            idx = batch["idx"].cpu().tolist()[0]
-        else:
-            batch = {
-                k: torch.unsqueeze(v, 0) if isinstance(v, torch.Tensor) else v
-                for k, v in dataset[i].items()
-            }
-            # Extract data from batch and sqeeuze batch dimension
-            positions = batch["positions"].squeeze(0)
-            atomic_numbers = batch["atomic_numbers"].squeeze(0)
-            sample_length = (batch["atomic_numbers"] != 0).sum(dim=1)[0].item()
-            idx = batch["idx"]
+def cleanup_ddp():
+    """Clean up DDP process group."""
+    dist.destroy_process_group()
 
-        symbols = batch["symbols"]
 
-        (
-            pred_forces,
-            pred_energy,
-            pred_stress,
-            true_forces,
-            true_energy,
-            true_stress,
-            _,
-            _,
-        ) = forward_pass(model, batch, graph, False, device, False)
+def main(rank=None, world_size=None):
+    is_main_process = rank == 0 if world_size is not None else True
+    args = get_args()
+    log = not args.no_log
+    global DEVICE
 
-        if not graph:
-            pred_forces = pred_forces.squeeze(0)
-            true_forces = true_forces.squeeze(0)
-            pred_stress = pred_stress.squeeze(0)
-            true_stress = true_stress.squeeze(0)
+    # DDP setup if world_size is provided
+    if world_size is not None:
+        setup_ddp(rank, world_size)
+        DEVICE = torch.device(f"cuda:{rank}")
+        dist.barrier()
 
-        samples.append(
-            {
-                "idx": idx,
-                "symbols": symbols,
-                "atomic_numbers": atomic_numbers[:sample_length].cpu().tolist(),
-                "positions": positions[:sample_length].cpu().tolist(),
-                "true": {
-                    "forces": true_forces[:, :sample_length].cpu().tolist(),
-                    "energy": true_energy.cpu().tolist()[0],
-                    "stress": true_stress.cpu().tolist(),
-                },
-                "pred": {
-                    "forces": pred_forces[:, :sample_length].cpu().tolist(),
-                    "energy": pred_energy.cpu().tolist()[0],
-                    "stress": pred_stress.cpu().tolist(),
-                },
-            }
+    # Convinience for running all datasets
+    if args.datasets[0] == "all":
+        args.datasets = VALID_DATASETS
+
+    # Download datasets if not present
+    dataset_paths = []
+    for dataset_name in args.datasets:
+        dataset_path = Path(
+            f"{args.datasets_base_path}/{args.split_name}/{dataset_name}"
         )
-    return samples
+        if not dataset_path.exists():
+            download_dataset(dataset_name, args.split_name, args.datasets_base_path)
+        dataset_paths.append(dataset_path)
 
-
-def collect_samples_for_visualizing(
-    model, graph, train_loader, val_loader, device, num_visualization_samples
-):
-    """Collect samples and predictions from both training and validation sets.
-    Uses fixed indices for consistent visualization.
-
-    Args:
-        model (torch.nn.Module): Trained model.
-        train_loader (DataLoader): Training DataLoader.
-        val_loader (DataLoader): Validation DataLoader.
-        device (torch.device): Device to run model on.
-        num_visualization_samples (int): Number of samples to visualize.
-
-    Returns:
-        dict: Dictionary containing samples and predictions for training and validation sets.
-    """
-    # Get the underlying dataset from the DataLoader
-    train_dataset = train_loader.dataset
-    val_dataset = val_loader.dataset
-
-    return {
-        "train": collect_samples_helper(
-            num_visualization_samples, train_dataset, model, graph, device
-        ),
-        "val": collect_samples_helper(
-            num_visualization_samples, val_dataset, model, graph, device
-        ),
+    # User Hyperparam Feedback
+    params = vars(args) | {
+        "dataset_split": args.split_name,
     }
+    if is_main_process:
+        pprint.pprint(params)
+        print()
 
+    batch_size = args.batch_size[0]
+    lr = args.lr[0]
+    num_epochs = args.epochs
+    use_factorize = args.factorize
+    graph = args.architecture in ["SchNet", "EquiformerV2"]
 
-def run_validation(model, val_loader, graph, device, factorize):
-    """
-    Compute and return the average validation loss.
+    # Initialize meta model class based on architecture choice
+    if args.architecture == "FCN":
+        meta_models = MetaFCNModels(
+            vocab_size=args.n_elements, use_factorized=use_factorize
+        )
+    elif args.architecture == "Transformer":
+        if args.split_name == "train":
+            max_n_atoms = 236
+        elif args.split_name == "val":
+            max_n_atoms = 168
 
-    Args:
-        model (nn.Module): The PyTorch model to validate.
-        val_loader (DataLoader): The validation data loader.
-        device (torch.device): The device to run validation on.
+        meta_models = MetaTransformerModels(
+            vocab_size=args.n_elements,
+            max_seq_len=max_n_atoms,
+            use_factorized=use_factorize,
+        )
+    elif args.architecture == "SchNet":
+        if DEVICE == torch.device("mps"):
+            print("MPS is not supported for SchNet. Switching to CPU.")
+            DEVICE = torch.device("cpu")
+        meta_models = MetaSchNetModels(device=DEVICE)
+    elif args.architecture == "EquiformerV2":
+        if DEVICE == torch.device("mps"):
+            print("MPS is not supported for EquiformerV2. Switching to CPU.")
+            DEVICE = torch.device("cpu")
+        meta_models = MetaEquiformerV2Models(device=DEVICE)
 
-    Returns:
-        float: The average validation loss across the validation set.
-    """
-    model.to(device)
-    model.eval()
-    val_loss_sum = 0.0
-    energy_loss_sum = 0.0
-    force_loss_sum = 0.0
-    stress_iso_loss_sum = 0.0
-    stress_aniso_loss_sum = 0.0
-    n = len(val_loader)
+    # Create results path and initialize file if logging is enabled
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    tb_logdir = os.path.join("runs", f"exp_{timestamp}")
+    writer = SummaryWriter(log_dir=tb_logdir)
+    if is_main_process:
+        print(f"TensorBoard logs will be saved to: {tb_logdir}")
 
-    for batch in val_loader:
-        (
-            pred_forces,
-            pred_energy,
-            pred_stress,
-            true_forces,
-            true_energy,
-            true_stress,
-            mask,
-            natoms,
-        ) = forward_pass(
-            model=model,
-            batch=batch,
+    results_path = Path("results") / f"experiments_{timestamp}.json"
+    experiment_results = {}
+    if log and is_main_process:
+        Path("results").mkdir(exist_ok=True)
+        with open(results_path, "w") as f:
+            json.dump({}, f)  # Initialize as empty JSON
+        print(f"\nLogging enabled. Results will be saved to {results_path}")
+    else:
+        print("\nLogging disabled. No experiment log will be saved.")
+
+    for data_fraction in args.data_fractions:
+        train_loader, val_loader = get_dataloaders(
+            dataset_paths,
+            train_data_fraction=data_fraction,
+            batch_size=batch_size,
+            seed=SEED,
+            architecture=args.architecture,
+            batch_padded=False,
+            val_data_fraction=args.val_data_fraction,
+            train_workers=args.train_workers,
+            val_workers=args.val_workers,
             graph=graph,
-            training=False,
-            device=device,
-            factorize=factorize,
+            factorize=use_factorize,
+            distributed=world_size is not None,
         )
-
-        # Mapping atoms to their respective structures (for graphs)
-        structure_index = batch.batch if graph and hasattr(batch, "batch") else []
-        val_loss_dict = compute_loss(
-            pred_forces,
-            pred_energy,
-            pred_stress,
-            true_forces,
-            true_energy,
-            true_stress,
-            mask,
-            device,
-            natoms,
-            graph,
-            structure_index,
-        )
-        val_loss_sum += val_loss_dict["total_loss"].item()
-        energy_loss_sum += val_loss_dict["energy_loss"].item()
-        force_loss_sum += val_loss_dict["force_loss"].item()
-        stress_iso_loss_sum += val_loss_dict["stress_iso_loss"].item()
-        stress_aniso_loss_sum += val_loss_dict["stress_aniso_loss"].item()
-
-    if n == 0:
-        return float("inf")
-    return (
-        val_loss_sum / n,
-        energy_loss_sum / n,
-        force_loss_sum / n,
-        stress_iso_loss_sum / n,
-        stress_aniso_loss_sum / n,
-    )
-
-
-def train(
-    model,
-    train_loader,
-    val_loader,
-    optimizer,
-    scheduler,
-    pbar,
-    graph,
-    device,
-    patience=5,
-    factorize=False,
-    results_path=None,
-    experiment_results=None,
-    data_size_key=None,
-    run_entry=None,
-    writer=None,
-    tensorboard_prefix="model",
-    num_visualization_samples=3,
-    gradient_clip=1,
-    validate_every=500,
-    visualize_every=500,
-):
-    """
-    Train model with validation at epoch 0 and every 'validate_every' epochs.
-    Includes early stopping and optional JSON + TensorBoard logging.
-
-    Args:
-        model (nn.Module): The PyTorch model to train.
-        train_loader (DataLoader): DataLoader for training data.
-        val_loader (DataLoader): DataLoader for validation data.
-        optimizer (torch.optim.Optimizer): The optimizer for training.
-        scheduler (torch.optim.lr_scheduler): Learning rate scheduler, or None.
-        pbar (tqdm): A tqdm progress bar initialized with the total number of epochs.
-        device (torch.device): The device to run training on.
-        patience (int): Early stopping patience (number of checks with no improvement).
-        results_path (str, optional): Path to JSON results file. If provided, partial logs are written.
-        experiment_results (dict, optional): Dict for storing experiment results.
-        data_size_key (str, optional): Key to label experiment_results by dataset size.
-        run_entry (dict, optional): Dictionary describing the current run (e.g., model_name, config).
-        writer (SummaryWriter, optional): TensorBoard writer for logging.
-        tensorboard_prefix (str, optional): Prefix for naming logs in TensorBoard.
-        num_visualization_samples (int, optional): Number of samples to visualize in logs.
-        gradient_clip (int, optional): Gradient clipping value.
-        validate_every (int, optional): Frequency (in epochs) to run validation.
-        visualize_every (int, optional): Frequency (in epochs) to collect visualization samples.
-
-    Returns:
-        (nn.Module, dict): The trained model and a dictionary of recorded losses.
-    """
-    model.to(device)
-    can_write_partial = all(
-        [results_path, experiment_results, data_size_key, run_entry]
-    )
-    losses = {}
-
-    # Initial validation at epoch 0
-    (
-        val_loss,
-        val_energy_loss,
-        val_force_loss,
-        val_stress_iso_loss,
-        val_stress_aniso_loss,
-    ) = run_validation(model, val_loader, graph, device, factorize)
-    losses[0] = {"val_loss": float(val_loss)}
-    if writer is not None:
-        # Logging each metric individually using log_tb_metrics
-        log_tb_metrics(
-            {
-                "": val_loss,
-                "energy": val_energy_loss,
-                "force": val_force_loss,
-                "stress_iso": val_stress_iso_loss,
-                "stress_aniso": val_stress_aniso_loss,
-            },
-            writer,
-            0,
-            tensorboard_prefix,
-            train=False,
-        )
-
-    # Write partial JSON if everything is provided
-    if can_write_partial:
-        partial_json_log(
-            experiment_results,
-            data_size_key,
-            run_entry,
-            0,
-            float("nan"),
-            val_loss,
-            results_path,
-        )
-
-    # Early stopping setup
-    best_val_loss = val_loss
-    best_val_model = copy.deepcopy(model)
-    best_val_loss_dict = copy.deepcopy(losses)
-    epochs_since_improvement = 0
-
-    samples = None
-
-    # Training loop
-    flop_counter = FlopCounterMode(display=False)
-    flops_per_epoch = 0
-    for epoch in range(1, len(pbar) + 1):
-        model.train()
-        train_loss_sum = 0.0
-        energy_loss_sum = 0.0
-        force_loss_sum = 0.0
-        stress_iso_loss_sum = 0.0
-        stress_aniso_loss_sum = 0.0
-
-        n_train_batches = len(train_loader)
-        context = flop_counter if epoch == 1 else nullcontext()
-        with context:
-            for batch_idx, batch in enumerate(train_loader):
-                optimizer.zero_grad()
-                (
-                    pred_forces,
-                    pred_energy,
-                    pred_stress,
-                    true_forces,
-                    true_energy,
-                    true_stress,
-                    mask,
-                    natoms,
-                ) = forward_pass(
-                    model=model,
-                    batch=batch,
-                    graph=graph,
-                    training=True,
-                    device=device,
-                    factorize=factorize,
+        dataset_size = len(train_loader.dataset)
+        if is_main_process:
+            print(
+                f"\nTraining on dataset fraction {data_fraction} with {dataset_size} samples"
+            )
+        for model_idx, model in enumerate(meta_models):
+            if is_main_process:
+                print(
+                    f"\nModel {model_idx + 1}/{len(meta_models)} is on device {DEVICE} and has {model.num_params} parameters"
                 )
-                # Mapping atoms to their respective structures (for graphs)
-                structure_index = (
-                    batch.batch if graph and hasattr(batch, "batch") else []
+
+            model.to(DEVICE)
+
+            # Store original model attributes before DDP wrapping
+            num_params = model.num_params if hasattr(model, "num_params") else None
+            embedding_dim = getattr(model, "embedding_dim", None)
+            depth = getattr(model, "depth", None)
+
+            optimizer = optim.AdamW(model.parameters(), lr=lr)
+
+            if world_size is not None:
+                # Wrap model in DDP to use multiple GPUs
+                model = DDP(
+                    model,
+                    device_ids=[rank],
+                    find_unused_parameters=True,
+                    broadcast_buffers=False,
                 )
-                train_loss_dict = compute_loss(
-                    pred_forces,
-                    pred_energy,
-                    pred_stress,
-                    true_forces,
-                    true_energy,
-                    true_stress,
-                    mask,
-                    device,
-                    natoms,
-                    graph,
-                    structure_index,
-                )
-                total_train_loss = train_loss_dict["total_loss"]
-                total_train_loss.backward()
-                torch.nn.utils.clip_grad_norm_(model.parameters(), gradient_clip)
-                optimizer.step()
 
-                train_loss_sum += total_train_loss.item()
-                energy_loss_sum += train_loss_dict["energy_loss"].item()
-                force_loss_sum += train_loss_dict["force_loss"].item()
-                stress_iso_loss_sum += train_loss_dict["stress_iso_loss"].item()
-                stress_aniso_loss_sum += train_loss_dict["stress_aniso_loss"].item()
-                current_avg_loss = train_loss_sum / (batch_idx + 1)
+            # lambda_schedule = lambda epoch: 0.5 * (
+            #     1 + math.cos(math.pi * epoch / num_epochs)
+            # )
+            # scheduler = LambdaLR(optimizer, lr_lambda=lambda_schedule)
+            scheduler = None
 
-                pbar.set_description(
-                    f"train_loss={current_avg_loss:.2f} val_loss={val_loss:.2f}"
-                )
-        if epoch == 1:
-            flops_per_epoch = flop_counter.get_total_flops()
-
-        # Step the scheduler if provided
-        if scheduler is not None:
-            scheduler.step()
-
-        avg_epoch_train_loss = train_loss_sum / n_train_batches
-        avg_epoch_energy_loss = energy_loss_sum / n_train_batches
-        avg_epoch_force_loss = force_loss_sum / n_train_batches
-        avg_epoch_stress_iso_loss = stress_iso_loss_sum / n_train_batches
-        avg_epoch_stress_aniso_loss = stress_aniso_loss_sum / n_train_batches
-
-        losses[epoch] = {"train_loss": float(avg_epoch_train_loss)}
-        # TensorBoard logging for training loss
-        if writer is not None:
-            # Log parameter norms (example usage) using log_tb_metrics
-            log_tb_metrics(
-                {
-                    "": avg_epoch_train_loss,
-                    "energy": avg_epoch_energy_loss,
-                    "force": avg_epoch_force_loss,
-                    "stress_iso": avg_epoch_stress_iso_loss,
-                    "stress_aniso": avg_epoch_stress_aniso_loss,
+            # Prepare run entry etc.
+            model_name = f"model_ds{dataset_size}_p{int(num_params)}"
+            checkpoint_path = f"checkpoints/{args.architecture}_ds{dataset_size}_p{int(num_params)}_{timestamp}.pth"
+            run_entry = {
+                "model_name": model_name,
+                "config": {
+                    "architecture": args.architecture,
+                    "embedding_dim": embedding_dim,
+                    "depth": depth,
+                    "num_params": num_params,
+                    "dataset_size": dataset_size,
+                    "num_epochs": num_epochs,
+                    "batch_size": batch_size,
+                    "learning_rate": lr,
+                    "seed": SEED,
                 },
-                writer,
-                epoch,
-                tensorboard_prefix,
-                train=True,
-            )
-            # Simple gradient logging for debugging (skip bias layers)
-            for name, param in model.named_parameters():
-                if (
-                    param is not None
-                    and param.requires_grad
-                    and param.grad is not None
-                    and not name.endswith("bias")
-                ):  # Skip bias layers
-                    # Log mean gradient - key indicator for vanishing/exploding gradients
-                    grad_mean = param.grad.abs().mean().item()
-                    writer.add_scalar(
-                        f"{tensorboard_prefix}/Grads/{name}",
-                        grad_mean,
-                        global_step=epoch,
-                    )
+                "losses": {},
+                "checkpoint_path": checkpoint_path,
+            }
+            ds_key = str(dataset_size)
+            if ds_key not in experiment_results:
+                experiment_results[ds_key] = []
+            experiment_results[ds_key].append(run_entry)
+            if log:
+                with open(results_path, "w") as f:
+                    json.dump(experiment_results, f, indent=4)
 
-                    # Log gradient-to-weight ratio - indicates if updates are well-scaled
-                    grad_to_weight = (
-                        param.grad.abs().mean() / (param.data.abs().mean() + 1e-8)
-                    ).item()
-                    writer.add_scalar(
-                        f"{tensorboard_prefix}/G2W/{name}",
-                        grad_to_weight,
-                        global_step=epoch,
-                    )
-        # Validate every 'validate_every' epochs
-        if epoch % validate_every == 0:
-            (
-                val_loss,
-                val_energy_loss,
-                val_force_loss,
-                val_stress_iso_loss,
-                val_stress_aniso_loss,
-            ) = run_validation(model, val_loader, graph, device, factorize)
-            if writer is not None:
-                log_tb_metrics(
-                    {
-                        "": val_loss,
-                        "energy": val_energy_loss,
-                        "force": val_force_loss,
-                        "stress_iso": val_stress_iso_loss,
-                        "stress_aniso": val_stress_aniso_loss,
-                    },
-                    writer,
-                    epoch,
-                    tensorboard_prefix,
-                    train=False,
-                )
-            losses[epoch]["val_loss"] = val_loss
-
-            # Early stopping check
-            if val_loss < best_val_loss:
-                best_val_loss = val_loss
-                epochs_since_improvement = 0
-                best_val_model = copy.deepcopy(model)
-                best_val_loss_dict = copy.deepcopy(losses)
+            # Create progress bar only on main process
+            if is_main_process:
+                progress_bar = tqdm(range(num_epochs + 1))
             else:
-                epochs_since_improvement += 1
-                if epochs_since_improvement >= patience:
-                    print(f"Early stopping triggered at epoch {epoch}")
-                    return best_val_model, best_val_loss_dict
+                progress_bar = range(num_epochs + 1)
 
-        # Visualization samples every 'visualize_every' epochs
-        if epoch % visualize_every == 0:
-            samples = collect_samples_for_visualizing(
-                model,
-                graph,
-                train_loader,
-                val_loader,
-                device,
-                num_visualization_samples,
-            )
+            training_args = {
+                "model": model,
+                "train_loader": train_loader,
+                "val_loader": val_loader,
+                "optimizer": optimizer,
+                "scheduler": scheduler,
+                "pbar": progress_bar,
+                "graph": graph,
+                "device": DEVICE,
+                "distributed": (world_size is not None),
+                "rank": rank,
+                "patience": 5,
+                "factorize": use_factorize,
+                "writer": writer if is_main_process else None,
+                "tensorboard_prefix": model_name,
+                "num_visualization_samples": args.num_visualization_samples,
+                "gradient_clip": args.gradient_clip,
+                "validate_every": args.val_every,
+                "visualize_every": args.vis_every,
+            }
 
-        # Write partial JSON if requested
-        if can_write_partial:
-            partial_json_log(
-                experiment_results,
-                data_size_key,
-                run_entry,
-                epoch,
-                avg_epoch_train_loss,
-                val_loss if epoch % validate_every == 0 else float("nan"),
-                results_path,
-                samples if epoch % visualize_every == 0 else None,
-                flops_per_epoch * epoch,
-            )
+            if log and is_main_process:
+                training_args.update(
+                    {
+                        "results_path": results_path,
+                        "experiment_results": experiment_results,
+                        "data_size_key": ds_key,
+                        "run_entry": run_entry,
+                    }
+                )
 
-        pbar.update(1)
+            trained_model, losses = train(**training_args)
 
-    return model, losses
+            # Save checkpoint
+            if is_main_process:  # Only save on main process
+                Path("checkpoints").mkdir(exist_ok=True)
+                model_state = (
+                    trained_model.module.state_dict()
+                    if isinstance(trained_model, DDP)
+                    else trained_model.state_dict()
+                )
+                torch.save(
+                    {
+                        "model_state_dict": model_state,
+                        "losses": losses,
+                        "batch_size": batch_size,
+                        "lr": lr,
+                    },
+                    checkpoint_path,
+                )
 
+            if is_main_process:
+                progress_bar.close()
+
+    writer.close()
+    print(
+        f"\nTraining completed. {'Results continuously saved to ' + str(results_path) if log else 'No experiment log was written.'}"
+    )
+
+    # Add barrier before cleanup
+    if world_size is not None:
+        dist.barrier()
+        cleanup_ddp()
+
+    if log:
+        # Generate inference GIFs at different training stages
+        subprocess.run(
+            [
+                "python3",
+                "model_prediction_evolution.py",
+                str(results_path),
+                "--split",
+                "train",
+            ]
+        )
 
 def lr_schedule(epoch, num_epochs, warmup_epochs):
     if epoch < warmup_epochs:
@@ -555,3 +318,13 @@ def lr_schedule(epoch, num_epochs, warmup_epochs):
         return (
             0.9 * 0.5 * (1 + math.cos(math.pi * decay_epoch / total_decay_epochs)) + 0.1
         )
+
+if __name__ == "__main__":
+    args = get_args()
+    if args.distributed:
+        # Need to use spawn method for CUDA runtime initialization
+        mp.set_start_method("spawn")
+        world_size = torch.cuda.device_count()
+        mp.spawn(main, args=(world_size,), nprocs=world_size, join=True)
+    else:
+        main()
