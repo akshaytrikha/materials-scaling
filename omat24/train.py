@@ -161,7 +161,7 @@ def main(rank=None, world_size=None):
             val_workers=args.val_workers,
             graph=graph,
             factorize=use_factorize,
-            distributed=world_size is not None,
+            # distributed=world_size is not None,
         )
         dataset_size = len(train_loader.dataset)
         if is_main_process:
@@ -241,7 +241,7 @@ def main(rank=None, world_size=None):
                 "pbar": progress_bar,
                 "graph": graph,
                 "device": DEVICE,
-                "distributed": (world_size is not None),
+                # distributed": (world_size is not None),
                 "rank": rank,
                 "patience": 500,
                 "factorize": use_factorize,
@@ -311,10 +311,10 @@ def main(rank=None, world_size=None):
 
 if __name__ == "__main__":
     args = get_args()
-    if args.distributed:
-        # Need to use spawn method for CUDA runtime initialization
-        mp.set_start_method("spawn")
-        world_size = torch.cuda.device_count()
-        mp.spawn(main, args=(world_size,), nprocs=world_size, join=True)
-    else:
-        main()
+    # if args.distributed:
+    #     # Need to use spawn method for CUDA runtime initialization
+    #     mp.set_start_method("spawn")
+    #     world_size = torch.cuda.device_count()
+    #     mp.spawn(main, args=(world_size,), nprocs=world_size, join=True)
+    # else:
+    main()
