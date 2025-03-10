@@ -250,6 +250,7 @@ def main(rank=None, world_size=None):
                 "gradient_clip": args.gradient_clip,
                 "validate_every": args.val_every,
                 "visualize_every": args.vis_every,
+                "use_mixed_precision": args.mixed_precision,
             }
 
             if log and is_main_process:
