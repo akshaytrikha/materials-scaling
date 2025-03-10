@@ -1,4 +1,9 @@
 import warnings
+import psutil
+import os
+import GPUtil
+from threading import Thread
+import time
 
 warnings.filterwarnings(
     "ignore", message="You are using `torch.load` with `weights_only=False`"
@@ -17,7 +22,6 @@ import math
 from datetime import datetime
 from tqdm import tqdm
 from torch.utils.tensorboard import SummaryWriter
-import os
 import subprocess
 import torch.distributed as dist
 from torch.nn.parallel import DistributedDataParallel as DDP
@@ -62,6 +66,29 @@ def setup_ddp(rank, world_size):
 def cleanup_ddp():
     """Clean up DDP process group."""
     dist.destroy_process_group()
+
+
+def monitor_resources(log_file='resource_usage.csv', interval=1.0):
+    """Monitor and log system resources during training"""
+    
+    with open(log_file, 'w') as f:
+        f.write("timestamp,cpu_percent,ram_percent,gpu_util,gpu_mem\n")
+        
+    while True:
+        # CPU and RAM
+        cpu_percent = psutil.cpu_percent(interval=None)
+        ram_percent = psutil.virtual_memory().percent
+        
+        # GPU
+        gpus = GPUtil.getGPUs()
+        gpu_util = sum(gpu.load * 100 for gpu in gpus) / len(gpus) if gpus else 0
+        gpu_mem = sum(gpu.memoryUtil * 100 for gpu in gpus) / len(gpus) if gpus else 0
+        
+        # Log
+        with open(log_file, 'a') as f:
+            f.write(f"{time.time()},{cpu_percent},{ram_percent},{gpu_util},{gpu_mem}\n")
+            
+        time.sleep(interval)
 
 
 def main(rank=None, world_size=None):
@@ -147,6 +174,11 @@ def main(rank=None, world_size=None):
         print(f"\nLogging enabled. Results will be saved to {results_path}")
     else:
         print("\nLogging disabled. No experiment log will be saved.")
+
+    # Start monitoring in a background thread
+    monitor_thread = Thread(target=monitor_resources)
+    monitor_thread.daemon = True
+    monitor_thread.start()
 
     for data_fraction in args.data_fractions:
         train_loader, val_loader = get_dataloaders(
@@ -312,6 +344,10 @@ def main(rank=None, world_size=None):
 if __name__ == "__main__":
     args = get_args()
     if args.distributed:
+        monitor_thread = Thread(target=monitor_resources)
+        monitor_thread.daemon = True
+        monitor_thread.start()
+
         # Need to use spawn method for CUDA runtime initialization
         mp.set_start_method("spawn")
         world_size = torch.cuda.device_count()
