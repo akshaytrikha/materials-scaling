@@ -199,6 +199,7 @@ def custom_collate_fn_dataset_padded(
     Returns:
         Dict[str, torch.Tensor]: A dictionary of batched and padded tensors.
     """
+    print("collating dataset padded")
     atomic_numbers = [sample["atomic_numbers"] for sample in batch]
     positions = [sample["positions"] for sample in batch]
     distance_matrices = [sample["distance_matrix"] for sample in batch]
@@ -265,6 +266,7 @@ def custom_collate_fn_dataset_padded(
         # [batch_size, MAX_ATOMS, k]
         output["factorized_matrix"] = padded_factorized_matrices
 
+    print("collating dataset padded done")
     return output
 
 
@@ -285,6 +287,7 @@ def custom_collate_fn_batch_padded(
     Returns:
         Dict[str, torch.Tensor]: A dictionary of batched and padded tensors.
     """
+    print("collating batch padded")
     atomic_numbers = [sample["atomic_numbers"] for sample in batch]
     positions = [sample["positions"] for sample in batch]
     distance_matrices = [sample["distance_matrix"] for sample in batch]
@@ -349,6 +352,7 @@ def custom_collate_fn_batch_padded(
             padded_factorized_matrices  # [batch_size, MAX_ATOMS, k]
         )
 
+    print("collating batch padded done")
     return output
 
 

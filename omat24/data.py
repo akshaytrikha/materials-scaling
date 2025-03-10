@@ -260,6 +260,7 @@ class OMat24Dataset(Dataset):
         return len(self.dataset)
 
     def __getitem__(self, idx):
+        print(f"Getting item {idx} of {len(self)}")
         # Retrieve atoms object for the given index
         atoms: ase.atoms.Atoms = self.dataset.get_atoms(idx)
 
@@ -341,6 +342,7 @@ class OMat24Dataset(Dataset):
         if self.debug:
             sample["source"] = atoms.info["calc_id"]
 
+        print(f"Getting item {idx} done")
         return sample
 
 

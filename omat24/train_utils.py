@@ -386,13 +386,18 @@ def train(
     total_epochs = len(pbar) if is_main_process else pbar[-1] + 1
 
     # Initial validation at epoch 0
-    (
-        val_loss,
-        val_energy_loss,
-        val_force_loss,
-        val_stress_iso_loss,
-        val_stress_aniso_loss,
-    ) = run_validation(model, val_loader, graph, device, factorize, use_mixed_precision)
+    # (
+    #     val_loss,
+    #     val_energy_loss,
+    #     val_force_loss,
+    #     val_stress_iso_loss,
+    #     val_stress_aniso_loss,
+    # ) = run_validation(model, val_loader, graph, device, factorize, use_mixed_precision)
+    val_loss = 0
+    val_energy_loss = 0
+    val_force_loss = 0
+    val_stress_iso_loss = 0
+    val_stress_aniso_loss = 0
     losses[0] = {"val_loss": float(val_loss)}
     if writer is not None:
         # Logging each metric individually using log_tb_metrics
@@ -434,12 +439,14 @@ def train(
     # Training loop
     flop_counter = FlopCounterMode(display=False)
     flops_per_epoch = 0
+    print(f"Training for {total_epochs} epochs")
     for epoch in range(1, total_epochs):
         if (
             distributed
             and hasattr(train_loader, "sampler")
             and hasattr(train_loader.sampler, "set_epoch")
         ):
+            print(f"Setting epoch {epoch}")
             train_loader.sampler.set_epoch(epoch)
 
         model.train()
@@ -451,7 +458,9 @@ def train(
 
         context = flop_counter if epoch == 1 else nullcontext()
         with context:
+            print(f"Training epoch {epoch}")
             for batch_idx, batch in enumerate(train_loader):
+                print(f"Training batch {batch_idx} of {len(train_loader)}")
                 optimizer.zero_grad()
                 
                 # Use autocast for mixed precision during forward pass
