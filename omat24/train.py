@@ -243,7 +243,7 @@ def main(rank=None, world_size=None):
                 "device": DEVICE,
                 "distributed": (world_size is not None),
                 "rank": rank,
-                "patience": 5,
+                "patience": 500,
                 "factorize": use_factorize,
                 "writer": writer if is_main_process else None,
                 "tensorboard_prefix": model_name,
