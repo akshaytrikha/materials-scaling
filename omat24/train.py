@@ -31,7 +31,7 @@ from models.fcn import MetaFCNModels
 from models.transformer_models import MetaTransformerModels
 from models.schnet import MetaSchNetModels
 from models.equiformer_v2 import MetaEquiformerV2Models
-from train_utils import train
+from train_utils import train, lr_schedule
 
 # Set seed & device
 SEED = 1024
@@ -192,10 +192,12 @@ def main(rank=None, world_size=None):
                     broadcast_buffers=False,
                 )
 
-            lambda_schedule = lambda epoch: 0.5 * (
-                1 + math.cos(math.pi * epoch / num_epochs)
+            scheduler = LambdaLR(
+                optimizer,
+                lr_lambda=lambda epoch: lr_schedule(
+                    epoch=epoch, num_epochs=num_epochs, warmup_epochs=num_epochs * 0.1
+                ),
             )
-            scheduler = LambdaLR(optimizer, lr_lambda=lambda_schedule)
 
             # Prepare run entry etc.
             model_name = f"model_ds{dataset_size}_p{int(num_params)}"
