@@ -133,6 +133,11 @@ def get_args():
         action="store_true",
         help="Use mixed precision training with FP16"
     )
+    parser.add_argument(
+        "--scheduler_type",
+        type=str,
+        default="None"
+    )
 
     return parser.parse_args()
 

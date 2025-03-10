@@ -22,6 +22,7 @@ import subprocess
 import torch.distributed as dist
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data.distributed import DistributedSampler
+from fairchem.core.modules.scheduler import LRScheduler
 
 # Internal
 from data import get_dataloaders
@@ -197,6 +198,13 @@ def main(rank=None, world_size=None):
             # )
             # scheduler = LambdaLR(optimizer, lr_lambda=lambda_schedule)
             scheduler = None
+            if args.scheduler_type == "cosine":
+                scheduler = LRScheduler(optimizer, {
+                    "lambda_type": args.scheduler_type,
+                    "warmup_epochs": 0.1 * num_epochs,
+                    "warmup_factor": 0.9,
+                    "lr_min_factor": 0.1
+                })
 
             # Prepare run entry etc.
             model_name = f"model_ds{dataset_size}_p{int(num_params)}"
