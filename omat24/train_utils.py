@@ -6,6 +6,7 @@ from typing import Union
 from torch.utils.flop_counter import FlopCounterMode
 from contextlib import nullcontext
 import torch.distributed as dist
+import math
 
 # Internal
 from loss import compute_loss
