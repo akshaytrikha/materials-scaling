@@ -15,6 +15,7 @@ class EquiformerS2EFS(nn.Module):
     def __init__(self, config: dict, **kwargs):
         # Initialize the base class
         super().__init__()
+        self.name = "EquiformerV2"
 
         # Register the backbone directly
         registry.register("equiformer_v2_backbone", EquiformerV2Backbone)
@@ -47,7 +48,7 @@ class EquiformerS2EFS(nn.Module):
         )
 
         # Calculate number of parameters
-        self.param_count = sum(
+        self.num_params = sum(
             p.numel() for name, p in self.named_parameters() if "embedding" not in name
         )
 
