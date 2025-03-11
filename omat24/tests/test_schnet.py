@@ -10,18 +10,29 @@ import re
 import os
 import subprocess
 from unittest.mock import patch
+import random
 
 # Internal
 from models.schnet import SchNet
 from data_utils import DATASET_INFO
+from train import main as train_main
 
 
 class TestSchNet(unittest.TestCase):
-    def setUp(self):
-        # Set reproducible seed
-        torch.manual_seed(1024)
-        np.random.seed(1024)
+    def set_seed(self):
+        SEED = 1024
+        random.seed(SEED)
+        np.random.seed(SEED)
+        torch.manual_seed(SEED)
+        torch.cuda.manual_seed(SEED)
+        torch.cuda.manual_seed_all(SEED)
+        torch.backends.cudnn.deterministic = True
+        torch.backends.cudnn.benchmark = False
         self.device = torch.device("cpu")
+
+    def setUp(self):
+        self.set_seed()
+
         # Create dummy data for 2 molecules with 4 atoms each (total 8 atoms)
         self.num_atoms = 8
         self.num_molecules = 2
@@ -174,7 +185,7 @@ class TestSchNet(unittest.TestCase):
 
         # Create a setup where the model's internal representations should be minimal
         # This isolates the effect of the output head biases
-        with torch.no_grad():
+        with torch.enable_grad():
             # Access the output heads directly with zero embeddings
             zero_embedding = torch.zeros(1, model.hidden_channels, device=self.device)
 
@@ -226,7 +237,7 @@ class TestSchNet(unittest.TestCase):
         This test patches the meta-model iterator in train.py to return a fixed SchNet model,
         runs a short training run, and verifies that the results JSON file contains a valid run entry.
         """
-        from train import main as train_main
+        self.set_seed()
 
         with patch("train.MetaSchNetModels") as MockMeta:
             # Force the meta-model iterator to yield our fixed model.
