@@ -698,7 +698,7 @@ class CosineLRLambda:
     def __init__(self, scheduler_params) -> None:
         self.warmup_steps = aii(scheduler_params["warmup_steps"], float)
         self.lr_warmup_factor = aii(scheduler_params["warmup_factor"], float)
-        self.steps = aii(scheduler_params["steps"], int)
+        self.steps = aii(scheduler_params["steps"], float)
         self.lr_min_factor = aii(scheduler_params["lr_min_factor"], float)
 
     def __call__(self, current_step: int):
