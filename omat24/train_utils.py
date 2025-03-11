@@ -527,12 +527,11 @@ def train(
                     pbar.set_description(
                         f"train_loss={current_avg_loss:.2f} val_loss={val_loss:.2f}"
                     )
+                # Step the scheduler if provided
+                if scheduler is not None:
+                    scheduler.step()
         if epoch == 1:
             flops_per_epoch = flop_counter.get_total_flops()
-
-        # Step the scheduler if provided
-        if scheduler is not None:
-            scheduler.step()
 
         if distributed:
             train_loss_tensor = torch.tensor(train_loss_sum, device=device)
