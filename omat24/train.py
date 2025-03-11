@@ -193,10 +193,11 @@ def main(rank=None, world_size=None):
                     broadcast_buffers=False,
                 )
 
-            lambda_schedule = lambda epoch: 0.5 * (
-                1 + math.cos(math.pi * epoch / num_epochs)
-            )
-            scheduler = LambdaLR(optimizer, lr_lambda=lambda_schedule)
+            # lambda_schedule = lambda epoch: 0.5 * (
+            #     1 + math.cos(math.pi * epoch / num_epochs)
+            # )
+            # scheduler = LambdaLR(optimizer, lr_lambda=lambda_schedule)
+            scheduler = None
 
             # Prepare run entry etc.
             model_name = f"model_ds{dataset_size}_p{int(num_params)}"
@@ -250,6 +251,7 @@ def main(rank=None, world_size=None):
                 "gradient_clip": args.gradient_clip,
                 "validate_every": args.val_every,
                 "visualize_every": args.vis_every,
+                "use_mixed_precision": args.mixed_precision,
             }
 
             if log and is_main_process:

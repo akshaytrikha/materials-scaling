@@ -6,6 +6,7 @@ from typing import Union
 from torch.utils.flop_counter import FlopCounterMode
 from contextlib import nullcontext
 import torch.distributed as dist
+from torch.amp import autocast, GradScaler
 
 # Internal
 from loss import compute_loss
@@ -129,6 +130,33 @@ def forward_pass(
     )
 
 
+def get_amp_context(use_mixed_precision: bool, device_type: str) -> tuple:
+    """Creates appropriate autocast context and scaler for mixed precision training.
+    
+    Args:
+        use_mixed_precision (bool): Whether to use mixed precision.
+        device_type (str): Device type ('cuda', 'cpu', etc.)
+        
+    Returns:
+        tuple: (autocast_fn, scaler) - context manager and scaler for mixed precision
+    """
+    if use_mixed_precision and device_type == 'cuda':
+        return autocast(device_type=device_type), GradScaler()
+    else:
+        # Create dummy objects if not using mixed precision
+        class DummyContext:
+            def __enter__(self): return self
+            def __exit__(self, *args): pass
+            
+        class DummyScaler:
+            def scale(self, loss): return loss
+            def step(self, opt): opt.step()
+            def update(self): pass
+            def unscale_(self, opt): pass
+            
+        return DummyContext(), DummyScaler()
+
+
 def collect_samples_helper(num_visualization_samples, dataset, model, graph, device):
     samples = []
     for i in range(min(num_visualization_samples, len(dataset))):
@@ -219,21 +247,23 @@ def collect_samples_for_visualizing(
     }
 
 
-def run_validation(model, val_loader, graph, device, factorize):
+def run_validation(model, val_loader, graph, device, factorize=False, use_mixed_precision=False):
     """
-    Compute and return the average validation loss.
+    Run validation on the validation set and return the average validation loss.
 
     Args:
-        model (nn.Module): The PyTorch model to validate.
+        model (nn.Module): The model to validate.
         val_loader (DataLoader): The validation data loader.
+        graph (bool): Whether the model is a graph-based model.
         device (torch.device): The device to run validation on.
-        graph (bool): Whether the model is graph-based.
-        factorize (bool): Whether to use factorized distance matrices.
+        factorize (bool, optional): Whether to factorize. Defaults to False.
+        use_mixed_precision (bool, optional): Whether to use mixed precision. Defaults to False.
 
     Returns:
-        tuple: The average validation losses (total, energy, force, stress_iso, stress_aniso).
+        tuple: The average validation loss components.
     """
-    model.to(device)
+    amp_context, _ = get_amp_context(use_mixed_precision, device.type)
+    
     model.eval()
     val_loss_sum = 0.0
     energy_loss_sum = 0.0
@@ -243,61 +273,48 @@ def run_validation(model, val_loader, graph, device, factorize):
     n = len(val_loader)
 
     for batch in val_loader:
-        (
-            pred_forces,
-            pred_energy,
-            pred_stress,
-            true_forces,
-            true_energy,
-            true_stress,
-            mask,
-            natoms,
-        ) = forward_pass(
-            model=model,
-            batch=batch,
-            graph=graph,
-            training=False,
-            device=device,
-            factorize=factorize,
-        )
+        with torch.no_grad(), amp_context:
+            (
+                pred_forces,
+                pred_energy,
+                pred_stress,
+                true_forces,
+                true_energy,
+                true_stress,
+                mask,
+                natoms,
+            ) = forward_pass(
+                model=model,
+                batch=batch,
+                graph=graph,
+                training=False,
+                device=device,
+                factorize=factorize,
+            )
 
-        # Ensure natoms is on the correct device
-        if natoms is not None and natoms.device != device:
-            natoms = natoms.to(device)
-
-        # Mapping atoms to their respective structures (for graphs)
-        structure_index = batch.batch if graph and hasattr(batch, "batch") else []
-
-        # Fix: Check if structure_index is a non-empty tensor before checking device
-        is_tensor = isinstance(structure_index, torch.Tensor)
-        has_elements = is_tensor and structure_index.numel() > 0
-        wrong_device = (
-            has_elements
-            and hasattr(structure_index, "device")
-            and structure_index.device != device
-        )
-
-        if wrong_device:
-            structure_index = structure_index.to(device)
-
-        val_loss_dict = compute_loss(
-            pred_forces,
-            pred_energy,
-            pred_stress,
-            true_forces,
-            true_energy,
-            true_stress,
-            mask,
-            device,
-            natoms,
-            graph,
-            structure_index,
-        )
-        val_loss_sum += val_loss_dict["total_loss"].item()
-        energy_loss_sum += val_loss_dict["energy_loss"].item()
-        force_loss_sum += val_loss_dict["force_loss"].item()
-        stress_iso_loss_sum += val_loss_dict["stress_iso_loss"].item()
-        stress_aniso_loss_sum += val_loss_dict["stress_aniso_loss"].item()
+            # Mapping atoms to their respective structures (for graphs)
+            structure_index = (
+                batch.batch if graph and hasattr(batch, "batch") else []
+            )
+            val_loss_dict = compute_loss(
+                pred_forces,
+                pred_energy,
+                pred_stress,
+                true_forces,
+                true_energy,
+                true_stress,
+                mask,
+                device,
+                natoms,
+                graph,
+                structure_index,
+            )
+            
+            val_loss_sum += val_loss_dict["total_loss"].item()
+            energy_loss_sum += val_loss_dict["energy_loss"].item()
+            force_loss_sum += val_loss_dict["force_loss"].item()
+            stress_iso_loss_sum += val_loss_dict["stress_iso_loss"].item()
+            stress_aniso_loss_sum += val_loss_dict["stress_aniso_loss"].item()
 
     if n == 0:
         return float("inf")
@@ -333,6 +350,7 @@ def train(
     gradient_clip=1,
     validate_every=500,
     visualize_every=500,
+    use_mixed_precision=False,
 ):
     """
     Train model with validation at epoch 0 and every 'validate_every' epochs.
@@ -359,10 +377,14 @@ def train(
         gradient_clip (int, optional): Gradient clipping value.
         validate_every (int, optional): Frequency (in epochs) to run validation.
         visualize_every (int, optional): Frequency (in epochs) to collect visualization samples.
+        use_mixed_precision (bool, optional): Whether to use mixed precision training. Defaults to False.
 
     Returns:
         (nn.Module, dict): The trained model and a dictionary of recorded losses.
     """
+    # Set up mixed precision
+    amp_context, scaler = get_amp_context(use_mixed_precision, device.type)
+
     model.to(device)
     can_write_partial = all(
         [results_path, experiment_results, data_size_key, run_entry]
@@ -380,7 +402,7 @@ def train(
         val_force_loss,
         val_stress_iso_loss,
         val_stress_aniso_loss,
-    ) = run_validation(model, val_loader, graph, device, factorize)
+    ) = run_validation(model, val_loader, graph, device, factorize, use_mixed_precision)
     losses[0] = {"val_loss": float(val_loss)}
     if writer is not None:
         # Logging each metric individually using log_tb_metrics
@@ -441,47 +463,51 @@ def train(
         with context:
             for batch_idx, batch in enumerate(train_loader):
                 optimizer.zero_grad()
-                (
-                    pred_forces,
-                    pred_energy,
-                    pred_stress,
-                    true_forces,
-                    true_energy,
-                    true_stress,
-                    mask,
-                    natoms,
-                ) = forward_pass(
-                    model=model,
-                    batch=batch,
-                    graph=graph,
-                    training=True,
-                    device=device,
-                    factorize=factorize,
-                )
-                # Mapping atoms to their respective structures (for graphs)
-                model_name = (
-                    model.name
-                    if hasattr(model, "name")
-                    else model.module.name if hasattr(model, "module") else None
-                )
-                structure_index = (
-                    batch.batch if graph and hasattr(batch, "batch") else []
-                )
-                train_loss_dict = compute_loss(
-                    pred_forces,
-                    pred_energy,
-                    pred_stress,
-                    true_forces,
-                    true_energy,
-                    true_stress,
-                    mask,
-                    device,
-                    natoms,
-                    graph,
-                    structure_index,
-                )
-                total_train_loss = train_loss_dict["total_loss"]
-                total_train_loss.backward()
+                
+                # Use autocast for mixed precision during forward pass
+                with amp_context:
+                    (
+                        pred_forces,
+                        pred_energy,
+                        pred_stress,
+                        true_forces,
+                        true_energy,
+                        true_stress,
+                        mask,
+                        natoms,
+                    ) = forward_pass(
+                        model=model,
+                        batch=batch,
+                        graph=graph,
+                        training=True,
+                        device=device,
+                        factorize=factorize,
+                    )
+                    
+                    # Mapping atoms to their respective structures (for graphs)
+                    structure_index = (
+                        batch.batch if graph and hasattr(batch, "batch") else []
+                    )
+                    train_loss_dict = compute_loss(
+                        pred_forces,
+                        pred_energy,
+                        pred_stress,
+                        true_forces,
+                        true_energy,
+                        true_stress,
+                        mask,
+                        device,
+                        natoms,
+                        graph,
+                        structure_index,
+                    )
+                    total_train_loss = train_loss_dict["total_loss"]
+                
+                # Use scaler for backward pass
+                scaler.scale(total_train_loss).backward()
+
+                if use_mixed_precision:
+                    scaler.unscale_(optimizer)
 
                 if distributed:
                     # Synchronize gradients across processes
@@ -491,7 +517,10 @@ def train(
                             param.grad.data /= dist.get_world_size()
 
                 torch.nn.utils.clip_grad_norm_(model.parameters(), gradient_clip)
-                optimizer.step()
+                
+                # Update with scaler
+                scaler.step(optimizer)
+                scaler.update()
 
                 train_loss_sum += total_train_loss.item()
                 energy_loss_sum += train_loss_dict["energy_loss"].item()
@@ -586,7 +615,7 @@ def train(
                 val_force_loss,
                 val_stress_iso_loss,
                 val_stress_aniso_loss,
-            ) = run_validation(model, val_loader, graph, device, factorize)
+            ) = run_validation(model, val_loader, graph, device, factorize, use_mixed_precision)
 
             if distributed:
                 val_loss_tensor = torch.tensor(val_loss, device=device)

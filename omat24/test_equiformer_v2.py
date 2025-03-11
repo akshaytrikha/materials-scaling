@@ -312,15 +312,18 @@ class TestEquiformerV2(unittest.TestCase):
             self.assertEqual(config["num_params"], 1798)
 
             # The expected loss values below are chosen based on a prior minimal overfit run.
-            np.testing.assert_allclose(first_train_loss, 105.53826141357422, rtol=0.1)
-            np.testing.assert_allclose(first_val_loss, 78.86790084838867, rtol=0.1)
+            np.testing.assert_allclose(first_train_loss, 124.94979858398438, rtol=0.1)
+            np.testing.assert_allclose(first_val_loss, 95.6764030456543, rtol=0.1)
             if os.getenv("IS_CI", False):
-                np.testing.assert_allclose(last_train_loss, 0.22398905, rtol=0.1)
+                np.testing.assert_allclose(last_train_loss, 7.25011635, rtol=0.1)
             else:
                 np.testing.assert_allclose(
-                    last_train_loss, 0.27151069045066833, rtol=0.1
+                    last_train_loss, 10.293143272399902, rtol=0.1
                 )
-            np.testing.assert_allclose(last_val_loss, 144.41654205322266, rtol=0.1)
+            if os.getenv("IS_CI", False):
+                np.testing.assert_allclose(last_val_loss, 127.09902191, rtol=0.1)
+            else:
+                np.testing.assert_allclose(last_val_loss, 104.14714431762695, rtol=0.1)
 
             result = subprocess.run(
                 [
