@@ -827,7 +827,6 @@ class LRScheduler:
         self.config = {
             "scheduler": "LambdaLR",
             "schedule_params": self.schedule_params
-            
         }
 
     def step(self, metrics=None, epoch=None):

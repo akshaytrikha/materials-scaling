@@ -22,7 +22,6 @@ import subprocess
 import torch.distributed as dist
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data.distributed import DistributedSampler
-from fairchem.core.modules.scheduler import LRScheduler
 
 # Internal
 from data import get_dataloaders
@@ -32,7 +31,7 @@ from models.fcn import MetaFCNModels
 from models.transformer_models import MetaTransformerModels
 from models.schnet import MetaSchNetModels
 from models.equiformer_v2 import MetaEquiformerV2Models
-from train_utils import train
+from train_utils import train, LRScheduler
 
 # Set seed & device
 SEED = 1024
