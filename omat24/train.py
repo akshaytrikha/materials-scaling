@@ -198,12 +198,13 @@ def main(rank=None, world_size=None):
             # scheduler = LambdaLR(optimizer, lr_lambda=lambda_schedule)
             scheduler = None
             if args.scheduler_type == "cosine":
+                total_steps = num_epochs * len(train_loader) / batch_size
                 scheduler = LRScheduler(optimizer, {
                     "scheduler_type": "LambdaLR",
                     "lambda_type": args.scheduler_type,
-                    "warmup_epochs": num_epochs * len(train_loader) * 0.01 / (2 * batch_size),
+                    "warmup_steps": total_steps * 0.01 / 2,
                     "warmup_factor": 0.2,
-                    "epochs": num_epochs,
+                    "steps": total_steps,
                     "lr_min_factor": 0.01
                 })
 
