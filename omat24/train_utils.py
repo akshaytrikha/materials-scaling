@@ -711,7 +711,7 @@ class CosineLRLambda:
             if current_step >= self.steps:
                 return self.lr_min_factor
             return self.lr_min_factor + 0.5 * (1 - self.lr_min_factor) * (
-                1 + math.cos(math.pi * (current_step / self.max_epochs))
+                1 + math.cos(math.pi * (current_step / self.steps))
             )
 
 

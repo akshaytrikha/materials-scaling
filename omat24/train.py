@@ -198,7 +198,7 @@ def main(rank=None, world_size=None):
             # scheduler = LambdaLR(optimizer, lr_lambda=lambda_schedule)
             scheduler = None
             if args.scheduler_type == "cosine":
-                total_steps = num_epochs * len(train_loader) / batch_size
+                total_steps = num_epochs * dataset_size / batch_size
                 scheduler = LRScheduler(optimizer, {
                     "scheduler_type": "LambdaLR",
                     "lambda_type": args.scheduler_type,
