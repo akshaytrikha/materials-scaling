@@ -811,7 +811,6 @@ class LRScheduler:
         if self.scheduler_type == "LambdaLR":
             scheduler_lambda_fn = None
             self.lambda_type = self.scheduler_params["lambda_type"]
-
             if self.lambda_type == "cosine":
                 scheduler_lambda_fn = CosineLRLambda(self.scheduler_params)
             elif self.lambda_type == "multistep":
@@ -824,6 +823,12 @@ class LRScheduler:
             self.scheduler = getattr(torch.optim.lr_scheduler, self.scheduler_type)
             scheduler_args = self.filter_kwargs(self.scheduler_params)
             self.scheduler = self.scheduler(optimizer, **scheduler_args)
+        
+        self.config = {
+            "scheduler": "LambdaLR",
+            "schedule_params": self.schedule_params
+            
+        }
 
     def step(self, metrics=None, epoch=None):
         if self.scheduler_type == "Null":
