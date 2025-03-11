@@ -804,6 +804,7 @@ class LRScheduler:
 
     def __init__(self, optimizer, scheduler_params) -> None:
         self.optimizer = optimizer
+        print(scheduler_params)
         self.scheduler_type = aii(scheduler_params["scheduler_type"], str)
         self.scheduler_params = scheduler_params.copy()
 
