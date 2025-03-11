@@ -696,7 +696,7 @@ def train(
 
 class CosineLRLambda:
     def __init__(self, scheduler_params) -> None:
-        self.warmup_epochs = aii(scheduler_params["warmup_epochs"], int)
+        self.warmup_epochs = aii(scheduler_params["warmup_epochs"], float)
         self.lr_warmup_factor = aii(scheduler_params["warmup_factor"], float)
         self.max_epochs = aii(scheduler_params["epochs"], int)
         self.lr_min_factor = aii(scheduler_params["lr_min_factor"], float)
@@ -706,7 +706,7 @@ class CosineLRLambda:
         print(f"current_step is {current_step}")
         print(f"self.warmup_epochs is {self.warmup_epochs}")
         if current_step <= self.warmup_epochs:
-            alpha = current_step / float(self.warmup_epochs)
+            alpha = current_step / self.warmup_epochs
             return self.lr_warmup_factor * (1.0 - alpha) + alpha
         else:
             if current_step >= self.max_epochs:
