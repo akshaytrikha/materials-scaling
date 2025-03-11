@@ -22,6 +22,7 @@ import subprocess
 import torch.distributed as dist
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data.distributed import DistributedSampler
+import dill
 
 # Internal
 from data import get_dataloaders
@@ -266,7 +267,12 @@ def main(rank=None, world_size=None):
             # Save checkpoint
             if is_main_process:  # Only save on main process
                 Path("checkpoints").mkdir(exist_ok=True)
-                torch.save(trained_model, checkpoint_path)
+                torch.save({
+                    "trained_model": trained_model,
+                    "losses": losses,
+                    "batch_size": batch_size,
+                    "lr": lr,
+                }, checkpoint_path)
 
             if is_main_process:
                 progress_bar.close()
