@@ -201,7 +201,7 @@ def main(rank=None, world_size=None):
                 scheduler = LRScheduler(optimizer, {
                     "scheduler_type": "LambdaLR",
                     "lambda_type": args.scheduler_type,
-                    "warmup_epochs": 0.1 * num_epochs,
+                    "warmup_epochs": int(0.1 * num_epochs),
                     "warmup_factor": 0.9,
                     "lr_min_factor": 0.1
                 })
