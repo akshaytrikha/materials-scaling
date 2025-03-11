@@ -694,32 +694,6 @@ def train(
 
     return model, losses
 
-def multiply(obj, num):
-    if isinstance(obj, list):
-        for i in range(len(obj)):
-            obj[i] = obj[i] * num
-    else:
-        obj = obj * num
-    return obj
-
-
-def cosine_lr_lambda(current_step: int, scheduler_params):
-    warmup_epochs = aii(scheduler_params["warmup_epochs"], int)
-    lr_warmup_factor = aii(scheduler_params["warmup_factor"], float)
-    max_epochs = aii(scheduler_params["epochs"], int)
-    lr_min_factor = aii(scheduler_params["lr_min_factor"], float)
-
-    # `warmup_epochs` is already multiplied with the num of iterations
-    if current_step <= warmup_epochs:
-        alpha = current_step / float(warmup_epochs)
-        return lr_warmup_factor * (1.0 - alpha) + alpha
-    else:
-        if current_step >= max_epochs:
-            return lr_min_factor
-        return lr_min_factor + 0.5 * (1 - lr_min_factor) * (
-            1 + math.cos(math.pi * (current_step / max_epochs))
-        )
-
 
 class CosineLRLambda:
     def __init__(self, scheduler_params) -> None:
@@ -730,6 +704,8 @@ class CosineLRLambda:
 
     def __call__(self, current_step: int):
         # `warmup_epochs` is already multiplied with the num of iterations
+        print(f"current_step is {current_step}")
+        print(f"self.warmup_epochs is {self.warmup_epochs}")
         if current_step <= self.warmup_epochs:
             alpha = current_step / float(self.warmup_epochs)
             return self.lr_warmup_factor * (1.0 - alpha) + alpha
@@ -739,36 +715,6 @@ class CosineLRLambda:
             return self.lr_min_factor + 0.5 * (1 - self.lr_min_factor) * (
                 1 + math.cos(math.pi * (current_step / self.max_epochs))
             )
-
-
-def multistep_lr_lambda(current_step: int, scheduler_params) -> float:
-    warmup_epochs = aii(scheduler_params["warmup_epochs"], int)
-    lr_warmup_factor = aii(scheduler_params["warmup_factor"], float)
-    lr_decay_epochs: list[int] = scheduler_params["decay_epochs"]
-    lr_gamma = aii(scheduler_params["decay_rate"], float)
-
-    if current_step <= warmup_epochs:
-        alpha = current_step / float(warmup_epochs)
-        return lr_warmup_factor * (1.0 - alpha) + alpha
-    else:
-        idx = bisect(lr_decay_epochs, current_step)
-        return pow(lr_gamma, idx)
-
-
-class MultistepLRLambda:
-    def __init__(self, scheduler_params) -> None:
-        self.warmup_epochs = aii(scheduler_params["warmup_epochs"], int)
-        self.lr_warmup_factor = aii(scheduler_params["warmup_factor"], float)
-        self.lr_decay_epochs = aii(scheduler_params["decay_epochs"], list)
-        self.lr_gamma = aii(scheduler_params["decay_rate"], float)
-
-    def __call__(self, current_step: int) -> float:
-        if current_step <= self.warmup_epochs:
-            alpha = current_step / float(self.warmup_epochs)
-            return self.lr_warmup_factor * (1.0 - alpha) + alpha
-        else:
-            idx = bisect(self.lr_decay_epochs, current_step)
-            return pow(self.lr_gamma, idx)
 
 
 class LRScheduler:
@@ -788,14 +734,6 @@ class LRScheduler:
                 warmup_epochs: ...
                 warmup_factor: ...
                 lr_min_factor: ...
-        5. Following 3., if `multistep` is used, `scheduler_params` in .yml looks like:
-            scheduler: LambdaLR
-            scheduler_params:
-                lambda_type: multistep
-                warmup_epochs: ...
-                warmup_factor: ...
-                decay_epochs: ... (list)
-                decay_rate: ...
 
     Args:
         optimizer (obj): torch optim object
@@ -814,8 +752,6 @@ class LRScheduler:
             self.lambda_type = self.scheduler_params["lambda_type"]
             if self.lambda_type == "cosine":
                 scheduler_lambda_fn = CosineLRLambda(self.scheduler_params)
-            elif self.lambda_type == "multistep":
-                scheduler_lambda_fn = MultistepLRLambda(self.scheduler_params)
             else:
                 raise ValueError
             self.scheduler_params["lr_lambda"] = scheduler_lambda_fn
