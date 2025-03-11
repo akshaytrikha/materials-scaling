@@ -266,20 +266,7 @@ def main(rank=None, world_size=None):
             # Save checkpoint
             if is_main_process:  # Only save on main process
                 Path("checkpoints").mkdir(exist_ok=True)
-                model_state = (
-                    trained_model.module.state_dict()
-                    if isinstance(trained_model, DDP)
-                    else trained_model.state_dict()
-                )
-                torch.save(
-                    {
-                        "model_state_dict": model_state,
-                        "losses": losses,
-                        "batch_size": batch_size,
-                        "lr": lr,
-                    },
-                    checkpoint_path,
-                )
+                torch.save(trained_model, checkpoint_path)
 
             if is_main_process:
                 progress_bar.close()
