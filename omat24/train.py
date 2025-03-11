@@ -203,6 +203,7 @@ def main(rank=None, world_size=None):
                     "lambda_type": args.scheduler_type,
                     "warmup_epochs": int(0.1 * num_epochs),
                     "warmup_factor": 0.9,
+                    "epochs": num_epochs,
                     "lr_min_factor": 0.1
                 })
 
