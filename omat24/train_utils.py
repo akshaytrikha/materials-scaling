@@ -824,11 +824,6 @@ class LRScheduler:
             self.scheduler = getattr(torch.optim.lr_scheduler, self.scheduler_type)
             scheduler_args = self.filter_kwargs(self.scheduler_params)
             self.scheduler = self.scheduler(optimizer, **scheduler_args)
-        
-        self.config = {
-            "scheduler": "LambdaLR",
-            "schedule_params": self.schedule_params
-        }
 
     def step(self, metrics=None, epoch=None):
         if self.scheduler_type == "Null":
