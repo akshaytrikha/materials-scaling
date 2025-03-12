@@ -8,6 +8,7 @@ import random
 from torch.utils.data import DataLoader, Subset, Dataset, ConcatDataset
 from torch.utils.data.distributed import DistributedSampler
 from fairchem.core.datasets import AseDBDataset
+import bisect
 
 # Set sharing strategy before any other multiprocessing operations
 torch.multiprocessing.set_sharing_strategy('file_system')
@@ -188,14 +189,118 @@ class MinimalOMat24Dataset(AseDBDataset):
         config = {"src": dataset_paths}
         super().__init__(config)
         self.debug = debug
+        self.dataset_paths = dataset_paths
+
+        # Don't store the database connections - they're not picklable
+        self._connection_initialized = False
+        
+        # Save the dbs and ids for later re-initialization in workers
+        self._db_paths = [str(db.filename) for db in self.dbs]
+        self._db_ids = self.db_ids
+        self._idlen_cumulative = self._idlen_cumulative
+        
+        # Close the database connections that were opened in parent's __init__
+        self._close_dbs()
 
         if debug:
-            print(f"Initialized dataset with {len(self)} samples from {dataset_paths}")
+            print(f"[INIT] Initialized dataset with {len(self)} samples from {dataset_paths}")
+            print(f"[INIT] DB paths: {self._db_paths}")
+            print(f"[INIT] Process ID: {os.getpid()}")
+
+    def _close_dbs(self):
+        """Close database connections"""
+        if hasattr(self, 'dbs'):
+            if self.debug:
+                print(f"[CLOSE] Closing database connections in process {os.getpid()}")
+            for db in self.dbs:
+                if hasattr(db, 'close'):
+                    db.close()
+            # Delete references to avoid pickle errors
+            del self.dbs
+            self._connection_initialized = False
+
+    def _initialize_connections(self):
+        """Initialize database connections when needed"""
+        if not self._connection_initialized:
+            # Reopen the database connections
+            if self.debug:
+                print(f"[INIT_CONN] Initializing DB connections in process {os.getpid()}")
+            self.dbs = []
+            for path in self._db_paths:
+                try:
+                    if self.debug:
+                        print(f"[INIT_CONN] Connecting to {path} in process {os.getpid()}")
+                    self.dbs.append(self.connect_db(path, {"readonly": True, "lock": False}))
+                except Exception as e:
+                    if self.debug:
+                        print(f"[ERROR] Error connecting to database {path}: {str(e)}")
+                    raise
+            self._connection_initialized = True
+            if self.debug:
+                print(f"[INIT_CONN] Successfully initialized {len(self.dbs)} DB connections in process {os.getpid()}")
+
+    def __getstate__(self):
+        """Define what gets pickled - exclude unpicklable objects"""
+        if self.debug:
+            print(f"[PICKLE] __getstate__ called in process {os.getpid()}")
+        state = self.__dict__.copy()
+        # Remove unpicklable items
+        if 'dbs' in state:
+            del state['dbs']
+        state['_connection_initialized'] = False
+        return state
+
+    def __setstate__(self, state):
+        """Restore state when unpickled"""
+        if state.get('debug', False):
+            print(f"[UNPICKLE] __setstate__ called in process {os.getpid()}")
+        self.__dict__.update(state)
+
+    def get_atoms(self, idx):
+        """Get atoms with lazy database initialization"""
+        # Initialize connections if needed
+        worker_id = getattr(torch.utils.data.get_worker_info(), 'id', None)
+        if self.debug:
+            print(f"[GET_ATOMS] Getting atoms for index {idx} in process {os.getpid()}, worker {worker_id}")
+        
+        self._initialize_connections()
+        
+        # Now proceed with the regular get_atoms method
+        try:
+            # Use the parent class method with our reopened connections
+            # Figure out which db this should be indexed from.
+            db_idx = bisect.bisect(self._idlen_cumulative, idx)
+
+            # Extract index of element within that db
+            el_idx = idx
+            if db_idx != 0:
+                el_idx = idx - self._idlen_cumulative[db_idx - 1]
+            assert el_idx >= 0
+
+            if self.debug:
+                print(f"[GET_ATOMS] Using DB {db_idx} for index {idx}, el_idx {el_idx} in process {os.getpid()}")
+            
+            atoms_row = self.dbs[db_idx]._get_row(self._db_ids[db_idx][el_idx])
+            atoms = atoms_row.toatoms()
+
+            # put data back into atoms info
+            if isinstance(atoms_row.data, dict):
+                atoms.info.update(atoms_row.data)
+
+            return atoms
+        except Exception as e:
+            if self.debug:
+                print(f"[ERROR] Error getting atoms for sample {idx} in process {os.getpid()}: {str(e)}")
+            raise
 
     def __getitem__(self, idx):
         # Skip any potential resource-intensive operations
+        worker_id = getattr(torch.utils.data.get_worker_info(), 'id', None)
+        if self.debug and idx % 50 == 0:  # Reduce logging frequency
+            print(f"[GETITEM] Getting item {idx} in process {os.getpid()}, worker {worker_id}")
+            
         try:
-            # Get atoms object using parent class method
+            # Get atoms object using lazy-loading method
             atoms = self.get_atoms(idx)
 
             # Extract atomic numbers, positions, symbols
@@ -225,9 +330,12 @@ class MinimalOMat24Dataset(AseDBDataset):
                 "stress": stress,
             }
 
+            if self.debug and idx % 50 == 0:  # Reduce logging frequency
+                print(f"[GETITEM] Successfully processed item {idx} with {len(atomic_numbers)} atoms")
+                
             return sample
         except Exception as e:
-            print(f"Error processing sample {idx}: {str(e)}")
+            print(f"[ERROR] Error processing sample {idx} in process {os.getpid()}: {str(e)}")
             # Return a minimal valid sample to avoid crashes
             return {
                 "idx": idx,
@@ -248,6 +356,18 @@ class ConcatMinimalDataset(ConcatDataset):
     pass
 
 
+def worker_init_fn(worker_id):
+    """Initialize worker-specific resources"""
+    print(f"[WORKER_INIT] Initializing worker {worker_id} in process {os.getpid()}")
+    # Each worker needs its own random seed
+    worker_seed = torch.initial_seed() % 2**32
+    np.random.seed(worker_seed)
+    random.seed(worker_seed)
+    
+    # Workers will initialize their database connections when needed
+    # through the lazy loading mechanism in get_atoms
+
+
 def get_dataloaders(
     dataset_paths,
     train_data_fraction,
@@ -261,7 +381,7 @@ def get_dataloaders(
 ):
     """Creates training and validation DataLoaders from dataset paths."""
     if debug:
-        print(f"Loading datasets from: {dataset_paths}")
+        print(f"[DATALOADER] Loading datasets from: {dataset_paths} in process {os.getpid()}")
 
     train_subsets = []
     val_subsets = []
@@ -270,19 +390,19 @@ def get_dataloaders(
 
     for path in dataset_paths:
         if debug:
-            print(f"Loading dataset from {path}")
+            print(f"[DATALOADER] Loading dataset from {path} in process {os.getpid()}")
 
         dataset = MinimalOMat24Dataset(dataset_paths=[path], debug=debug)
 
         if debug:
-            print(f"Dataset size: {len(dataset)}")
+            print(f"[DATALOADER] Dataset size: {len(dataset)} in process {os.getpid()}")
 
         train_subset, val_subset, _, _ = split_dataset(
             dataset, train_data_fraction, val_data_fraction, seed
         )
 
         if debug:
-            print(f"Split sizes - Train: {len(train_subset)}, Val: {len(val_subset)}")
+            print(f"[DATALOADER] Split sizes - Train: {len(train_subset)}, Val: {len(val_subset)} in process {os.getpid()}")
 
         train_subsets.append(train_subset)
         val_subsets.append(val_subset)
@@ -292,13 +412,13 @@ def get_dataloaders(
 
     if debug:
         print(
-            f"Combined dataset sizes - Train: {len(train_dataset)}, Val: {len(val_dataset)}"
+            f"[DATALOADER] Combined dataset sizes - Train: {len(train_dataset)}, Val: {len(val_dataset)} in process {os.getpid()}"
         )
 
     # Configure samplers for DDP
     if distributed:
         if debug:
-            print("Using DistributedSampler")
+            print(f"[DATALOADER] Using DistributedSampler in process {os.getpid()}")
         train_sampler = DistributedSampler(train_dataset, seed=seed)
         val_sampler = DistributedSampler(val_dataset, seed=seed, shuffle=False)
         shuffle = False
@@ -320,6 +440,7 @@ def get_dataloaders(
         num_workers=train_workers,
         persistent_workers=train_workers > 0,
         pin_memory=torch.cuda.is_available(),
+        worker_init_fn=worker_init_fn,  # Add worker initialization
     )
 
     val_loader = DataLoader(
@@ -331,11 +452,12 @@ def get_dataloaders(
         num_workers=val_workers,
         persistent_workers=val_workers > 0,
         pin_memory=torch.cuda.is_available(),
+        worker_init_fn=worker_init_fn,  # Add worker initialization
     )
 
     if debug:
         print(
-            f"Created DataLoaders - Train batches: {len(train_loader)}, Val batches: {len(val_loader)}"
+            f"[DATALOADER] Created DataLoaders - Train batches: {len(train_loader)}, Val batches: {len(val_loader)} in process {os.getpid()}"
         )
 
     return train_loader, val_loader
@@ -345,6 +467,7 @@ def test_dataloader(rank, world_size, args):
     """Test dataloader functionality."""
     # Set up DDP
     setup_ddp(rank, world_size)
+    print(f"[RANK {rank}] DDP setup complete in process {os.getpid()}")
 
     # Create dataset path
     dataset_names = args.datasets
@@ -354,8 +477,8 @@ def test_dataloader(rank, world_size, args):
     ]
 
     if rank == 0:
-        print(f"Testing data loading for datasets: {dataset_names}")
-        print(f"Using {world_size} GPUs")
+        print(f"[RANK {rank}] Testing data loading for datasets: {dataset_names}")
+        print(f"[RANK {rank}] Using {world_size} GPUs")
 
     try:
         # Get dataloaders with debug flag enabled
@@ -373,26 +496,28 @@ def test_dataloader(rank, world_size, args):
 
         # Print info about dataloaders
         if rank == 0:
-            print(f"Successfully created dataloaders!")
-            print(f"Training samples: {len(train_loader.dataset)}")
-            print(f"Validation samples: {len(val_loader.dataset)}")
-            print(f"Training batches: {len(train_loader)}")
-            print(f"Validation batches: {len(val_loader)}")
+            print(f"[RANK {rank}] Successfully created dataloaders!")
+            print(f"[RANK {rank}] Training samples: {len(train_loader.dataset)}")
+            print(f"[RANK {rank}] Validation samples: {len(val_loader.dataset)}")
+            print(f"[RANK {rank}] Training batches: {len(train_loader)}")
+            print(f"[RANK {rank}] Validation batches: {len(val_loader)}")
 
         # Test fetching a batch
         if rank == 0:
-            print("Fetching first batch from train loader...")
+            print(f"[RANK {rank}] Fetching first batch from train loader...")
 
         # Synchronize before fetching batch to ensure all processes are ready
         torch.cuda.synchronize()
         dist.barrier()
-        print(f"Rank {rank} barrier passed")
+        print(f"[RANK {rank}] Barrier passed in process {os.getpid()}")
 
         for batch_idx, batch in enumerate(train_loader):
             if rank == 0:
-                print(f"Successfully loaded batch {batch_idx+1}/{len(train_loader)}")
-                print(f"Batch keys: {batch.keys()}")
-                print(f"Atomic numbers shape: {batch['atomic_numbers'].shape}")
+                print(f"[RANK {rank}] Successfully loaded batch {batch_idx+1}/{len(train_loader)}")
+                print(f"[RANK {rank}] Batch keys: {batch.keys()}")
+                print(f"[RANK {rank}] Atomic numbers shape: {batch['atomic_numbers'].shape}")
+            else:
+                print(f"[RANK {rank}] Loaded batch {batch_idx+1}")
 
             # Only test the first batch
             if batch_idx == 0:
@@ -401,18 +526,20 @@ def test_dataloader(rank, world_size, args):
         # Synchronize after fetching to ensure all processes complete
         torch.cuda.synchronize()
         dist.barrier()
+        print(f"[RANK {rank}] Final barrier passed in process {os.getpid()}")
 
         if rank == 0:
-            print("Dataloader test completed successfully!")
+            print("[RANK 0] Dataloader test completed successfully!")
 
     except Exception as e:
-        print(f"Rank {rank} encountered error: {str(e)}")
+        print(f"[RANK {rank}] Encountered error in process {os.getpid()}: {str(e)}")
         import traceback
 
         traceback.print_exc()
     finally:
         # Clean up
         cleanup_ddp()
+        print(f"[RANK {rank}] DDP cleanup complete in process {os.getpid()}")
 
 
 def main():
@@ -466,6 +593,7 @@ def main():
         return
 
     print(f"Using {world_size} GPUs")
+    print(f"Main process ID: {os.getpid()}")
 
     # Launch processes
     mp.spawn(test_dataloader, args=(world_size, args), nprocs=world_size, join=True)
