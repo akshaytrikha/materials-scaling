@@ -200,11 +200,10 @@ class MinimalOMat24Dataset(Dataset):
 
     def __setstate__(self, state):
         """Custom unpickling method"""
-        if self.debug:
-            print("Unpickling dataset")
         self.__dict__.update(state)
         self._init_dataset()
         if self.debug:
+            print("Unpickling dataset")
             print(
                 f"Initialized dataset with {len(self.dataset)} samples from {self.dataset_paths}"
             )
@@ -383,7 +382,6 @@ def test_dataloader(rank, world_size, args):
             train_data_fraction=args.data_fraction,
             batch_size=args.batch_size,
             seed=SEED,
-            architecture="FCN",
             val_data_fraction=0.1,
             train_workers=args.workers,
             val_workers=args.workers,
