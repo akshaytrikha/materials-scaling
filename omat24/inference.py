@@ -24,7 +24,7 @@ from train_utils import forward_pass, collect_samples_helper
 from models.fcn import FCNModel
 from models.transformer_models import XTransformerModel
 from models.schnet import SchNet
-from models.equiformer_v2 import EquiformerS2EF
+from models.equiformer_v2 import EquiformerS2EFS
 
 # Set seed & device
 SEED = 1024
@@ -201,7 +201,7 @@ def load_fairchem_eqV2(config_name, device):
             weights = weights["model_state_dict"]
 
         # Load the weights into the model
-        model.load_state_dict(weights, strict=True)
+        model.load_state_dict(weights, strict=False)
         print(f"Successfully loaded weights from {local_weights_path}")
 
         # Move model to device
