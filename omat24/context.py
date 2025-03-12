@@ -8,6 +8,7 @@ filenames_to_include = [
     "models/fcn.py",
     "models/transformer_models.py",
     "models/schnet.py",
+    "models/model_utils.py",
     "train.py",
     "train_utils.py",
     "log_utils.py",
@@ -17,6 +18,7 @@ filenames_to_include = [
     "test_transformer.py",
     "test_schnet.py",
     "test_equiformer_v2.py",
+    "tests/test_model_init.py",
     "model_prediction_evolution.py",
     "test_collect_samples_for_visualizing.py",
 ]

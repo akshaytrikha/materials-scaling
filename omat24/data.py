@@ -8,7 +8,7 @@ import numpy as np
 from torch.utils.data import DataLoader, Subset, Dataset, ConcatDataset
 from fairchem.core.datasets import AseDBDataset
 from torch_geometric.data import Data
-from torch_geometric.data import DataLoader as PyGDataLoader
+from torch_geometric.loader import DataLoader as PyGDataLoader
 from torch.utils.data.distributed import DistributedSampler
 
 # Internal
