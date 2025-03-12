@@ -204,7 +204,7 @@ class MinimalOMat24Dataset(AseDBDataset):
 
         if debug:
             print(f"[INIT] Initialized dataset with {len(self)} samples from {dataset_paths}")
-            print(f"[INIT] DB paths: {self._db_paths}")
+            print(f"[INIT] DB paths: {len(self._db_paths)}")
             print(f"[INIT] Process ID: {os.getpid()}")
 
     def _close_dbs(self):
@@ -214,9 +214,13 @@ class MinimalOMat24Dataset(AseDBDataset):
                 print(f"[CLOSE] Closing database connections in process {os.getpid()}")
             for db in self.dbs:
                 if hasattr(db, 'close'):
-                    db.close()
-            # Delete references to avoid pickle errors
-            del self.dbs
+                    try:
+                        db.close()
+                    except Exception as e:
+                        if self.debug:
+                            print(f"[CLOSE] Error closing DB: {str(e)} in process {os.getpid()}")
+            # Instead of deleting, set to None to prevent AttributeError in parent's __del__
+            self.dbs = None
             self._connection_initialized = False
 
     def _initialize_connections(self):
@@ -361,7 +365,6 @@ def worker_init_fn(worker_id):
     print(f"[WORKER_INIT] Initializing worker {worker_id} in process {os.getpid()}")
     # Each worker needs its own random seed
     worker_seed = torch.initial_seed() % 2**32
-    np.random.seed(worker_seed)
     random.seed(worker_seed)
     
     # Workers will initialize their database connections when needed
@@ -491,7 +494,7 @@ def test_dataloader(rank, world_size, args):
             train_workers=args.workers,
             val_workers=args.workers,
             distributed=True,
-            debug=(rank == 0),  # Only show debug info on rank 0
+            debug=True,  # Only show debug info on rank 0
         )
 
         # Print info about dataloaders
