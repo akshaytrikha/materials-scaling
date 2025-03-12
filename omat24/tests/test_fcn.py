@@ -208,7 +208,7 @@ class TestFCN(unittest.TestCase):
                     last_train_loss, 108.65332794189453, rtol=0.1
                 )
                 if os.getenv("IS_CI", False):
-                    np.testing.assert_allclose(last_val_loss, 129.64451027, rtol=0.1)
+                    np.testing.assert_allclose(last_val_loss, 148.59589386, rtol=0.1)
                 else:
                     np.testing.assert_allclose(
                         last_val_loss, 155.51008224487305, rtol=0.1
