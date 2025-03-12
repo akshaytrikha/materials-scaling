@@ -9,6 +9,9 @@ from torch.utils.data import DataLoader, Subset, Dataset, ConcatDataset
 from torch.utils.data.distributed import DistributedSampler
 from fairchem.core.datasets import AseDBDataset
 
+# Set sharing strategy before any other multiprocessing operations
+torch.multiprocessing.set_sharing_strategy('file_system')
+
 # Constants
 SEED = 1024
 torch.manual_seed(SEED)
