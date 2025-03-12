@@ -1,26 +1,100 @@
+# External
 import torch
 import torch.nn as nn
 from x_transformers import TransformerWrapper, Encoder
+
+# Internal
+from models.model_utils import MLPOutput, initialize_output_heads, initialize_weights
 
 
 class ConcatenatedEmbedding(nn.Module):
     def __init__(self, num_tokens, d_model):
         super().__init__()
         self.token_emb = nn.Embedding(num_tokens, d_model)
+        # Use standardized initialization
+        initialize_weights(self.token_emb)
 
     def forward(self, x, positions):
-        """
-        Args:
-            x: Tensor of shape [M, A] containing atomic numbers.
-            positions: Tensor of shape [M, A, 3] containing 3D atomic positions.
-        Returns:
-            concatenated_emb: Tensor of shape [M, A, d_model + 3]
-        """
         token_embeddings = self.token_emb(x)
-        concatenated_emb = torch.cat(
-            [token_embeddings, positions], dim=-1
-        )  # [M, A, d_model + 3 or 5]
+        concatenated_emb = torch.cat([token_embeddings, positions], dim=-1)
         return concatenated_emb
+
+
+class XTransformerModel(TransformerWrapper):
+    def __init__(
+        self,
+        num_tokens,
+        d_model,
+        depth,
+        n_heads,
+        d_ff_mult,
+        use_factorized,
+    ):
+        self.embedding_dim = d_model
+        self.depth = depth
+        self.n_heads = n_heads
+        self.d_ff_mult = d_ff_mult
+        self.use_factorized = use_factorized
+        self.additional_dim = 5 if use_factorized else 3  # For concatenated positions
+        self.name = "Transformer"
+
+        # Initialize base TransformerWrapper without its own embedding
+        super().__init__(
+            num_tokens=num_tokens,
+            max_seq_len=300,
+            emb_dim=d_model,
+            attn_layers=Encoder(
+                dim=d_model + self.additional_dim,
+                depth=depth,
+                heads=n_heads,
+                ff_mult=d_ff_mult,
+                attn_flash=torch.cuda.is_available(),
+            ),
+            use_abs_pos_emb=False,  # Disable internal positional embeddings
+        )
+
+        self.token_emb = ConcatenatedEmbedding(num_tokens, d_model)
+
+        # Predictors for Energy, Forces, and Stresses
+        self.energy_head = MLPOutput(d_model + self.additional_dim, 1)
+        self.force_head = MLPOutput(d_model + self.additional_dim, 3)
+        self.stress_head = MLPOutput(d_model + self.additional_dim, 6)
+
+        # Initialize output heads to predict dataset means
+        initialize_output_heads(self.energy_head, self.force_head, self.stress_head)
+
+        # Count parameters
+        self.num_params = sum(
+            p.numel() for name, p in self.named_parameters() if "token_emb" not in name
+        )
+
+    def forward(self, x, positions, distance_matrix=None, mask=None):
+        # Obtain concatenated embeddings
+        if self.use_factorized:
+            concatenated_emb = self.token_emb(x, distance_matrix)
+        else:
+            concatenated_emb = self.token_emb(x, positions)
+
+        # Pass embeddings to the transformer
+        output = self.attn_layers(x=concatenated_emb, mask=mask)
+
+        # Predict forces
+        forces = self.force_head(output)
+        expanded_mask = mask.unsqueeze(-1).expand(-1, -1, 3)
+        forces = forces * expanded_mask.float()
+
+        # Predict per-atom energy contributions and sum
+        energy_contrib = self.energy_head(output).squeeze(-1)
+        energy_contrib = energy_contrib * mask.float()
+        energy = energy_contrib.sum(dim=1)
+
+        # Predict per-atom stress contributions and sum
+        stress_contrib = self.stress_head(output)
+        expanded_mask = mask.unsqueeze(-1).expand(-1, -1, 6)
+        stress_contrib = stress_contrib * expanded_mask.float()
+        stress = stress_contrib.sum(dim=1)
+
+        return forces, energy, stress
 
 
 class MetaTransformerModels:
@@ -35,6 +109,7 @@ class MetaTransformerModels:
         Args:
             vocab_size (int): Number of unique tokens (atomic numbers).
             max_seq_len (int): Maximum sequence length for the transformer.
+            use_factorized (bool): Whether to use factorized distances instead of positions.
         """
         # fmt: off
         self.configurations = [
@@ -81,152 +156,3 @@ class MetaTransformerModels:
         """Allows iteration over all transformer models."""
         for idx in range(len(self.configurations)):
             yield self[idx]
-
-
-class XTransformerModel(TransformerWrapper):
-    def __init__(
-        self,
-        num_tokens,
-        d_model,
-        depth,
-        n_heads,
-        d_ff_mult,
-        use_factorized,
-    ):
-        """Initializes XTransformerModel with specified configurations.
-
-        Args:
-            num_tokens (int): Number of unique tokens (atomic numbers).
-            d_model (int): Dimension of the token embeddings.
-            depth (int): Number of transformer layers.
-            n_heads (int): Number of attention heads.
-            d_ff_mult (int): Multiplier for the feed-forward network dimension.
-            use_factorized (bool): Whether to use factorized distances instead of positions.
-        """
-        self.embedding_dim = d_model
-        self.depth = depth
-        self.n_heads = n_heads
-        self.d_ff_mult = d_ff_mult
-        self.use_factorized = use_factorized
-        self.additional_dim = 5 if use_factorized else 3  # For concatenated positions
-        self.name = "Transformer"
-
-        # Initialize base TransformerWrapper without its own embedding
-        super().__init__(
-            num_tokens=num_tokens,
-            max_seq_len=300,
-            emb_dim=d_model,
-            attn_layers=Encoder(
-                dim=d_model + self.additional_dim,
-                depth=depth,
-                heads=n_heads,
-                ff_mult=d_ff_mult,
-                attn_flash=torch.cuda.is_available(),
-            ),
-            use_abs_pos_emb=False,  # Disable internal positional embeddings
-        )
-
-        self.token_emb = ConcatenatedEmbedding(num_tokens, d_model)
-
-        # Predictors for Energy, Forces, and Stresses
-        self.energy_1 = nn.Linear(
-            d_model + self.additional_dim, d_model + self.additional_dim
-        )
-        self.energy_2 = nn.Linear(d_model + self.additional_dim, 1)  # Energy: [M, 1]
-        self.force_1 = nn.Linear(
-            d_model + self.additional_dim, d_model + self.additional_dim
-        )
-        self.force_2 = nn.Linear(d_model + self.additional_dim, 3)  # Forces: [M, A, 3]
-        self.stress_1 = nn.Linear(
-            d_model + self.additional_dim, d_model + self.additional_dim
-        )
-        self.stress_2 = nn.Linear(d_model + self.additional_dim, 6)  # Stresses: [M, 6]
-
-        # Initialize weights in the __init__ method
-        # Initialize Linear 1 with Xavier initialization (normal distribution)
-        nn.init.xavier_normal_(self.energy_1.weight)
-        if self.energy_1.bias is not None:
-            nn.init.zeros_(self.energy_1.bias)
-        nn.init.xavier_normal_(self.force_1.weight)
-        if self.force_1.bias is not None:
-            nn.init.zeros_(self.force_1.bias)
-        nn.init.xavier_normal_(self.stress_1.weight)
-        if self.stress_1.bias is not None:
-            nn.init.zeros_(self.stress_1.bias)
-        # Initialize Linear 2 with Xavier initialization (normal distribution)
-        nn.init.xavier_normal_(self.energy_2.weight)
-        if self.energy_2.bias is not None:
-            nn.init.zeros_(self.energy_2.bias)
-        nn.init.xavier_normal_(self.force_2.weight)
-        if self.force_2.bias is not None:
-            nn.init.zeros_(self.force_2.bias)
-        nn.init.xavier_normal_(self.stress_2.weight)
-        if self.stress_2.bias is not None:
-            nn.init.zeros_(self.stress_2.bias)
-
-        # --- Initialize to predict dataset mean ---
-        # For energy: if hidden activations are near 0, predict -9.773 per atom energy.
-        nn.init.normal_(self.energy_2.weight, mean=0, std=0.01)
-        self.energy_2.bias.data.fill_(-9.773)
-
-        # For forces: predict 0 force per atom.
-        nn.init.normal_(self.force_2.weight, mean=0, std=0.01)
-        self.force_2.bias.data.zero_()
-
-        # For stress: predict the dataset mean stress.
-        nn.init.normal_(self.stress_2.weight, mean=0, std=0.01)
-        self.stress_2.bias.data.copy_(
-            torch.tensor(
-                [-0.03071, -0.03048, -0.03014, 2.67e-6, -9.82e-6, -1.06e-4],
-                device=self.stress_2.bias.device,
-            )
-        )
-        # -----------------------------------------------------
-
-        # Count parameters
-        self.num_params = sum(
-            p.numel() for name, p in self.named_parameters() if "token_emb" not in name
-        )
-
-    def forward(self, x, positions, distance_matrix=None, mask=None):
-        """Forward pass of the transformer model.
-
-        Args:
-            x (Tensor): Tensor of shape [M, A] containing atomic numbers.
-            positions (Tensor): Tensor of shape [M, A, 3] containing 3D atomic positions.
-            mask (Tensor, optional): Tensor of shape [M, A] indicating padding.
-
-        Returns:
-            tuple: (forces, energy, stresses)
-                - forces (Tensor): [M, A, 3]
-                - energy (Tensor): [M]
-                - stresses (Tensor): [M, 6]
-        """
-        # Obtain concatenated embeddings
-        if self.use_factorized:
-            concatenated_emb = self.token_emb(x, distance_matrix)  # [M, A, d_model]
-        else:
-            concatenated_emb = self.token_emb(x, positions)  # [M, A, d_model]
-
-        # Pass embeddings to the transformer
-        output = self.attn_layers(x=concatenated_emb, mask=mask)  # [M, A, d_model]
-
-        # Predict forces
-        forces = self.force_2(torch.tanh(self.force_1(output)))  # [M, A, 3]
-        expanded_mask = mask.unsqueeze(-1).expand(-1, -1, 3)
-        forces = forces * expanded_mask.float()  # Mask padded atoms
-
-        # Predict per-atom energy contributions and sum
-        energy_contrib = self.energy_2(torch.tanh(self.energy_1(output))).squeeze(
-            -1
-        )  # [M, A]
-        energy_contrib = energy_contrib * mask.squeeze(-1).float()
-        energy = energy_contrib.sum(dim=1)  # [batch_size]
-
-        # Predict per-atom stress contributions and sum
-        stress_contrib = self.stress_2(torch.tanh(self.stress_1(output)))  # [M, A, 6]
-        expanded_mask = mask.unsqueeze(-1).expand(-1, -1, 6)
-        stress_contrib = stress_contrib * expanded_mask.float()
-        stress = stress_contrib.sum(dim=1)  # [batch_size, 6]
-
-        return forces, energy, stress
