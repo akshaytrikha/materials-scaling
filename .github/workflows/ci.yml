@@ -33,9 +33,9 @@ jobs:
       - name: Run tests
         run: |
           cd omat24
-          pytest tests/test_transformer.py
-          pytest tests/test_dataloader.py
-          pytest tests/test_fcn.py
-          pytest tests/test_equiformer_v2.py
-          pytest tests/test_model_init.py
-          pytest tests/test_collect_samples_for_visualizing.py
+          PYTHONPATH=$PYTHONPATH:$(pwd) pytest tests/test_transformer.py
+          PYTHONPATH=$PYTHONPATH:$(pwd) pytest tests/test_dataloader.py
+          PYTHONPATH=$PYTHONPATH:$(pwd) pytest tests/test_fcn.py
+          PYTHONPATH=$PYTHONPATH:$(pwd) pytest tests/test_equiformer_v2.py
+          PYTHONPATH=$PYTHONPATH:$(pwd) pytest tests/test_model_init.py
+          PYTHONPATH=$PYTHONPATH:$(pwd) pytest tests/test_collect_samples_for_visualizing.py
