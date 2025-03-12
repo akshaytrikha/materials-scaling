@@ -38,4 +38,4 @@ jobs:
           PYTHONPATH=$PYTHONPATH:$(pwd) pytest tests/test_fcn.py
           PYTHONPATH=$PYTHONPATH:$(pwd) pytest tests/test_equiformer_v2.py
           PYTHONPATH=$PYTHONPATH:$(pwd) pytest tests/test_model_init.py
-          PYTHONPATH=$PYTHONPATH:$(pwd) pytest tests/test_collect_samples_for_visualizing.py
+          PYTHONPATH=$PYTHONPATH:$(pwd) pytest tests/test_model_prediction_evolution.py
