@@ -201,12 +201,11 @@ class MinimalOMat24Dataset(Dataset):
     def __setstate__(self, state):
         """Custom unpickling method"""
         self.__dict__.update(state)
-        self._init_dataset()
+        # Reinitialize the dataset from the dataset_paths
+        self.dataset = AseDBDataset(config=dict(src=self.dataset_paths))
         if self.debug:
             print("Unpickling dataset")
-            print(
-                f"Initialized dataset with {len(self.dataset)} samples from {self.dataset_paths}"
-            )
+            print(f"Initialized dataset with {len(self.dataset)} samples from {self.dataset_paths}")
 
     def __len__(self):
         return len(self.dataset)
