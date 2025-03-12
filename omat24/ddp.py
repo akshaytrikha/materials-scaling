@@ -177,44 +177,23 @@ class SimpleDatasetPaddedCollate:
         }
 
 
-class MinimalOMat24Dataset(Dataset):
-    """Minimal dataset class for the OMat24 dataset."""
+class MinimalOMat24Dataset(AseDBDataset):
+    """Minimal dataset class for the OMat24 dataset that directly inherits from AseDBDataset."""
 
     def __init__(self, dataset_paths, debug=False):
-        self.dataset_paths = dataset_paths
+        # Initialize the parent class with the appropriate config
+        config = {"src": dataset_paths}
+        super().__init__(config)
         self.debug = debug
-        self.dataset = AseDBDataset(config=dict(src=dataset_paths))
 
         if debug:
-            print(
-                f"Initialized dataset with {len(self.dataset)} samples from {dataset_paths}"
-            )
-
-    def __getstate__(self):
-        """Custom pickling method"""
-        if self.debug:
-            print("Pickling dataset")
-        state = self.__dict__.copy()
-        state["dataset"] = None
-        return state
-
-    def __setstate__(self, state):
-        """Custom unpickling method"""
-        self.__dict__.update(state)
-        # Reinitialize the dataset from the dataset_paths
-        self.dataset = AseDBDataset(config=dict(src=self.dataset_paths))
-        if self.debug:
-            print("Unpickling dataset")
-            print(f"Initialized dataset with {len(self.dataset)} samples from {self.dataset_paths}")
-
-    def __len__(self):
-        return len(self.dataset)
+            print(f"Initialized dataset with {len(self)} samples from {dataset_paths}")
 
     def __getitem__(self, idx):
         # Skip any potential resource-intensive operations
         try:
-            # Retrieve atoms object for the given index
-            atoms = self.dataset.get_atoms(idx)
+            # Get atoms object using parent class method
+            atoms = self.get_atoms(idx)
 
             # Extract atomic numbers, positions, symbols
             atomic_numbers = atoms.get_atomic_numbers()
@@ -262,6 +241,7 @@ class MinimalOMat24Dataset(Dataset):
 
 class ConcatMinimalDataset(ConcatDataset):
     """A thin wrapper around ConcatDataset."""
+
     pass
 
 
