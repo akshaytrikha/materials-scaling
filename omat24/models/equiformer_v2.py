@@ -109,7 +109,7 @@ class MetaEquiformerV2Models:
     """
 
     def __init__(self, device: torch.device):
-        # Base configuration that matches fairchem's configuration
+        # Base configuration that matches fairchem's configuration from YAML
         self.base_config = {
             "pass_through_head_outputs": True,
             "otf_graph": True,
@@ -152,6 +152,16 @@ class MetaEquiformerV2Models:
                 "drop_path_rate": 0.1,
                 "proj_drop": 0.0,
                 "weight_init": "uniform",
+            },
+            "heads": {
+                "energy": {"module": "equiformer_v2_energy_head"},
+                "forces": {"module": "equiformer_v2_force_head"},
+                "stress": {
+                    "module": "rank2_symmetric_head",
+                    "output_name": "stress",
+                    "use_source_target_embedding": True,
+                    "decompose": True,
+                },
             },
         }
 
@@ -289,7 +299,7 @@ class MetaEquiformerV2Models:
         for key, value in self.configs[idx]["backbone"].items():
             config["backbone"][key] = value
 
-        model = EquiformerS2EFS(**config)
+        model = EquiformerS2EFS(config)
         model.to(self.device)
         return model
 
@@ -302,7 +312,7 @@ class MetaEquiformerV2Models:
         for key, value in self.luis_configs[idx]["backbone"].items():
             config["backbone"][key] = value
 
-        model = EquiformerS2EFS(**config)
+        model = EquiformerS2EFS(config)
         model.to(self.device)
         return model
 

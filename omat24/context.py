@@ -13,14 +13,13 @@ filenames_to_include = [
     "train_utils.py",
     "log_utils.py",
     "arg_parser.py",
-    "test_dataloader.py",
-    "test_fcn.py",
-    "test_transformer.py",
-    "test_schnet.py",
-    "test_equiformer_v2.py",
+    "tests/test_dataloader.py",
+    "tests/test_fcn.py",
+    "tests/test_transformer.py",
+    "tests/test_schnet.py",
+    "tests/test_equiformer_v2.py",
     "tests/test_model_init.py",
-    "model_prediction_evolution.py",
-    "test_collect_samples_for_visualizing.py",
+    "tests/test_model_prediction_evolution.py",
 ]
 directory_path = "."
 output_file = "context.txt"
