@@ -25,7 +25,7 @@ from torch.utils.data.distributed import DistributedSampler
 
 # Internal
 from data import get_dataloaders
-from data_utils import download_dataset, VALID_DATASETS
+from data_utils import download_dataset, VALID_DATASETS, DATASET_INFO
 from arg_parser import get_args
 from models.fcn import MetaFCNModels
 from models.transformer_models import MetaTransformerModels
@@ -110,14 +110,9 @@ def main(rank=None, world_size=None):
             vocab_size=args.n_elements, use_factorized=use_factorize
         )
     elif args.architecture == "Transformer":
-        if args.split_name == "train":
-            max_n_atoms = 236
-        elif args.split_name == "val":
-            max_n_atoms = 168
-
         meta_models = MetaTransformerModels(
             vocab_size=args.n_elements,
-            max_seq_len=max_n_atoms,
+            max_seq_len=DATASET_INFO[args.split_name]["all"]["max_n_atoms"],
             use_factorized=use_factorize,
         )
     elif args.architecture == "SchNet":
