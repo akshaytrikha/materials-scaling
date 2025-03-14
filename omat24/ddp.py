@@ -386,32 +386,32 @@ def get_dataloaders(
     if debug:
         print(f"[DATALOADER] Loading datasets from: {dataset_paths} in process {os.getpid()}")
 
-    train_subsets = []
-    val_subsets = []
+    # train_subsets = []
+    # val_subsets = []
 
     max_n_atoms = 236
 
-    for path in dataset_paths:
-        if debug:
-            print(f"[DATALOADER] Loading dataset from {path} in process {os.getpid()}")
+    # for path in dataset_paths:
+    #     if debug:
+    #         print(f"[DATALOADER] Loading dataset from {path} in process {os.getpid()}")
 
-        dataset = MinimalOMat24Dataset(dataset_paths=[path], debug=debug)
+    #     dataset = MinimalOMat24Dataset(dataset_paths=[path], debug=debug)
 
-        if debug:
-            print(f"[DATALOADER] Dataset size: {len(dataset)} in process {os.getpid()}")
+    #     if debug:
+    #         print(f"[DATALOADER] Dataset size: {len(dataset)} in process {os.getpid()}")
 
-        train_subset, val_subset, _, _ = split_dataset(
-            dataset, train_data_fraction, val_data_fraction, seed
-        )
+    #     train_subset, val_subset, _, _ = split_dataset(
+    #         dataset, train_data_fraction, val_data_fraction, seed
+    #     )
 
-        if debug:
-            print(f"[DATALOADER] Split sizes - Train: {len(train_subset)}, Val: {len(val_subset)} in process {os.getpid()}")
+    #     if debug:
+    #         print(f"[DATALOADER] Split sizes - Train: {len(train_subset)}, Val: {len(val_subset)} in process {os.getpid()}")
 
-        train_subsets.append(train_subset)
-        val_subsets.append(val_subset)
+    #     train_subsets.append(train_subset)
+    #     val_subsets.append(val_subset)
 
-    train_dataset = ConcatMinimalDataset(train_subsets)
-    val_dataset = ConcatMinimalDataset(val_subsets)
+    train_dataset = MinimalOMat24Dataset(dataset_paths=dataset_paths, debug=debug)
+    val_dataset = MinimalOMat24Dataset(dataset_paths=dataset_paths, debug=debug)
 
     if debug:
         print(
