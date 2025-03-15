@@ -1,4 +1,5 @@
 import os
+from typing import List
 import torch
 import torch.multiprocessing as mp
 import torch.distributed as dist
@@ -11,7 +12,7 @@ from fairchem.core.datasets import AseDBDataset
 import bisect
 
 # Set sharing strategy before any other multiprocessing operations
-torch.multiprocessing.set_sharing_strategy('file_system')
+torch.multiprocessing.set_sharing_strategy("file_system")
 
 # Constants
 SEED = 1024
@@ -181,177 +182,39 @@ class SimpleDatasetPaddedCollate:
         }
 
 
-class MinimalOMat24Dataset(AseDBDataset):
-    """Minimal dataset class for the OMat24 dataset that directly inherits from AseDBDataset."""
-
-    def __init__(self, dataset_paths, debug=False):
-        # Initialize the parent class with the appropriate config
-        config = {"src": dataset_paths}
-        super().__init__(config)
+class OMat24Dataset(Dataset):
+    def __init__(
+        self,
+        dataset_paths: List[Path],
+        debug: bool = False,
+    ):
+        print(f"[INIT] Initializing dataset in process {os.getpid()}")
         self.debug = debug
         self.dataset_paths = dataset_paths
+        self.has_init = False
 
-        # Don't store the database connections - they're not picklable
-        self._connection_initialized = False
-        
-        # Save the dbs and ids for later re-initialization in workers
-        self._db_paths = [str(db.filename) for db in self.dbs]
-        self._db_ids = self.db_ids
-        self._idlen_cumulative = self._idlen_cumulative
-        
-        # Close the database connections that were opened in parent's __init__
-        self._close_dbs()
+    def _init_dataset(self):
+        print(f"[INIT AseDBDataset] Initializing AseDBDataset in process {os.getpid()}")
+        self.dataset = AseDBDataset(config=dict(src=self.dataset_paths))
+        self.has_init = True
 
-        if debug:
-            print(f"[INIT] Initialized dataset with {len(self)} samples from {dataset_paths}")
-            print(f"[INIT] DB paths: {len(self._db_paths)}")
-            print(f"[INIT] Process ID: {os.getpid()}")
-
-    def _close_dbs(self):
-        """Close database connections"""
-        if hasattr(self, 'dbs'):
-            if self.debug:
-                print(f"[CLOSE] Closing database connections in process {os.getpid()}")
-            for db in self.dbs:
-                if hasattr(db, 'close'):
-                    try:
-                        db.close()
-                    except Exception as e:
-                        if self.debug:
-                            print(f"[CLOSE] Error closing DB: {str(e)} in process {os.getpid()}")
-            # Instead of deleting, set to None to prevent AttributeError in parent's __del__
-            self.dbs = None
-            self._connection_initialized = False
-
-    def _initialize_connections(self):
-        """Initialize database connections when needed"""
-        if not self._connection_initialized:
-            # Reopen the database connections
-            if self.debug:
-                print(f"[INIT_CONN] Initializing DB connections in process {os.getpid()}")
-            self.dbs = []
-            for path in self._db_paths:
-                try:
-                    if self.debug:
-                        print(f"[INIT_CONN] Connecting to {path} in process {os.getpid()}")
-                    self.dbs.append(self.connect_db(path, {"readonly": True, "lock": False}))
-                except Exception as e:
-                    if self.debug:
-                        print(f"[ERROR] Error connecting to database {path}: {str(e)}")
-                    raise
-            self._connection_initialized = True
-            if self.debug:
-                print(f"[INIT_CONN] Successfully initialized {len(self.dbs)} DB connections in process {os.getpid()}")
-
-    def __getstate__(self):
-        """Define what gets pickled - exclude unpicklable objects"""
-        if self.debug:
-            print(f"[PICKLE] __getstate__ called in process {os.getpid()}")
-        state = self.__dict__.copy()
-        # Remove unpicklable items
-        if 'dbs' in state:
-            del state['dbs']
-        state['_connection_initialized'] = False
-        return state
-
-    def __setstate__(self, state):
-        """Restore state when unpickled"""
-        if state.get('debug', False):
-            print(f"[UNPICKLE] __setstate__ called in process {os.getpid()}")
-        self.__dict__.update(state)
-
-    def get_atoms(self, idx):
-        """Get atoms with lazy database initialization"""
-        # Initialize connections if needed
-        worker_id = getattr(torch.utils.data.get_worker_info(), 'id', None)
-        if self.debug:
-            print(f"[GET_ATOMS] Getting atoms for index {idx} in process {os.getpid()}, worker {worker_id}")
-        
-        self._initialize_connections()
-        
-        # Now proceed with the regular get_atoms method
-        try:
-            # Use the parent class method with our reopened connections
-            # Figure out which db this should be indexed from.
-            db_idx = bisect.bisect(self._idlen_cumulative, idx)
-
-            # Extract index of element within that db
-            el_idx = idx
-            if db_idx != 0:
-                el_idx = idx - self._idlen_cumulative[db_idx - 1]
-            assert el_idx >= 0
-
-            if self.debug:
-                print(f"[GET_ATOMS] Using DB {db_idx} for index {idx}, el_idx {el_idx} in process {os.getpid()}")
-            
-            atoms_row = self.dbs[db_idx]._get_row(self._db_ids[db_idx][el_idx])
-            atoms = atoms_row.toatoms()
-
-            # put data back into atoms info
-            if isinstance(atoms_row.data, dict):
-                atoms.info.update(atoms_row.data)
-
-            return atoms
-        except Exception as e:
-            if self.debug:
-                print(f"[ERROR] Error getting atoms for sample {idx} in process {os.getpid()}: {str(e)}")
-            raise
+    def __len__(self):
+        print(f"[LEN] Getting length in process {os.getpid()}")
+        if not self.has_init:
+            print(f"[LEN] Initializing dataset in process {os.getpid()}")
+            self._init_dataset()
+        return len(self.dataset)
 
     def __getitem__(self, idx):
-        # Skip any potential resource-intensive operations
-        worker_id = getattr(torch.utils.data.get_worker_info(), 'id', None)
-        if self.debug and idx % 50 == 0:  # Reduce logging frequency
-            print(f"[GETITEM] Getting item {idx} in process {os.getpid()}, worker {worker_id}")
-            
-        try:
-            # Get atoms object using lazy-loading method
-            atoms = self.get_atoms(idx)
+        print(f"[GETITEM] Getting item in process {os.getpid()}")
+        if not self.has_init:
+            print(f"[GETITEM] Initializing dataset in process {os.getpid()}")
+            self._init_dataset()
 
-            # Extract atomic numbers, positions, symbols
-            atomic_numbers = atoms.get_atomic_numbers()
-            positions = atoms.get_positions()
-
-            # Convert to tensors
-            atomic_numbers = torch.tensor(atomic_numbers, dtype=torch.long)
-            positions = torch.tensor(positions, dtype=torch.float)
-
-            # Extract target properties
-            energy = torch.tensor(atoms.get_potential_energy(), dtype=torch.float)
-            forces = torch.tensor(atoms.get_forces(), dtype=torch.float)
-            stress = torch.tensor(atoms.get_stress(), dtype=torch.float)
-
-            # Compute distance matrix
-            distance_matrix = compute_distance_matrix(positions)
-
-            # Package into a dictionary with minimal processing
-            sample = {
-                "idx": idx,
-                "atomic_numbers": atomic_numbers,
-                "positions": positions,
-                "distance_matrix": distance_matrix,
-                "energy": energy,
-                "forces": forces,
-                "stress": stress,
-            }
-
-            if self.debug and idx % 50 == 0:  # Reduce logging frequency
-                print(f"[GETITEM] Successfully processed item {idx} with {len(atomic_numbers)} atoms")
-                
-            return sample
-        except Exception as e:
-            print(f"[ERROR] Error processing sample {idx} in process {os.getpid()}: {str(e)}")
-            # Return a minimal valid sample to avoid crashes
-            return {
-                "idx": idx,
-                "atomic_numbers": torch.tensor([1], dtype=torch.long),
-                "positions": torch.tensor([[0.0, 0.0, 0.0]], dtype=torch.float),
-                "distance_matrix": torch.tensor([[0.0]], dtype=torch.float),
-                "energy": torch.tensor(0.0, dtype=torch.float),
-                "forces": torch.tensor([[0.0, 0.0, 0.0]], dtype=torch.float),
-                "stress": torch.tensor(
-                    [0.0, 0.0, 0.0, 0.0, 0.0, 0.0], dtype=torch.float
-                ),
-            }
+        print(f"[GETITEM] Returning item in process {os.getpid()}") 
+        return {
+            "idx": idx,
+        }
 
 
 class ConcatMinimalDataset(ConcatDataset):
@@ -366,7 +229,7 @@ def worker_init_fn(worker_id):
     # Each worker needs its own random seed
     worker_seed = torch.initial_seed() % 2**32
     random.seed(worker_seed)
-    
+
     # Workers will initialize their database connections when needed
     # through the lazy loading mechanism in get_atoms
 
@@ -384,7 +247,9 @@ def get_dataloaders(
 ):
     """Creates training and validation DataLoaders from dataset paths."""
     if debug:
-        print(f"[DATALOADER] Loading datasets from: {dataset_paths} in process {os.getpid()}")
+        print(
+            f"[DATALOADER] Loading datasets from: {dataset_paths} in process {os.getpid()}"
+        )
 
     # train_subsets = []
     # val_subsets = []
@@ -410,8 +275,8 @@ def get_dataloaders(
     #     train_subsets.append(train_subset)
     #     val_subsets.append(val_subset)
 
-    train_dataset = MinimalOMat24Dataset(dataset_paths=dataset_paths, debug=debug)
-    val_dataset = MinimalOMat24Dataset(dataset_paths=dataset_paths, debug=debug)
+    train_dataset = OMat24Dataset(dataset_paths=dataset_paths, debug=debug)
+    val_dataset = OMat24Dataset(dataset_paths=dataset_paths, debug=debug)
 
     if debug:
         print(
@@ -516,9 +381,13 @@ def test_dataloader(rank, world_size, args):
 
         for batch_idx, batch in enumerate(train_loader):
             if rank == 0:
-                print(f"[RANK {rank}] Successfully loaded batch {batch_idx+1}/{len(train_loader)}")
+                print(
+                    f"[RANK {rank}] Successfully loaded batch {batch_idx+1}/{len(train_loader)}"
+                )
                 print(f"[RANK {rank}] Batch keys: {batch.keys()}")
-                print(f"[RANK {rank}] Atomic numbers shape: {batch['atomic_numbers'].shape}")
+                # print(
+                #     f"[RANK {rank}] Atomic numbers shape: {batch['atomic_numbers'].shape}"
+                # )
             else:
                 print(f"[RANK {rank}] Loaded batch {batch_idx+1}")
 
