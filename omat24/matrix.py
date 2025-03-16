@@ -68,6 +68,47 @@ def random_rotate_atom_positions(positions):
     return rotate_atom_positions(positions, angle_deg.item(), axis)
 
 
+def rotate_stress(stress, R):
+    """Rotate a stress tensor by applying a rotation matrix.
+
+    Args:
+        stress (torch.Tensor): Stress tensor in Voigt notation [xx, yy, zz, yz, xz, xy]
+        R (torch.Tensor): 3x3 rotation matrix
+
+    Returns:
+        torch.Tensor: Rotated stress tensor in Voigt notation
+    """
+    # Convert from Voigt notation to 3x3 matrix
+    stress_matrix = torch.tensor(
+        [
+            [stress[0], stress[5], stress[4]],  # xx, xy, xz
+            [stress[5], stress[1], stress[3]],  # xy, yy, yz
+            [stress[4], stress[3], stress[2]],  # xz, yz, zz
+        ],
+        dtype=torch.float,
+        device=stress.device if hasattr(stress, "device") else None,
+    )
+
+    # Apply the tensor transformation: R @ stress @ R.T
+    stress_matrix = R @ stress_matrix @ R.T
+
+    # Convert back to Voigt notation
+    rotated_stress = torch.tensor(
+        [
+            stress_matrix[0, 0],  # xx
+            stress_matrix[1, 1],  # yy
+            stress_matrix[2, 2],  # zz
+            stress_matrix[1, 2],  # yz
+            stress_matrix[0, 2],  # xz
+            stress_matrix[0, 1],  # xy
+        ],
+        dtype=torch.float,
+        device=stress.device if hasattr(stress, "device") else None,
+    )
+
+    return rotated_stress
+
+
 def compute_distance_matrix(positions: torch.Tensor) -> torch.Tensor:
     """Compute the pairwise Euclidean / Cartesian distance matrix for a set of atomic positions.
 
