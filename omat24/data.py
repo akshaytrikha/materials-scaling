@@ -91,6 +91,7 @@ def get_dataloaders(
     graph: bool = False,
     factorize: bool = False,
     distributed: bool = False,
+    augment: bool = False,
 ):
     """Creates training and validation DataLoaders from a list of dataset paths.
     Each dataset is loaded, split into training and validation subsets, and then
@@ -109,6 +110,7 @@ def get_dataloaders(
         graph (bool, optional): Whether to create PyG DataLoaders for graph datasets.
         factorize (bool, optional): Whether to factorize the distance matrix into a low-rank matrix.
         distributed (bool, optional): Whether to use distributed training.
+        augment (bool, optional): Whether to apply data augmentation (random rotations). Defaults to False.
 
     Returns:
         tuple: (train_loader, val_loader)
@@ -123,7 +125,10 @@ def get_dataloaders(
     # Load each dataset from its path and split it individually
     for path in dataset_paths:
         dataset = OMat24Dataset(
-            dataset_paths=[path], graph=graph, architecture=architecture
+            dataset_paths=[path],
+            graph=graph,
+            architecture=architecture,
+            augment=augment,
         )
         train_subset, val_subset, _, _ = split_dataset(
             dataset, train_data_fraction, val_data_fraction, seed
@@ -215,7 +220,7 @@ class OMat24Dataset(Dataset):
         dataset_path (Path): Path to the extracted dataset directory.
         architecture (str): Model architecture name (e.g., "FCN", "Transformer", "SchNet", "EquiformerV2").
         config_kwargs (dict, optional): Additional configuration parameters for AseDBDataset. Defaults to {}.
-        augment (bool, optional): Whether to apply data augmentation (random rotations). Defaults to True.
+        augment (bool, optional): Whether to apply data augmentation (random rotations). Defaults to False.
         graph (bool, optional): Whether to generate graph data for PyG. Defaults to False.
     """
 

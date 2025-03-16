@@ -157,12 +157,16 @@ def main(rank=None, world_size=None):
             graph=graph,
             factorize=use_factorize,
             distributed=world_size is not None,
+            augment=args.augment,  # Pass the augment flag to get_dataloaders
         )
         dataset_size = len(train_loader.dataset)
         if is_main_process:
             print(
                 f"\nTraining on dataset fraction {data_fraction} with {dataset_size} samples"
             )
+            if args.augment:
+                print("Data augmentation (random rotations) is enabled")
+
         for model_idx, model in enumerate(meta_models):
             if is_main_process:
                 print(
