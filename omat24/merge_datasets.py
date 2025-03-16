@@ -341,13 +341,33 @@ if __name__ == "__main__":
     if args.datasets[0] == "all":
         args.datasets = VALID_DATASETS
 
-    # Construct paths
-    src_paths = [
-        os.path.join(args.datasets_base_path, args.split, dataset, "data.aselmdb")
-        for dataset in args.datasets
-    ]
+    # Construct paths by finding all .aselmdb files in each dataset directory
+    src_paths = []
+    for dataset in args.datasets:
+        dataset_dir = os.path.join(args.datasets_base_path, args.split, dataset)
+        if os.path.exists(dataset_dir):
+            # Find all .aselmdb files in the directory
+            aselmdb_files = []
+            for item in os.listdir(dataset_dir):
+                if item.endswith(".aselmdb"):
+                    aselmdb_files.append(os.path.join(dataset_dir, item))
+            
+            if aselmdb_files:
+                src_paths.extend(aselmdb_files)
+            else:
+                # Fallback to default data.aselmdb if no .aselmdb files found
+                default_path = os.path.join(dataset_dir, "data.aselmdb")
+                if os.path.exists(default_path):
+                    src_paths.append(default_path)
+                elif args.verbose:
+                    print(f"Warning: No .aselmdb files found in {dataset_dir}")
+        elif args.verbose:
+            print(f"Warning: Dataset directory {dataset_dir} does not exist")
+    
     output_path = os.path.join(args.datasets_base_path, args.split, args.output, "data.aselmdb")
 
+    print(f"Found {len(src_paths)} .aselmdb files across {len(args.datasets)} dataset directories")
+    
     merge_lmdb_databases(
         src_paths, 
         output_path,
