@@ -12,7 +12,12 @@ from torch_geometric.loader import DataLoader as PyGDataLoader
 from torch.utils.data.distributed import DistributedSampler
 
 # Internal
-from matrix import compute_distance_matrix, factorize_matrix, random_rotate_atoms
+from matrix import (
+    compute_distance_matrix,
+    factorize_matrix,
+    random_rotate_atom_positions,
+    rotate_stress,
+)
 from data_utils import (
     custom_collate_fn_batch_padded,
     custom_collate_fn_dataset_padded,
@@ -301,9 +306,10 @@ class OMat24Dataset(Dataset):
         )  # Shape: (6,) if stress tensor
 
         if self.augment:
-            # Apply random rotation to positions and forces
-            positions, R = random_rotate_atoms(positions)
+            # Apply random rotation to positions, forces & stress
+            positions, R = random_rotate_atom_positions(positions)
             forces = forces @ R.T
+            stress = rotate_stress(stress, R)
 
         if self.graph:
             pyg_args = {
