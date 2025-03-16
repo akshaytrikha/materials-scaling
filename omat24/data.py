@@ -12,7 +12,11 @@ from torch_geometric.loader import DataLoader as PyGDataLoader
 from torch.utils.data.distributed import DistributedSampler
 
 # Internal
-from matrix import compute_distance_matrix, factorize_matrix, random_rotate_atoms
+from matrix import (
+    compute_distance_matrix,
+    factorize_matrix,
+    random_rotate_atom_positions,
+)
 from data_utils import (
     custom_collate_fn_batch_padded,
     custom_collate_fn_dataset_padded,
@@ -302,26 +306,30 @@ class OMat24Dataset(Dataset):
 
         if self.augment:
             # Apply random rotation to positions and forces
-            augmented_positions, R = random_rotate_atoms(positions)
-            positions = torch.cat([positions, augmented_positions])
-            energy = torch.cat([energy, energy])
-            augmented_forces = forces @ R.T
-            forces = torch.cat([forces, augmented_forces])
-            stress_matrix = torch.tensor([
-                [stress[0], stress[5], stress[4]],  # xx, xy, xz
-                [stress[5], stress[1], stress[3]],  # xy, yy, yz
-                [stress[4], stress[3], stress[2]],  # xz, yz, zz
-            ], dtype=torch.float)
-            augmented_stress_matrix = R @ stress_matrix @ R.T
-            augmented_stress = torch.tensor([
-                augmented_stress_matrix[0, 0],  # xx
-                augmented_stress_matrix[1, 1],  # yy
-                augmented_stress_matrix[2, 2],  # zz
-                augmented_stress_matrix[1, 2],  # yz
-                augmented_stress_matrix[0, 2],  # xz
-                augmented_stress_matrix[0, 1],  # xy
-            ], dtype=torch.float)
-            stress = torch.cat([stress.unsqueeze(0), augmented_stress.unsqueeze(0)], dim=0)
+            positions, R = random_rotate_atom_positions(positions)
+            forces = forces @ R.T
+
+            # Transform stress tensor (convert from Voigt notation)
+            stress_matrix = torch.tensor(
+                [
+                    [stress[0], stress[5], stress[4]],  # xx, xy, xz
+                    [stress[5], stress[1], stress[3]],  # xy, yy, yz
+                    [stress[4], stress[3], stress[2]],  # xz, yz, zz
+                ],
+                dtype=torch.float,
+            )
+            stress_matrix = R @ stress_matrix @ R.T
+            stress = torch.tensor(
+                [
+                    stress_matrix[0, 0],  # xx
+                    stress_matrix[1, 1],  # yy
+                    stress_matrix[2, 2],  # zz
+                    stress_matrix[1, 2],  # yz
+                    stress_matrix[0, 2],  # xz
+                    stress_matrix[0, 1],  # xy
+                ],
+                dtype=torch.float,
+            )
 
         if self.graph:
             pyg_args = {

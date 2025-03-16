@@ -1,61 +1,71 @@
-import numpy as np
 import torch
-from typing import Tuple
 
 
-def random_rotate_atoms(positions: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
-    """Apply a random rotation around each axis (x, y, z) to a set of atomic positions using PyTorch.
+def rotate_atom_positions(positions, angle_deg, axis=(0, 0, 1)):
+    """Rotate atomic positions by a specified angle around a specified axis.
 
     Args:
-        positions: torch tensor of shape (N, 3), where each row represents the (x, y, z) coordinates of an atom.
+        positions (torch.Tensor): Tensor of shape [N_atoms, 3] containing atomic positions
+        angle_deg (float): Rotation angle in degrees
+        axis (tuple): Normalized rotation axis (default is z-axis)
 
     Returns:
-        rotated_positions (torch.Tensor): rotated coordinates with shape (N, 3)
-        R (torch.Tensor): rotation matrix with shape  (3, 3).
+        tuple: (rotated_positions, rotation_matrix)
     """
-    # Generate random rotation angles in radians for each axis
-    theta_x = torch.rand(1) * 2 * torch.pi  # random angle for x-axis
-    theta_y = torch.rand(1) * 2 * torch.pi  # random angle for y-axis
-    theta_z = torch.rand(1) * 2 * torch.pi  # random angle for z-axi
+    # Convert angle to radians
+    angle_rad = torch.tensor(angle_deg * (torch.pi / 180.0), device=positions.device)
 
-    # Define the rotation matrices around each axis
-    R_x = torch.tensor(
+    # Convert axis to tensor and normalize
+    axis = torch.tensor(axis, dtype=torch.float, device=positions.device)
+    axis = axis / torch.norm(axis)
+
+    # Rodrigues' rotation formula components using quaternions
+    a = torch.cos(angle_rad / 2)
+    b, c, d = -axis * torch.sin(angle_rad / 2)
+
+    # Quaternion to rotation matrix conversion
+    R = torch.tensor(
         [
-            [1, 0, 0],
-            [0, torch.cos(theta_x), -torch.sin(theta_x)],
-            [0, torch.sin(theta_x), torch.cos(theta_x)],
+            [a * a + b * b - c * c - d * d, 2 * (b * c - a * d), 2 * (b * d + a * c)],
+            [2 * (b * c + a * d), a * a - b * b + c * c - d * d, 2 * (c * d - a * b)],
+            [2 * (b * d - a * c), 2 * (c * d + a * b), a * a - b * b - c * c + d * d],
         ],
-        dtype=positions.dtype,
+        dtype=torch.float,
         device=positions.device,
     )
 
-    R_y = torch.tensor(
-        [
-            [torch.cos(theta_y), 0, torch.sin(theta_y)],
-            [0, 1, 0],
-            [-torch.sin(theta_y), 0, torch.cos(theta_y)],
-        ],
-        dtype=positions.dtype,
-        device=positions.device,
-    )
-
-    R_z = torch.tensor(
-        [
-            [torch.cos(theta_z), -torch.sin(theta_z), 0],
-            [torch.sin(theta_z), torch.cos(theta_z), 0],
-            [0, 0, 1],
-        ],
-        dtype=positions.dtype,
-        device=positions.device,
-    )
-
-    # Combine the rotations: first apply x, then y, then z
-    R = R_z @ R_y @ R_x
-
-    # Apply the combined rotation matrix to each atomic position
+    # Apply rotation
     rotated_positions = positions @ R.T
 
     return rotated_positions, R
+
+
+def random_rotate_atom_positions(positions):
+    """Apply a random rotation to atomic positions.
+
+    Args:
+        positions (torch.Tensor): Tensor of shape [N_atoms, 3] containing atomic positions
+
+    Returns:
+        tuple: (rotated_positions, rotation_matrix)
+    """
+    # Generate random rotation axis using PyTorch's random number generators
+    phi = torch.rand(1, device=positions.device) * 2 * torch.pi
+    costheta = torch.rand(1, device=positions.device) * 2 - 1
+    theta = torch.acos(costheta)
+
+    # Convert spherical to Cartesian coordinates
+    axis = (
+        torch.sin(theta) * torch.cos(phi),
+        torch.sin(theta) * torch.sin(phi),
+        torch.cos(theta),
+    )
+
+    # Random angle (0 to 360 degrees)
+    angle_deg = torch.rand(1, device=positions.device) * 360
+
+    # Use the deterministic rotation function
+    return rotate_atom_positions(positions, angle_deg.item(), axis)
 
 
 def compute_distance_matrix(positions: torch.Tensor) -> torch.Tensor:

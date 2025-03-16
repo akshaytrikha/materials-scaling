@@ -1,10 +1,12 @@
 # External
 from pathlib import Path
 import unittest
+import torch
 
 # Internal
 from data import get_dataloaders, OMat24Dataset
 from data_utils import download_dataset, DATASET_INFO
+from matrix import rotate_atom_positions, random_rotate_atom_positions
 
 # Load dataset
 split_name = "val"
@@ -358,6 +360,89 @@ class TestGetDataloaders(unittest.TestCase):
             len(val_loader.dataset),
             val_1 + val_2,
             "Combined validation set size mismatch.",
+        )
+
+    def test_rotation_90_degrees_four_times(self):
+        """Test that rotating atomic positions by 90 degrees four times returns to the original positions."""
+        # Get a sample from the dataset
+        sample = dataset[0]
+        positions = sample["positions"]
+
+        # Store original positions
+        original_positions = positions.clone()
+
+        # Apply four 90-degree rotations around the z-axis
+        rotated_positions = positions
+        for _ in range(4):
+            rotated_positions, _ = rotate_atom_positions(
+                rotated_positions, 90, axis=(0, 0, 1)
+            )
+
+        # Check if we're back to the original positions (within numerical precision)
+        max_diff = torch.max(torch.abs(original_positions - rotated_positions))
+        self.assertLess(
+            max_diff,
+            1e-5,
+            "Four 90-degree rotations didn't return to original positions",
+        )
+
+    def test_rotation_matrix_properties(self):
+        """Test that the rotation matrix has proper mathematical properties."""
+        # Get a sample from the dataset
+        sample = dataset[0]
+        positions = sample["positions"]
+
+        # Test different angles
+        for angle in [30, 45, 60, 90, 180]:
+            _, R = rotate_atom_positions(positions, angle, axis=(0, 0, 1))
+
+            # Test determinant is 1 (volume preserving)
+            det = torch.det(R)
+            self.assertAlmostEqual(
+                det.item(),
+                1.0,
+                delta=1e-6,
+                msg=f"Rotation matrix for {angle} degrees doesn't have determinant 1",
+            )
+
+            # Test orthogonality (R^T * R = I)
+            I = R.T @ R
+            expected = torch.eye(3, dtype=torch.float, device=positions.device)
+            max_diff = torch.max(torch.abs(I - expected))
+            self.assertLess(
+                max_diff, 1e-5, f"Rotation matrix for {angle} degrees is not orthogonal"
+            )
+
+    def test_random_rotation_preserves_distances(self):
+        """Test that random rotations preserve distances between atoms."""
+        # Get a sample from the dataset
+        sample = dataset[0]
+        positions = sample["positions"]
+
+        # Calculate pairwise distances before rotation
+        n_atoms = positions.shape[0]
+        original_distances = torch.zeros((n_atoms, n_atoms), device=positions.device)
+        for i in range(n_atoms):
+            for j in range(i + 1, n_atoms):
+                original_distances[i, j] = torch.norm(positions[i] - positions[j])
+                original_distances[j, i] = original_distances[i, j]
+
+        # Apply random rotation
+        rotated_positions, _ = random_rotate_atom_positions(positions)
+
+        # Calculate pairwise distances after rotation
+        rotated_distances = torch.zeros((n_atoms, n_atoms), device=positions.device)
+        for i in range(n_atoms):
+            for j in range(i + 1, n_atoms):
+                rotated_distances[i, j] = torch.norm(
+                    rotated_positions[i] - rotated_positions[j]
+                )
+                rotated_distances[j, i] = rotated_distances[i, j]
+
+        # Verify distances are preserved
+        max_diff = torch.max(torch.abs(original_distances - rotated_distances))
+        self.assertLess(
+            max_diff, 1e-5, "Random rotation didn't preserve inter-atomic distances"
         )
 
 
