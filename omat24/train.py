@@ -157,7 +157,7 @@ def main(rank=None, world_size=None):
             graph=graph,
             factorize=use_factorize,
             distributed=world_size is not None,
-            augment=args.augment,  # Pass the augment flag to get_dataloaders
+            augment=args.augment,
         )
         dataset_size = len(train_loader.dataset)
         if is_main_process:
