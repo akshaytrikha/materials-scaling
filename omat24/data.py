@@ -8,7 +8,7 @@ import numpy as np
 from torch.utils.data import DataLoader, Subset, Dataset, ConcatDataset
 from fairchem.core.datasets import AseDBDataset
 from torch_geometric.data import Data
-from torch_geometric.data import DataLoader as PyGDataLoader
+from torch_geometric.loader import DataLoader as PyGDataLoader
 from torch.utils.data.distributed import DistributedSampler
 
 # Internal
@@ -113,7 +113,7 @@ def get_dataloaders(
 
     # Set max number of atoms per sample based on dataset split
     split_name = dataset_paths[0].parent.name
-    max_n_atoms = max(info["max_n_atoms"] for info in DATASET_INFO[split_name].values())
+    max_n_atoms = DATASET_INFO[split_name]["all"]["max_n_atoms"]
 
     # Load each dataset from its path and split it individually
     for path in dataset_paths:

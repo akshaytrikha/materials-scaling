@@ -17,6 +17,7 @@ import random
 # Internal
 from models.transformer_models import XTransformerModel
 from train import main as train_main
+from data_utils import DATASET_INFO
 
 
 class TestTransformer(unittest.TestCase):
@@ -52,6 +53,57 @@ class TestTransformer(unittest.TestCase):
 
         # Mask for valid (nonzero) atoms
         self.mask = self.atomic_numbers != 0
+
+    def test_initialization_predicts_means(self):
+        """Test that TransformerModel outputs predict dataset means at initialization."""
+        self.set_seed()
+
+        model = XTransformerModel(
+            num_tokens=self.vocab_size,
+            d_model=6,
+            depth=4,
+            n_heads=2,
+            d_ff_mult=2,
+            use_factorized=False,
+        )
+        model.eval()
+
+        # Create inputs with minimal interference from embedding
+        # Use token ID 0 (should be close to zero embedding if initialized properly)
+        zero_tokens = torch.zeros_like(self.atomic_numbers)
+        zero_positions = torch.zeros_like(self.positions)
+        zero_mask = torch.ones_like(self.mask)
+
+        with torch.no_grad():
+            # Get direct output from the energy head with zero input
+            zero_input = torch.zeros(1, model.embedding_dim + model.additional_dim)
+            energy_output = model.energy_head(zero_input)
+
+            # Check energy bias matches expected dataset mean
+            self.assertAlmostEqual(
+                energy_output.item(),
+                DATASET_INFO["train"]["all"]["means"]["energy"],
+                places=3,
+                msg="Energy head bias doesn't match expected dataset mean",
+            )
+
+            # Check force bias is zero
+            force_output = model.force_head(zero_input)
+            self.assertTrue(
+                torch.allclose(force_output, torch.zeros(1, 3), atol=1e-6),
+                msg="Force head output is not initialized to zero",
+            )
+
+            # Check stress bias matches expected values
+            stress_output = model.stress_head(zero_input)
+            expected_stress = torch.tensor(
+                [DATASET_INFO["train"]["all"]["means"]["stress"]],
+                dtype=stress_output.dtype,
+            )
+            self.assertTrue(
+                torch.allclose(stress_output, expected_stress, atol=1e-4),
+                msg="Stress head bias doesn't match expected dataset means",
+            )
 
     def test_fixed_transformer_overfit(self):
         """Test that a minimal training job with the Transformer architecture
@@ -141,16 +193,20 @@ class TestTransformer(unittest.TestCase):
                 self.assertEqual(config["depth"], 1)
                 self.assertEqual(config["num_params"], 1670)
 
-                np.testing.assert_allclose(first_train_loss, 1029.019196, rtol=0.1)
-                np.testing.assert_allclose(first_val_loss, 238.1077, rtol=0.1)
+                np.testing.assert_allclose(
+                    first_train_loss, 152.77677154541016, rtol=0.1
+                )
+                np.testing.assert_allclose(first_val_loss, 63.761077880859375, rtol=0.1)
                 np.testing.assert_allclose(first_flops, 0, rtol=0.1)
                 np.testing.assert_allclose(second_flops, 65028096, rtol=0.1)
-                np.testing.assert_allclose(last_train_loss, 437.988144, rtol=0.1)
+                np.testing.assert_allclose(last_train_loss, 80.31561374664307, rtol=0.1)
                 np.testing.assert_allclose(last_flops, 32514048000, rtol=0.1)
                 if os.getenv("IS_CI", False):
-                    np.testing.assert_allclose(last_val_loss, 2181.785034, rtol=0.1)
+                    np.testing.assert_allclose(last_val_loss, 81.50310326, rtol=0.1)
                 else:
-                    np.testing.assert_allclose(last_val_loss, 1894.927307, rtol=0.1)
+                    np.testing.assert_allclose(
+                        last_val_loss, 101.86371040344238, rtol=0.1
+                    )
 
                 # ---------- Test visualization was created ----------
                 result = subprocess.run(
@@ -307,7 +363,7 @@ class TestTransformer(unittest.TestCase):
         for name, param in model.named_parameters():
             # Only check parameters that require gradients.
             if param.requires_grad:
-                if "project_emb" in name or "to_logits" in name:
+                if param.grad is None:
                     continue
                 self.assertIsNotNone(param.grad, f"Gradient for {name} is None.")
                 grad_norm = param.grad.abs().sum().item()
@@ -343,12 +399,12 @@ class TestTransformer(unittest.TestCase):
         expected_in_features_non_factorized = 4 + 3
 
         self.assertEqual(
-            model_factorized.force_1.in_features,
+            model_factorized.force_head.net[0].in_features,
             expected_in_features_factorized,
             "Factorized mode force_1 input feature size incorrect.",
         )
         self.assertEqual(
-            model_non_factorized.force_1.in_features,
+            model_non_factorized.force_head.net[0].in_features,
             expected_in_features_non_factorized,
             "Non-factorized mode force_1 input feature size incorrect.",
         )

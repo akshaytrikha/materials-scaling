@@ -25,7 +25,7 @@ from torch.utils.data.distributed import DistributedSampler
 
 # Internal
 from data import get_dataloaders
-from data_utils import download_dataset, VALID_DATASETS
+from data_utils import download_dataset, VALID_DATASETS, DATASET_INFO
 from arg_parser import get_args
 from models.fcn import MetaFCNModels
 from models.transformer_models import MetaTransformerModels
@@ -110,14 +110,9 @@ def main(rank=None, world_size=None):
             vocab_size=args.n_elements, use_factorized=use_factorize
         )
     elif args.architecture == "Transformer":
-        if args.split_name == "train":
-            max_n_atoms = 236
-        elif args.split_name == "val":
-            max_n_atoms = 168
-
         meta_models = MetaTransformerModels(
             vocab_size=args.n_elements,
-            max_seq_len=max_n_atoms,
+            max_seq_len=DATASET_INFO[args.split_name]["all"]["max_n_atoms"],
             use_factorized=use_factorize,
         )
     elif args.architecture == "SchNet":
@@ -192,10 +187,11 @@ def main(rank=None, world_size=None):
                     broadcast_buffers=False,
                 )
 
-            lambda_schedule = lambda epoch: 0.5 * (
-                1 + math.cos(math.pi * epoch / num_epochs)
-            )
-            scheduler = LambdaLR(optimizer, lr_lambda=lambda_schedule)
+            # lambda_schedule = lambda epoch: 0.5 * (
+            #     1 + math.cos(math.pi * epoch / num_epochs)
+            # )
+            # scheduler = LambdaLR(optimizer, lr_lambda=lambda_schedule)
+            scheduler = None
 
             # Prepare run entry etc.
             model_name = f"model_ds{dataset_size}_p{int(num_params)}"
@@ -249,6 +245,7 @@ def main(rank=None, world_size=None):
                 "gradient_clip": args.gradient_clip,
                 "validate_every": args.val_every,
                 "visualize_every": args.vis_every,
+                "use_mixed_precision": args.mixed_precision,
             }
 
             if log and is_main_process:

@@ -18,6 +18,7 @@ from torch import nn
 # Internal
 from models.fcn import FCNModel, MetaFCNModels
 from train import main as train_main
+from data_utils import DATASET_INFO
 
 
 # A helper module that always returns zeros, to “remove” the effect of inner layers.
@@ -61,6 +62,61 @@ class TestFCN(unittest.TestCase):
 
         # Mask: valid (nonzero) atoms are True.
         self.mask = self.atomic_numbers != 0
+
+    def test_initialization_predicts_means(self):
+        """Test that FCN model outputs predict dataset means at initialization."""
+        self.set_seed()
+
+        # Create a model with small dimensions for testing
+        model = FCNModel(
+            vocab_size=self.vocab_size,
+            embedding_dim=6,
+            hidden_dim=6,
+            depth=4,
+            use_factorized=False,
+        )
+        model.eval()  # Set to evaluation mode
+
+        # Use zero-data to isolate the bias terms
+        # Create inputs of proper shape but with zeros
+        zero_positions = torch.zeros_like(self.positions)
+
+        with torch.no_grad():
+            forces, energy, stress = model(
+                self.atomic_numbers,
+                zero_positions,
+                distance_matrix=None,
+                mask=self.mask,
+            )
+
+            # Get per-atom energy contributions (before summing)
+            energy_contrib = model.energy_head(torch.zeros(1, model.hidden_dim))
+
+            # Check that energy bias matches expected dataset mean
+            self.assertAlmostEqual(
+                energy_contrib.item(),
+                DATASET_INFO["train"]["all"]["means"]["energy"],
+                places=3,
+                msg="Energy bias doesn't match expected dataset mean",
+            )
+
+            # Force initialization should be zero (it has no inherent bias)
+            force_contrib = model.force_head(torch.zeros(1, model.hidden_dim))
+            self.assertTrue(
+                torch.allclose(force_contrib, torch.zeros(1, 3), atol=1e-6),
+                msg="Force output is not initialized to zero",
+            )
+
+            # Check that stress bias matches expected dataset means
+            stress_contrib = model.stress_head(torch.zeros(1, model.hidden_dim))
+            expected_stress = torch.tensor(
+                [DATASET_INFO["train"]["all"]["means"]["stress"]],
+                dtype=stress_contrib.dtype,
+            )
+            self.assertTrue(
+                torch.allclose(stress_contrib, expected_stress, atol=1e-4),
+                msg="Stress bias doesn't match expected dataset means",
+            )
 
     def test_fixed_fcn_overfit(self):
         """Test that a minimal training job executes successfully and produces expected configuration and loss values."""
@@ -142,14 +198,21 @@ class TestFCN(unittest.TestCase):
                 # For the FCN, the first configuration (from MetaFCNModels) is expected to be:
                 self.assertEqual(config["embedding_dim"], 2)
                 self.assertEqual(config["depth"], 2)
-                self.assertEqual(config["num_params"], 62)
+                self.assertEqual(config["num_params"], 80)
 
                 np.testing.assert_allclose(
-                    first_train_loss, 1122.336365, rtol=0.1
+                    first_train_loss, 153.14564895629883, rtol=0.1
                 )
-                np.testing.assert_allclose(first_val_loss, 401.071281, rtol=0.1)
-                np.testing.assert_allclose(last_train_loss, 726.405075, rtol=0.1)
-                np.testing.assert_allclose(last_val_loss, 595.362289, rtol=0.1)
+                np.testing.assert_allclose(first_val_loss, 65.79524326324463, rtol=0.1)
+                np.testing.assert_allclose(
+                    last_train_loss, 108.65332794189453, rtol=0.1
+                )
+                if os.getenv("IS_CI", False):
+                    np.testing.assert_allclose(last_val_loss, 148.59589386, rtol=0.1)
+                else:
+                    np.testing.assert_allclose(
+                        last_val_loss, 155.51008224487305, rtol=0.1
+                    )
 
                 # ---------- Test visualization was created ----------
                 result = subprocess.run(
@@ -380,12 +443,12 @@ class TestFCN(unittest.TestCase):
         meta_models = MetaFCNModels(vocab_size=self.vocab_size, use_factorized=False)
 
         meta_models.configurations = [
-            # 138 params
+            # 198 params
             {"embedding_dim": 4, "hidden_dim": 4, "depth": 2},
-            # 1274 params
+            # 2090 params
             {"embedding_dim": 8, "hidden_dim": 16, "depth": 3},
-            # 99338 params
-            {"embedding_dim": 64, "hidden_dim": 64, "depth": 22},
+            # 13610 params
+            {"embedding_dim": 32, "hidden_dim": 32, "depth": 8},
         ]
 
         models_list = list(iter(meta_models))
@@ -394,7 +457,7 @@ class TestFCN(unittest.TestCase):
             len(meta_models),
             "Number of models returned by iteration does not match expected count.",
         )
-        expected_params = [138, 1274, 99338]
+        expected_params = [198, 2090, 13610]
         for model, expected in zip(models_list, expected_params):
             self.assertEqual(
                 model.num_params,
