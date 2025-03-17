@@ -1,3 +1,16 @@
+# Increase file descriptor limit for using GH200 on Lambda Labs
+# import patch_torch_scatter
+
+# # Increase file descriptor limits
+# import resource
+# try:
+#     soft, hard = resource.getrlimit(resource.RLIMIT_NOFILE)
+#     new_soft = min(65536, hard)  # Increase to maximum allowed or 65536
+#     resource.setrlimit(resource.RLIMIT_NOFILE, (new_soft, hard))
+#     print(f"Increased file descriptor limit from {soft} to {new_soft}")
+# except Exception as e:
+#     print(f"Warning: Could not increase file descriptor limit: {e}")
+
 import warnings
 
 warnings.filterwarnings(
@@ -157,12 +170,16 @@ def main(rank=None, world_size=None):
             graph=graph,
             factorize=use_factorize,
             distributed=world_size is not None,
+            augment=args.augment,
         )
         dataset_size = len(train_loader.dataset)
         if is_main_process:
             print(
                 f"\nTraining on dataset fraction {data_fraction} with {dataset_size} samples"
             )
+            if args.augment:
+                print("Data augmentation (random rotations) is enabled")
+
         for model_idx, model in enumerate(meta_models):
             if is_main_process:
                 print(
@@ -290,18 +307,6 @@ def main(rank=None, world_size=None):
     if world_size is not None:
         dist.barrier()
         cleanup_ddp()
-
-    if log:
-        # Generate inference GIFs at different training stages
-        subprocess.run(
-            [
-                "python3",
-                "model_prediction_evolution.py",
-                str(results_path),
-                "--split",
-                "train",
-            ]
-        )
 
 
 if __name__ == "__main__":
