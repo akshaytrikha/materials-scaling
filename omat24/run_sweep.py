@@ -15,7 +15,16 @@ def sweep_agent():
     bs = wandb.config.batch_size
     arch = wandb.config.architecture
     epochs = wandb.config.epochs
-    dataset = wandb.config.dataset
+    datasets = wandb.config.datasets
+    split_name = wandb.config.split_name
+    data_fractions = wandb.config.data_fractions
+    val_data_fraction = wandb.config.val_data_fraction
+    vis_every = wandb.config.vis_every
+    val_every = wandb.config.val_every
+    train_workers = wandb.config.train_workers
+    val_workers = wandb.config.val_workers
+    mixed_precision = wandb.config.mixed_precision
+    no_log = wandb.config.no_log
 
     # Build the command to run your training script with these parameters
     cmd = [
@@ -30,15 +39,38 @@ def sweep_agent():
         "--epochs",
         str(epochs),
         "--datasets",
-        dataset,
+        datasets,
+        "--split_name",
+        split_name,
         "--data_fractions",
-        "1.0",  # Use full dataset
+        str(data_fractions),
+        "--val_data_fraction",
+        str(val_data_fraction),
+        "--vis_every",
+        str(vis_every),
+        "--val_every",
+        str(val_every),
+        "--train_workers",
+        str(train_workers),
+        "--val_workers",
+        str(val_workers),
         "--wandb",  # Flag to enable wandb logging
     ]
 
+    if mixed_precision:
+        cmd.append("--mixed_precision")
+
+    if no_log:
+        cmd.append("--no_log")
+
+    # Set the WANDB_RUN_ID environment variable to ensure the subprocess
+    # connects to the same run
+    env = os.environ.copy()
+    env["WANDB_RUN_ID"] = wandb.run.id
+
     # Run the training script as a subprocess
     process = subprocess.Popen(
-        cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True
+        cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, env=env
     )
 
     # Stream the output to the console

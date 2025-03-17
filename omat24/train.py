@@ -162,10 +162,10 @@ def main(rank=None, world_size=None):
 
     # Create results path and initialize file if logging is enabled
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    tb_logdir = os.path.join("runs", f"exp_{timestamp}")
-    writer = SummaryWriter(log_dir=tb_logdir)
-    if is_main_process:
-        print(f"TensorBoard logs will be saved to: {tb_logdir}")
+    # tb_logdir = os.path.join("runs", f"exp_{timestamp}")
+    # writer = SummaryWriter(log_dir=tb_logdir)
+    # if is_main_process:
+    #     print(f"TensorBoard logs will be saved to: {tb_logdir}")
 
     results_path = Path("results") / f"experiments_{timestamp}.json"
     experiment_results = {}
@@ -289,7 +289,8 @@ def main(rank=None, world_size=None):
                 "rank": rank,
                 "patience": 5,
                 "factorize": use_factorize,
-                "writer": writer if is_main_process else None,
+                # "writer": writer if is_main_process else None,
+                "writer": None,
                 "tensorboard_prefix": model_name,
                 "num_visualization_samples": args.num_visualization_samples,
                 "gradient_clip": args.gradient_clip,
@@ -332,10 +333,10 @@ def main(rank=None, world_size=None):
             if is_main_process:
                 progress_bar.close()
 
-    writer.close()
+    # writer.close()
 
     # Finish wandb run
-    if is_main_process and args.wandb and wandb_available:
+    if is_main_process and args.wandb:
         wandb.finish()
 
     print(
