@@ -26,6 +26,9 @@ def sweep_agent():
     mixed_precision = wandb.config.mixed_precision
     no_log = wandb.config.no_log
 
+    # Set a custom name for this run
+    run.name = f"bs={bs}_lr={lr}_{arch}"
+
     # Build the command to run your training script with these parameters
     cmd = [
         "python",
@@ -59,7 +62,6 @@ def sweep_agent():
 
     if mixed_precision:
         cmd.append("--mixed_precision")
-
     if no_log:
         cmd.append("--no_log")
 
@@ -89,7 +91,7 @@ if __name__ == "__main__":
     wandb.login()
 
     # Initialize the sweep
-    sweep_id = wandb.sweep(sweep_config, project="omat-training")
+    sweep_id = wandb.sweep(sweep_config, project="omat24")
 
     # Start the sweep agent
     wandb.agent(sweep_id, function=sweep_agent, count=None)  # Run all combinations
