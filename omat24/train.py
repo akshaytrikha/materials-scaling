@@ -285,10 +285,29 @@ def main(rank=None, world_size=None):
                     if isinstance(trained_model, DDP)
                     else trained_model.state_dict()
                 )
+                
+                # Extract model configuration
+                if hasattr(trained_model, "module"):
+                    model_instance = trained_model.module
+                else:
+                    model_instance = trained_model
+                
+                # Create a model config dictionary with all relevant parameters
+                model_config = {
+                    "d_model": getattr(model_instance, "embedding_dim", None),
+                    "depth": getattr(model_instance, "depth", None),
+                    "n_heads": getattr(model_instance, "n_heads", None),
+                    "d_ff_mult": getattr(model_instance, "d_ff_mult", None),
+                    "use_factorized": getattr(model_instance, "use_factorized", use_factorize),
+                    "num_params": getattr(model_instance, "num_params", None),
+                    "architecture": getattr(model_instance, "name", None),
+                }
+                
                 torch.save(
                     {
                         "model_state_dict": model_state,
                         "losses": losses,
+                        "model_config": model_config,
                         "batch_size": batch_size,
                         "lr": lr,
                     },
