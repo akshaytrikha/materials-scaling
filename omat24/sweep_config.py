@@ -1,0 +1,20 @@
+sweep_config = {
+    "method": "random",
+    "name": "transformer-10k",
+    "metric": {"name": "val_loss", "goal": "minimize"},
+    "parameters": {
+        "learning_rate": {"values": [1e-4, 5e-4, 1e-3, 5e-3]},
+        "batch_size": {"values": [16, 32, 64, 128, 1024]},
+        "architecture": {"value": "Transformer"},
+        "epochs": {"value": 30},
+        "datasets": {"value": "all"},
+        "split_name": {"value": "train"},
+        "data_fractions": {"value": 0.1},
+        "val_data_fraction": {"value": 1e-4},
+        "vis_every": {"value": 100},
+        "val_every": {"value": 2},
+        "train_workers": {"value": 62},
+        "val_workers": {"value": 62},
+        "mixed_precision": {"value": True},
+    },
+}

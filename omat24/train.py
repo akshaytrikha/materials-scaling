@@ -35,6 +35,7 @@ import subprocess
 import torch.distributed as dist
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data.distributed import DistributedSampler
+import wandb
 
 # Internal
 from data import get_dataloaders
@@ -88,6 +89,26 @@ def main(rank=None, world_size=None):
         setup_ddp(rank, world_size)
         DEVICE = torch.device(f"cuda:{rank}")
         dist.barrier()
+
+    # Initialize wandb if requested and on main process
+    if is_main_process and args.wandb:
+        # Initialize wandb run - if launched from sweep, this will pick up sweep config
+        wandb.init(
+            project="omat24",
+            config={
+                "architecture": args.architecture,
+                "datasets": args.datasets,
+                "split_name": args.split_name,
+                "data_fractions": args.data_fractions,
+                "val_data_fraction": args.val_data_fraction,
+                "epochs": args.epochs,
+                "batch_size": args.batch_size[0],
+                "learning_rate": args.lr[0],
+                "factorize": args.factorize,
+                "augment": args.augment,
+                "gradient_clip": args.gradient_clip,
+            },
+        )
 
     # Convinience for running all datasets
     if args.datasets[0] == "all":
@@ -188,6 +209,18 @@ def main(rank=None, world_size=None):
 
             model.to(DEVICE)
 
+            # Log model details to wandb
+            if is_main_process and args.wandb:
+                # Log model architecture details
+                wandb.config.update({"num_params": model.num_params})
+                if hasattr(model, "embedding_dim"):
+                    wandb.config.update({"embedding_dim": model.embedding_dim})
+                if hasattr(model, "depth"):
+                    wandb.config.update({"depth": model.depth})
+
+                # Watch the model (logs gradients, weights)
+                wandb.watch(model, log="all", log_freq=100)
+
             # Store original model attributes before DDP wrapping
             num_params = model.num_params if hasattr(model, "num_params") else None
             embedding_dim = getattr(model, "embedding_dim", None)
@@ -263,6 +296,7 @@ def main(rank=None, world_size=None):
                 "validate_every": args.val_every,
                 "visualize_every": args.vis_every,
                 "use_mixed_precision": args.mixed_precision,
+                "args": args,  # Pass args to train function for wandb logging
             }
 
             if log and is_main_process:
@@ -299,6 +333,11 @@ def main(rank=None, world_size=None):
                 progress_bar.close()
 
     writer.close()
+
+    # Finish wandb run
+    if is_main_process and args.wandb and wandb_available:
+        wandb.finish()
+
     print(
         f"\nTraining completed. {'Results continuously saved to ' + str(results_path) if log else 'No experiment log was written.'}"
     )

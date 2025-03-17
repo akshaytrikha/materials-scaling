@@ -7,6 +7,7 @@ from torch.utils.flop_counter import FlopCounterMode
 from contextlib import nullcontext
 import torch.distributed as dist
 from torch.amp import autocast, GradScaler
+import wandb
 
 # Internal
 from loss import compute_loss
@@ -122,28 +123,38 @@ def forward_pass(
 
 def get_amp_context(use_mixed_precision: bool, device_type: str) -> tuple:
     """Creates appropriate autocast context and scaler for mixed precision training.
-    
+
     Args:
         use_mixed_precision (bool): Whether to use mixed precision.
         device_type (str): Device type ('cuda', 'cpu', etc.)
-        
+
     Returns:
         tuple: (autocast_fn, scaler) - context manager and scaler for mixed precision
     """
-    if use_mixed_precision and device_type == 'cuda':
+    if use_mixed_precision and device_type == "cuda":
         return autocast(device_type=device_type), GradScaler()
     else:
         # Create dummy objects if not using mixed precision
         class DummyContext:
-            def __enter__(self): return self
-            def __exit__(self, *args): pass
-            
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                pass
+
         class DummyScaler:
-            def scale(self, loss): return loss
-            def step(self, opt): opt.step()
-            def update(self): pass
-            def unscale_(self, opt): pass
-            
+            def scale(self, loss):
+                return loss
+
+            def step(self, opt):
+                opt.step()
+
+            def update(self):
+                pass
+
+            def unscale_(self, opt):
+                pass
+
         return DummyContext(), DummyScaler()
 
 
@@ -237,7 +248,9 @@ def collect_samples_for_visualizing(
     }
 
 
-def run_validation(model, val_loader, graph, device, factorize=False, use_mixed_precision=False):
+def run_validation(
+    model, val_loader, graph, device, factorize=False, use_mixed_precision=False
+):
     """
     Run validation on the validation set and return the average validation loss.
 
@@ -253,7 +266,7 @@ def run_validation(model, val_loader, graph, device, factorize=False, use_mixed_
         tuple: The average validation loss components.
     """
     amp_context, _ = get_amp_context(use_mixed_precision, device.type)
-    
+
     model.eval()
     val_loss_sum = 0.0
     energy_loss_sum = 0.0
@@ -283,9 +296,7 @@ def run_validation(model, val_loader, graph, device, factorize=False, use_mixed_
             )
 
             # Mapping atoms to their respective structures (for graphs)
-            structure_index = (
-                batch.batch if graph and hasattr(batch, "batch") else []
-            )
+            structure_index = batch.batch if graph and hasattr(batch, "batch") else []
             val_loss_dict = compute_loss(
                 pred_forces,
                 pred_energy,
@@ -299,7 +310,7 @@ def run_validation(model, val_loader, graph, device, factorize=False, use_mixed_
                 graph,
                 structure_index,
             )
-            
+
             val_loss_sum += val_loss_dict["total_loss"].item()
             energy_loss_sum += val_loss_dict["energy_loss"].item()
             force_loss_sum += val_loss_dict["force_loss"].item()
@@ -341,6 +352,7 @@ def train(
     validate_every=500,
     visualize_every=500,
     use_mixed_precision=False,
+    args=None,  # Added for wandb support
 ):
     """
     Train model with validation at epoch 0 and every 'validate_every' epochs.
@@ -368,6 +380,7 @@ def train(
         validate_every (int, optional): Frequency (in epochs) to run validation.
         visualize_every (int, optional): Frequency (in epochs) to collect visualization samples.
         use_mixed_precision (bool, optional): Whether to use mixed precision training. Defaults to False.
+        args (Namespace, optional): Command-line arguments, needed for wandb. Defaults to None.
 
     Returns:
         (nn.Module, dict): The trained model and a dictionary of recorded losses.
@@ -394,6 +407,21 @@ def train(
         val_stress_aniso_loss,
     ) = run_validation(model, val_loader, graph, device, factorize, use_mixed_precision)
     losses[0] = {"val_loss": float(val_loss)}
+
+    # Log initial validation to wandb
+    if is_main_process and args and args.wandb:
+        wandb.log(
+            {
+                "epoch": 0,
+                "val_loss": val_loss,
+                "val_energy_loss": val_energy_loss,
+                "val_force_loss": val_force_loss,
+                "val_stress_iso_loss": val_stress_iso_loss,
+                "val_stress_aniso_loss": val_stress_aniso_loss,
+            }
+        )
+
+    # Log to TensorBoard
     if writer is not None:
         # Logging each metric individually using log_tb_metrics
         log_tb_metrics(
@@ -453,7 +481,7 @@ def train(
         with context:
             for batch_idx, batch in enumerate(train_loader):
                 optimizer.zero_grad()
-                
+
                 # Use autocast for mixed precision during forward pass
                 with amp_context:
                     (
@@ -473,7 +501,7 @@ def train(
                         device=device,
                         factorize=factorize,
                     )
-                    
+
                     # Mapping atoms to their respective structures (for graphs)
                     structure_index = (
                         batch.batch if graph and hasattr(batch, "batch") else []
@@ -492,7 +520,7 @@ def train(
                         structure_index,
                     )
                     total_train_loss = train_loss_dict["total_loss"]
-                
+
                 # Use scaler for backward pass
                 scaler.scale(total_train_loss).backward()
 
@@ -507,7 +535,7 @@ def train(
                             param.grad.data /= dist.get_world_size()
 
                 torch.nn.utils.clip_grad_norm_(model.parameters(), gradient_clip)
-                
+
                 # Update with scaler
                 scaler.step(optimizer)
                 scaler.update()
@@ -556,6 +584,21 @@ def train(
         avg_epoch_stress_aniso_loss = stress_aniso_loss_sum / n_train_batches
 
         losses[epoch] = {"train_loss": float(avg_epoch_train_loss)}
+
+        # Log to wandb
+        if is_main_process and args and args.wandb:
+            wandb.log(
+                {
+                    "epoch": epoch,
+                    "train_loss": avg_epoch_train_loss,
+                    "train_energy_loss": avg_epoch_energy_loss,
+                    "train_force_loss": avg_epoch_force_loss,
+                    "train_stress_iso_loss": avg_epoch_stress_iso_loss,
+                    "train_stress_aniso_loss": avg_epoch_stress_aniso_loss,
+                    "learning_rate": optimizer.param_groups[0]["lr"],
+                }
+            )
+
         # TensorBoard logging for training loss
         if writer is not None:
             # Log parameter norms (example usage) using log_tb_metrics
@@ -605,7 +648,9 @@ def train(
                 val_force_loss,
                 val_stress_iso_loss,
                 val_stress_aniso_loss,
-            ) = run_validation(model, val_loader, graph, device, factorize, use_mixed_precision)
+            ) = run_validation(
+                model, val_loader, graph, device, factorize, use_mixed_precision
+            )
 
             if distributed:
                 val_loss_tensor = torch.tensor(val_loss, device=device)
@@ -632,6 +677,20 @@ def train(
                     val_stress_aniso_loss_tensor, average=True
                 ).item()
 
+            # Log to wandb
+            if is_main_process and args and args.wandb:
+                wandb.log(
+                    {
+                        "epoch": epoch,
+                        "val_loss": val_loss,
+                        "val_energy_loss": val_energy_loss,
+                        "val_force_loss": val_force_loss,
+                        "val_stress_iso_loss": val_stress_iso_loss,
+                        "val_stress_aniso_loss": val_stress_aniso_loss,
+                    }
+                )
+
+            # Log to TensorBoard
             if writer is not None:
                 log_tb_metrics(
                     {
@@ -658,6 +717,11 @@ def train(
                 epochs_since_improvement += 1
                 if epochs_since_improvement >= patience:
                     print(f"Early stopping triggered at epoch {epoch}")
+
+                    # Log best val loss to wandb
+                    if is_main_process and args and args.wandb:
+                        wandb.run.summary["best_val_loss"] = best_val_loss
+
                     return best_val_model, best_val_loss_dict
 
         # Visualization samples every 'visualize_every' epochs
@@ -687,5 +751,9 @@ def train(
 
         if is_main_process:
             pbar.update(1)
+
+    # Log best val loss to wandb
+    if is_main_process and args and args.wandb:
+        wandb.run.summary["best_val_loss"] = best_val_loss
 
     return model, losses
