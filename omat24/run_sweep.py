@@ -27,7 +27,7 @@ def sweep_agent():
     no_log = wandb.config.no_log
 
     # Set a custom name for this run
-    run.name = f"bs={bs}_lr={lr}_{arch}"
+    run.name = f"{arch}_bs={bs}_lr={lr}"
 
     # Build the command to run your training script with these parameters
     cmd = [
