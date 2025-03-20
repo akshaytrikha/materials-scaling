@@ -26,15 +26,15 @@ from torch.optim.lr_scheduler import LambdaLR
 from pathlib import Path
 import pprint
 import json
-import math
 from datetime import datetime
 from tqdm import tqdm
 from torch.utils.tensorboard import SummaryWriter
 import os
-import subprocess
 import torch.distributed as dist
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data.distributed import DistributedSampler
+from fairchem.core.modules.scheduler import CosineLRLambda
+import torch.optim.lr_scheduler as lr_scheduler
 
 # Internal
 from data import get_dataloaders
@@ -44,7 +44,7 @@ from models.fcn import MetaFCNModels
 from models.transformer_models import MetaTransformerModels
 from models.schnet import MetaSchNetModels
 from models.equiformer_v2 import MetaEquiformerV2Models
-from train_utils import train, LRScheduler
+from train_utils import train
 
 # Set seed & device
 SEED = 1024
@@ -113,7 +113,7 @@ def main(rank=None, world_size=None):
 
     batch_size = args.batch_size[0]
     lr = args.lr[0]
-    num_epochs = args.epochs
+    args.epochs
     use_factorize = args.factorize
     graph = args.architecture in ["SchNet", "EquiformerV2"]
 
@@ -193,8 +193,6 @@ def main(rank=None, world_size=None):
             embedding_dim = getattr(model, "embedding_dim", None)
             depth = getattr(model, "depth", None)
 
-            optimizer = optim.AdamW(model.parameters(), lr=lr)
-
             if world_size is not None:
                 # Wrap model in DDP to use multiple GPUs
                 model = DDP(
@@ -204,21 +202,15 @@ def main(rank=None, world_size=None):
                     broadcast_buffers=False,
                 )
 
-            # lambda_schedule = lambda epoch: 0.5 * (
-            #     1 + math.cos(math.pi * epoch / num_epochs)
-            # )
-            # scheduler = LambdaLR(optimizer, lr_lambda=lambda_schedule)
-            scheduler = None
-            if args.scheduler_type == "cosine":
-                total_steps = num_epochs * dataset_size / batch_size
-                scheduler = LRScheduler(optimizer, {
-                    "scheduler_type": "LambdaLR",
-                    "lambda_type": args.scheduler_type,
-                    "warmup_steps": total_steps * 0.01 / 2,
-                    "warmup_factor": 0.2,
-                    "steps": total_steps,
-                    "lr_min_factor": 0.01
-                })
+            # Optimization setup
+            optimizer = optim.AdamW(model.parameters(), lr=lr)
+            cosine_lr_lambda = CosineLRLambda(
+                warmup_epochs=0.01,
+                warmup_factor=0.2,
+                epochs=args.epochs,
+                lr_min_factor=0.01,
+            )
+            scheduler = lr_scheduler.LambdaLR(optimizer, lr_lambda=cosine_lr_lambda)
 
             # Prepare run entry etc.
             model_name = f"model_ds{dataset_size}_p{int(num_params)}"
@@ -231,7 +223,7 @@ def main(rank=None, world_size=None):
                     "depth": depth,
                     "num_params": num_params,
                     "dataset_size": dataset_size,
-                    "num_epochs": num_epochs,
+                    "num_epochs": args.epochs,
                     "batch_size": batch_size,
                     "learning_rate": lr,
                     "seed": SEED,
@@ -249,9 +241,9 @@ def main(rank=None, world_size=None):
 
             # Create progress bar only on main process
             if is_main_process:
-                progress_bar = tqdm(range(num_epochs + 1))
+                progress_bar = tqdm(range(args.epochs + 1))
             else:
-                progress_bar = range(num_epochs + 1)
+                progress_bar = range(args.epochs + 1)
 
             training_args = {
                 "model": model,
@@ -295,24 +287,26 @@ def main(rank=None, world_size=None):
                     if isinstance(trained_model, DDP)
                     else trained_model.state_dict()
                 )
-                
+
                 # Extract model configuration
                 if hasattr(trained_model, "module"):
                     model_instance = trained_model.module
                 else:
                     model_instance = trained_model
-                
+
                 # Create a model config dictionary with all relevant parameters
                 model_config = {
                     "d_model": getattr(model_instance, "embedding_dim", None),
                     "depth": getattr(model_instance, "depth", None),
                     "n_heads": getattr(model_instance, "n_heads", None),
                     "d_ff_mult": getattr(model_instance, "d_ff_mult", None),
-                    "use_factorized": getattr(model_instance, "use_factorized", use_factorize),
+                    "use_factorized": getattr(
+                        model_instance, "use_factorized", use_factorize
+                    ),
                     "num_params": getattr(model_instance, "num_params", None),
                     "architecture": getattr(model_instance, "name", None),
                 }
-                
+
                 torch.save(
                     {
                         "model_state_dict": model_state,

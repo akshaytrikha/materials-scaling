@@ -7,9 +7,6 @@ from torch.utils.flop_counter import FlopCounterMode
 from contextlib import nullcontext
 import torch.distributed as dist
 from torch.amp import autocast, GradScaler
-import inspect
-import math
-from bisect import bisect
 from fairchem.core.common.typing import assert_is_instance as aii
 
 # Internal
@@ -126,28 +123,38 @@ def forward_pass(
 
 def get_amp_context(use_mixed_precision: bool, device_type: str) -> tuple:
     """Creates appropriate autocast context and scaler for mixed precision training.
-    
+
     Args:
         use_mixed_precision (bool): Whether to use mixed precision.
         device_type (str): Device type ('cuda', 'cpu', etc.)
-        
+
     Returns:
         tuple: (autocast_fn, scaler) - context manager and scaler for mixed precision
     """
-    if use_mixed_precision and device_type == 'cuda':
+    if use_mixed_precision and device_type == "cuda":
         return autocast(device_type=device_type), GradScaler()
     else:
         # Create dummy objects if not using mixed precision
         class DummyContext:
-            def __enter__(self): return self
-            def __exit__(self, *args): pass
-            
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                pass
+
         class DummyScaler:
-            def scale(self, loss): return loss
-            def step(self, opt): opt.step()
-            def update(self): pass
-            def unscale_(self, opt): pass
-            
+            def scale(self, loss):
+                return loss
+
+            def step(self, opt):
+                opt.step()
+
+            def update(self):
+                pass
+
+            def unscale_(self, opt):
+                pass
+
         return DummyContext(), DummyScaler()
 
 
@@ -241,7 +248,9 @@ def collect_samples_for_visualizing(
     }
 
 
-def run_validation(model, val_loader, graph, device, factorize=False, use_mixed_precision=False):
+def run_validation(
+    model, val_loader, graph, device, factorize=False, use_mixed_precision=False
+):
     """
     Run validation on the validation set and return the average validation loss.
 
@@ -257,7 +266,7 @@ def run_validation(model, val_loader, graph, device, factorize=False, use_mixed_
         tuple: The average validation loss components.
     """
     amp_context, _ = get_amp_context(use_mixed_precision, device.type)
-    
+
     model.eval()
     val_loss_sum = 0.0
     energy_loss_sum = 0.0
@@ -287,9 +296,7 @@ def run_validation(model, val_loader, graph, device, factorize=False, use_mixed_
             )
 
             # Mapping atoms to their respective structures (for graphs)
-            structure_index = (
-                batch.batch if graph and hasattr(batch, "batch") else []
-            )
+            structure_index = batch.batch if graph and hasattr(batch, "batch") else []
             val_loss_dict = compute_loss(
                 pred_forces,
                 pred_energy,
@@ -303,7 +310,7 @@ def run_validation(model, val_loader, graph, device, factorize=False, use_mixed_
                 graph,
                 structure_index,
             )
-            
+
             val_loss_sum += val_loss_dict["total_loss"].item()
             energy_loss_sum += val_loss_dict["energy_loss"].item()
             force_loss_sum += val_loss_dict["force_loss"].item()
@@ -453,11 +460,11 @@ def train(
         stress_iso_loss_sum = 0.0
         stress_aniso_loss_sum = 0.0
 
-        context = flop_counter if epoch == 1 else nullcontext()
-        with context:
+        flop_context = flop_counter if epoch == 1 else nullcontext()
+        with flop_context:
             for batch_idx, batch in enumerate(train_loader):
                 optimizer.zero_grad()
-                
+
                 # Use autocast for mixed precision during forward pass
                 with amp_context:
                     (
@@ -477,7 +484,7 @@ def train(
                         device=device,
                         factorize=factorize,
                     )
-                    
+
                     # Mapping atoms to their respective structures (for graphs)
                     structure_index = (
                         batch.batch if graph and hasattr(batch, "batch") else []
@@ -496,7 +503,7 @@ def train(
                         structure_index,
                     )
                     total_train_loss = train_loss_dict["total_loss"]
-                
+
                 # Use scaler for backward pass
                 scaler.scale(total_train_loss).backward()
 
@@ -511,7 +518,7 @@ def train(
                             param.grad.data /= dist.get_world_size()
 
                 torch.nn.utils.clip_grad_norm_(model.parameters(), gradient_clip)
-                
+
                 # Update with scaler
                 scaler.step(optimizer)
                 scaler.update()
@@ -527,7 +534,7 @@ def train(
                     pbar.set_description(
                         f"train_loss={current_avg_loss:.2f} val_loss={val_loss:.2f}"
                     )
-                # Step the scheduler if provided
+
                 if scheduler is not None:
                     scheduler.step()
         if epoch == 1:
@@ -608,7 +615,9 @@ def train(
                 val_force_loss,
                 val_stress_iso_loss,
                 val_stress_aniso_loss,
-            ) = run_validation(model, val_loader, graph, device, factorize, use_mixed_precision)
+            ) = run_validation(
+                model, val_loader, graph, device, factorize, use_mixed_precision
+            )
 
             if distributed:
                 val_loss_tensor = torch.tensor(val_loss, device=device)
@@ -692,95 +701,3 @@ def train(
             pbar.update(1)
 
     return model, losses
-
-
-class CosineLRLambda:
-    def __init__(self, scheduler_params) -> None:
-        self.warmup_steps = aii(scheduler_params["warmup_steps"], float)
-        self.lr_warmup_factor = aii(scheduler_params["warmup_factor"], float)
-        self.steps = aii(scheduler_params["steps"], float)
-        self.lr_min_factor = aii(scheduler_params["lr_min_factor"], float)
-
-    def __call__(self, current_step: int):
-        print(f"current_step is {current_step}")
-        print(f"self.warmup_steps is {self.warmup_steps}")
-        if current_step <= self.warmup_steps:
-            alpha = current_step / self.warmup_steps
-            return self.lr_warmup_factor * (1.0 - alpha) + alpha
-        else:
-            if current_step >= self.steps:
-                return self.lr_min_factor
-            return self.lr_min_factor + 0.5 * (1 - self.lr_min_factor) * (
-                1 + math.cos(math.pi * (current_step / self.steps))
-            )
-
-
-class LRScheduler:
-    """
-    Notes:
-        1. scheduler.step() is called for every step for OC20 training.
-        2. We use "scheduler_params" in .yml to specify scheduler parameters.
-        3. For cosine learning rate, we use LambdaLR with lambda function being cosine:
-            scheduler: LambdaLR
-            scheduler_params:
-                lambda_type: cosine
-                ...
-        4. Following 3., if `cosine` is used, `scheduler_params` in .yml looks like:
-            scheduler: LambdaLR
-            scheduler_params:
-                lambda_type: cosine
-                warmup_epochs: ...
-                warmup_factor: ...
-                lr_min_factor: ...
-
-    Args:
-        optimizer (obj): torch optim object
-        config (dict): Optim dict from the input config
-    """
-
-    def __init__(self, optimizer, scheduler_params) -> None:
-        self.optimizer = optimizer
-        print(scheduler_params)
-        self.scheduler_type = aii(scheduler_params["scheduler_type"], str)
-        self.scheduler_params = scheduler_params.copy()
-
-        # Use `LambdaLR` for multi-step and cosine learning rate
-        if self.scheduler_type == "LambdaLR":
-            scheduler_lambda_fn = None
-            self.lambda_type = self.scheduler_params["lambda_type"]
-            if self.lambda_type == "cosine":
-                scheduler_lambda_fn = CosineLRLambda(self.scheduler_params)
-            else:
-                raise ValueError
-            self.scheduler_params["lr_lambda"] = scheduler_lambda_fn
-
-        if self.scheduler_type != "Null":
-            self.scheduler = getattr(torch.optim.lr_scheduler, self.scheduler_type)
-            scheduler_args = self.filter_kwargs(self.scheduler_params)
-            self.scheduler = self.scheduler(optimizer, **scheduler_args)
-
-    def step(self, metrics=None, epoch=None):
-        if self.scheduler_type == "Null":
-            return
-        if self.scheduler_type == "ReduceLROnPlateau":
-            if metrics is None:
-                raise Exception("Validation set required for ReduceLROnPlateau.")
-            self.scheduler.step(metrics)
-        else:
-            self.scheduler.step()
-
-    def filter_kwargs(self, config):
-        # adapted from https://stackoverflow.com/questions/26515595/
-        sig = inspect.signature(self.scheduler)
-        filter_keys = [
-            param.name
-            for param in sig.parameters.values()
-            if param.kind == param.POSITIONAL_OR_KEYWORD
-        ]
-        filter_keys.remove("optimizer")
-        return {arg: config[arg] for arg in config if arg in filter_keys}
-
-    def get_lr(self) -> float | None:
-        for group in self.optimizer.param_groups:
-            return aii(group["lr"], float)
-        return None
