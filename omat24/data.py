@@ -26,21 +26,6 @@ from data_utils import (
 )
 
 
-# Define top-level wrapper functions for collate_fn
-def collate_fn_batch_padded_wrapper(batch):
-    """Top-level wrapper to make the function picklable for multiprocessing."""
-    # You'll need to have factorize as a global variable or pass it during initialization
-    global FACTORIZE  # This should be set at the module level before creating DataLoader
-    return custom_collate_fn_batch_padded(batch, FACTORIZE)
-
-
-def collate_fn_dataset_padded_wrapper(batch):
-    """Top-level wrapper to make the function picklable for multiprocessing."""
-    # You'll need to have these variables at the module level
-    global MAX_N_ATOMS, FACTORIZE  # These should be set at the module level
-    return custom_collate_fn_dataset_padded(batch, MAX_N_ATOMS, FACTORIZE)
-
-
 def split_dataset(dataset, train_data_fraction, val_data_fraction, seed):
     """Splits a dataset into training and validation subsets."""
     dataset_size = len(dataset)

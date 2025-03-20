@@ -77,9 +77,10 @@ def cleanup_ddp():
     dist.destroy_process_group()
 
 
-def main(rank=None, world_size=None):
+def main(rank=None, world_size=None, args=None):
     is_main_process = rank == 0 if world_size is not None else True
-    args = get_args()
+    if args is None:
+        args = get_args()
     log = not args.no_log
     global DEVICE
 
@@ -336,4 +337,4 @@ if __name__ == "__main__":
         world_size = torch.cuda.device_count()
         mp.spawn(main, args=(world_size,), nprocs=world_size, join=True)
     else:
-        main()
+        main(args=args)
