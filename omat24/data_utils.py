@@ -41,7 +41,9 @@ def get_dataset_url(dataset_name: str, split_name: str):
         raise ValueError(f"Invalid split name: {split_name}")
 
 
-def download_dataset(dataset_name: str, split_name: str, base_path: str = "./datasets") -> None:
+def download_dataset(
+    dataset_name: str, split_name: str, base_path: str = "./datasets"
+) -> None:
     """Download and extract a dataset.
 
     Args:

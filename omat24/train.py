@@ -1,3 +1,16 @@
+# Increase file descriptor limit for using GH200 on Lambda Labs
+# import patch_torch_scatter
+
+# # Increase file descriptor limits
+# import resource
+# try:
+#     soft, hard = resource.getrlimit(resource.RLIMIT_NOFILE)
+#     new_soft = min(65536, hard)  # Increase to maximum allowed or 65536
+#     resource.setrlimit(resource.RLIMIT_NOFILE, (new_soft, hard))
+#     print(f"Increased file descriptor limit from {soft} to {new_soft}")
+# except Exception as e:
+#     print(f"Warning: Could not increase file descriptor limit: {e}")
+
 import warnings
 
 warnings.filterwarnings(
@@ -25,7 +38,7 @@ from torch.utils.data.distributed import DistributedSampler
 
 # Internal
 from data import get_dataloaders
-from data_utils import download_dataset, VALID_DATASETS
+from data_utils import download_dataset, VALID_DATASETS, DATASET_INFO
 from arg_parser import get_args
 from models.fcn import MetaFCNModels
 from models.transformer_models import MetaTransformerModels
@@ -110,14 +123,9 @@ def main(rank=None, world_size=None):
             vocab_size=args.n_elements, use_factorized=use_factorize
         )
     elif args.architecture == "Transformer":
-        if args.split_name == "train":
-            max_n_atoms = 236
-        elif args.split_name == "val":
-            max_n_atoms = 168
-
         meta_models = MetaTransformerModels(
             vocab_size=args.n_elements,
-            max_seq_len=max_n_atoms,
+            max_seq_len=DATASET_INFO[args.split_name]["all"]["max_n_atoms"],
             use_factorized=use_factorize,
         )
     elif args.architecture == "SchNet":
@@ -162,12 +170,16 @@ def main(rank=None, world_size=None):
             graph=graph,
             factorize=use_factorize,
             distributed=world_size is not None,
+            augment=args.augment,
         )
         dataset_size = len(train_loader.dataset)
         if is_main_process:
             print(
                 f"\nTraining on dataset fraction {data_fraction} with {dataset_size} samples"
             )
+            if args.augment:
+                print("Data augmentation (random rotations) is enabled")
+
         for model_idx, model in enumerate(meta_models):
             if is_main_process:
                 print(
@@ -283,10 +295,29 @@ def main(rank=None, world_size=None):
                     if isinstance(trained_model, DDP)
                     else trained_model.state_dict()
                 )
+                
+                # Extract model configuration
+                if hasattr(trained_model, "module"):
+                    model_instance = trained_model.module
+                else:
+                    model_instance = trained_model
+                
+                # Create a model config dictionary with all relevant parameters
+                model_config = {
+                    "d_model": getattr(model_instance, "embedding_dim", None),
+                    "depth": getattr(model_instance, "depth", None),
+                    "n_heads": getattr(model_instance, "n_heads", None),
+                    "d_ff_mult": getattr(model_instance, "d_ff_mult", None),
+                    "use_factorized": getattr(model_instance, "use_factorized", use_factorize),
+                    "num_params": getattr(model_instance, "num_params", None),
+                    "architecture": getattr(model_instance, "name", None),
+                }
+                
                 torch.save(
                     {
                         "model_state_dict": model_state,
                         "losses": losses,
+                        "model_config": model_config,
                         "batch_size": batch_size,
                         "lr": lr,
                     },
@@ -305,18 +336,6 @@ def main(rank=None, world_size=None):
     if world_size is not None:
         dist.barrier()
         cleanup_ddp()
-
-    if log:
-        # Generate inference GIFs at different training stages
-        subprocess.run(
-            [
-                "python3",
-                "model_prediction_evolution.py",
-                str(results_path),
-                "--split",
-                "train",
-            ]
-        )
 
 
 if __name__ == "__main__":
