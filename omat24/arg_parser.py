@@ -129,14 +129,9 @@ def get_args():
         help="Base path for dataset storage",
     )
     parser.add_argument(
-        "--mixed_precision", 
+        "--mixed_precision",
         action="store_true",
-        help="Use mixed precision training with FP16"
-    )
-    parser.add_argument(
-        "--scheduler_type",
-        type=str,
-        default="None"
+        help="Use mixed precision training with FP16",
     )
 
     return parser.parse_args()
