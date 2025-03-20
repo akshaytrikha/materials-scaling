@@ -290,7 +290,13 @@ class OMat24Dataset(Dataset):
 
         # Extract atomic numbers, positions, symbols, and cell parameters
         atomic_numbers = atoms.get_atomic_numbers()  # Shape: (N_atoms,)
-        positions = atoms.get_positions()  # Shape: (N_atoms, 3)
+        positions = atoms.get_positions(wrap=True)  # Shape: (N_atoms, 3)
+        scaled_positions = atoms.get_scaled_positions(wrap=True)  # Shape: (N_atoms, 3)
+        # Concatenate regular and scaled positions
+        combined_positions = np.concatenate(
+            [positions, scaled_positions], axis=1
+        )  # Shape: (N_atoms, 6)
+
         symbols = (
             atoms.symbols.get_chemical_formula()
         )  # Keep as string, no tensor conversion needed
@@ -299,6 +305,7 @@ class OMat24Dataset(Dataset):
         # Convert to tensors
         atomic_numbers = torch.tensor(atomic_numbers, dtype=torch.long)
         positions = torch.tensor(positions, dtype=torch.float)
+        combined_positions = torch.tensor(combined_positions, dtype=torch.float)
         cell = torch.tensor(np.array(cell), dtype=torch.float)
 
         # Extract target properties (e.g., energy, forces, stress)
@@ -313,6 +320,10 @@ class OMat24Dataset(Dataset):
         if self.augment:
             # Apply random rotation to positions, forces & stress
             positions, R = random_rotate_atom_positions(positions)
+            # We only rotate the first 3 columns (Cartesian coordinates) of combined positions
+            combined_positions[:, :3] = positions
+            # TODO: Fractional coordinates need special handling for rotation
+            # For now, we leave them as is since they're unit cell relative
             forces = forces @ R.T
             stress = rotate_stress(stress, R)
 
@@ -355,7 +366,7 @@ class OMat24Dataset(Dataset):
                 "idx": idx,
                 "symbols": symbols,
                 "atomic_numbers": atomic_numbers,  # Element types
-                "positions": positions,  # 3D atomic coordinates
+                "positions": combined_positions,  # Cartesian & fractional coordinates
                 "distance_matrix": distance_matrix,  # [N_atoms, N_atoms]
                 "factorized_matrix": factorized_matrix,  # [N_atoms, k=5]
                 "energy": energy,  # Target energy

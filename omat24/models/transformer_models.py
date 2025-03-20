@@ -35,7 +35,7 @@ class XTransformerModel(TransformerWrapper):
         self.n_heads = n_heads
         self.d_ff_mult = d_ff_mult
         self.use_factorized = use_factorized
-        self.additional_dim = 5 if use_factorized else 3  # For concatenated positions
+        self.additional_dim = 6  # For concatenated cartesian + fractional positions
         self.name = "Transformer"
 
         # Initialize base TransformerWrapper without its own embedding
@@ -69,11 +69,8 @@ class XTransformerModel(TransformerWrapper):
         )
 
     def forward(self, x, positions, distance_matrix=None, mask=None):
-        # Obtain concatenated embeddings
-        if self.use_factorized:
-            concatenated_emb = self.token_emb(x, distance_matrix)
-        else:
-            concatenated_emb = self.token_emb(x, positions)
+        # Obtain concatenated embeddings, positions now contains both coordinate types
+        concatenated_emb = self.token_emb(x, positions)
 
         # Pass embeddings to the transformer
         output = self.attn_layers(x=concatenated_emb, mask=mask)

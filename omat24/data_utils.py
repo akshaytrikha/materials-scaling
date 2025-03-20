@@ -224,7 +224,7 @@ def custom_collate_fn_dataset_padded(
             for tensor in positions
         ],
         dim=0,
-    )  # Shape: [batch_size, MAX_ATOMS, 3]
+    )  # Shape: [batch_size, MAX_ATOMS, 6]
 
     padded_forces = torch.stack(
         [
@@ -245,7 +245,7 @@ def custom_collate_fn_dataset_padded(
 
     output = {
         "atomic_numbers": padded_atomic_numbers,  # [batch_size, MAX_ATOMS]
-        "positions": padded_positions,  # [batch_size, MAX_ATOMS, 3]
+        "positions": padded_positions,  # [batch_size, MAX_ATOMS, 6]
         "distance_matrix": padded_distance_matrices,  # [batch_size, MAX_ATOMS, MAX_ATOMS]
         "energy": energies,  # [batch_size]
         "forces": padded_forces,  # [batch_size, MAX_ATOMS, 3]
@@ -313,7 +313,7 @@ def custom_collate_fn_batch_padded(
             for tensor in positions
         ],
         dim=0,
-    )  # Shape: [batch_size, max_atoms, 3]
+    )  # Shape: [batch_size, max_atoms, 6]
 
     padded_forces = torch.stack(
         [pad_tensor(tensor, max_atoms, dim=0, padding_value=0.0) for tensor in forces],
@@ -331,7 +331,7 @@ def custom_collate_fn_batch_padded(
 
     output = {
         "atomic_numbers": padded_atomic_numbers,  # [batch_size, max_atoms]
-        "positions": padded_positions,  # [batch_size, max_atoms, 3]
+        "positions": padded_positions,  # [batch_size, max_atoms, 6]
         "distance_matrix": padded_distance_matrices,  # [batch_size, max_atoms, max_atoms]
         "energy": energies,  # [batch_size]
         "forces": padded_forces,  # [batch_size, max_atoms, 3]
