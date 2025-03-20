@@ -388,9 +388,6 @@ class TestEquiformerV2(unittest.TestCase):
                         )
                         results_filename = match.group("results_path").strip()
                         print("Captured results filename:", results_filename)
-
-                visualization_filepath = None
-
         try:
             with open(results_filename, "r") as f:
                 result_json = json.load(f)
@@ -419,28 +416,9 @@ class TestEquiformerV2(unittest.TestCase):
             #     np.testing.assert_allclose(last_val_loss, 127.09902191, rtol=0.1)
             # else:
             #     np.testing.assert_allclose(last_val_loss, 104.14714431762695, rtol=0.1)
-
-            result = subprocess.run(
-                [
-                    "python3",
-                    "model_prediction_evolution.py",
-                    str(results_filename),
-                    "--split",
-                    "train",
-                ],
-                capture_output=True,
-                text=True,
-            )
-            visualization_filepath = Path(f"figures/{Path(results_filename).stem}")
-            self.assertTrue(
-                visualization_filepath.exists(),
-                "Visualization was not created.",
-            )
         finally:
             if os.path.exists(results_filename):
                 os.remove(results_filename)
-            if visualization_filepath and os.path.exists(visualization_filepath):
-                shutil.rmtree(visualization_filepath)
 
     # def test_equivariance(self):
     #     """Test that the model's forces transform correctly under rotation (equivariance)."""

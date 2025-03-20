@@ -1,10 +1,12 @@
 # External
 from pathlib import Path
 import unittest
+import torch
 
 # Internal
 from data import get_dataloaders, OMat24Dataset
 from data_utils import download_dataset, DATASET_INFO
+from matrix import rotate_atom_positions, random_rotate_atom_positions, rotate_stress
 
 # Load dataset
 split_name = "val"
@@ -359,6 +361,172 @@ class TestGetDataloaders(unittest.TestCase):
             val_1 + val_2,
             "Combined validation set size mismatch.",
         )
+
+    def test_rotation_90_degrees_four_times(self):
+        """Test that rotating atomic positions, forces, and stresses by 90 degrees four times returns to the original values."""
+        # Get a sample from the dataset
+        sample = dataset[0]
+        positions = sample["positions"]
+        forces = sample["forces"]
+        stress = sample["stress"]
+
+        # Store original values
+        original_positions = positions.clone()
+        original_forces = forces.clone()
+        original_stress = stress.clone()
+
+        # Apply four 90-degree rotations around the z-axis
+        rotated_positions = positions
+        rotated_forces = forces
+        rotated_stress = stress
+
+        for _ in range(4):
+            rotated_positions, R = rotate_atom_positions(
+                rotated_positions, 90, axis=(0, 0, 1)
+            )
+            rotated_forces = rotated_forces @ R.T
+            rotated_stress = rotate_stress(rotated_stress, R)
+
+        # Check if we're back to the original positions (within numerical precision)
+        max_pos_diff = torch.max(torch.abs(original_positions - rotated_positions))
+        self.assertLess(
+            max_pos_diff,
+            1e-5,
+            "Four 90-degree rotations didn't return to original positions",
+        )
+
+        # Check if we're back to the original forces (within numerical precision)
+        max_forces_diff = torch.max(torch.abs(original_forces - rotated_forces))
+        self.assertLess(
+            max_forces_diff,
+            1e-5,
+            "Four 90-degree rotations didn't return to original forces",
+        )
+
+        # Check if we're back to the original stresses (within numerical precision)
+        max_stress_diff = torch.max(torch.abs(original_stress - rotated_stress))
+        self.assertLess(
+            max_stress_diff,
+            1e-5,
+            "Four 90-degree rotations didn't return to original stress tensor",
+        )
+
+    def test_rotation_matrix_properties(self):
+        """Test that the rotation matrix has proper mathematical properties."""
+        # Get a sample from the dataset
+        sample = dataset[0]
+        positions = sample["positions"]
+
+        # Test different angles
+        for angle in [30, 45, 60, 90, 180]:
+            _, R = rotate_atom_positions(positions, angle, axis=(0, 0, 1))
+
+            # Test determinant is 1 (volume preserving)
+            det = torch.det(R)
+            self.assertAlmostEqual(
+                det.item(),
+                1.0,
+                delta=1e-6,
+                msg=f"Rotation matrix for {angle} degrees doesn't have determinant 1",
+            )
+
+            # Test orthogonality (R^T * R = I)
+            I = R.T @ R
+            expected = torch.eye(3, dtype=torch.float, device=positions.device)
+            max_diff = torch.max(torch.abs(I - expected))
+            self.assertLess(
+                max_diff, 1e-5, f"Rotation matrix for {angle} degrees is not orthogonal"
+            )
+
+    def test_stress_rotation_properties(self):
+        """Test that stress tensor rotations preserve tensor invariants."""
+        # Get a sample from the dataset
+        sample = dataset[0]
+        stress = sample["stress"]
+        
+        # Convert stress to 3x3 matrix for calculating invariants
+        stress_matrix = torch.tensor(
+            [
+                [stress[0], stress[5], stress[4]],  # xx, xy, xz
+                [stress[5], stress[1], stress[3]],  # xy, yy, yz
+                [stress[4], stress[3], stress[2]],  # xz, yz, zz
+            ],
+            dtype=torch.float,
+        )
+        
+        # Calculate invariants before rotation
+        trace_original = torch.trace(stress_matrix)
+        det_original = torch.det(stress_matrix)
+        
+        # Test different angles
+        for angle in [30, 45, 60, 90, 180]:
+            # Create rotation matrix
+            _, R = rotate_atom_positions(torch.zeros(1, 3), angle, axis=(0, 0, 1))
+            
+            # Rotate stress tensor
+            rotated_stress = rotate_stress(stress, R)
+            
+            # Convert rotated stress to 3x3 matrix
+            rotated_stress_matrix = torch.tensor(
+                [
+                    [rotated_stress[0], rotated_stress[5], rotated_stress[4]],
+                    [rotated_stress[5], rotated_stress[1], rotated_stress[3]],
+                    [rotated_stress[4], rotated_stress[3], rotated_stress[2]],
+                ],
+                dtype=torch.float,
+            )
+            
+            # Calculate invariants after rotation
+            trace_rotated = torch.trace(rotated_stress_matrix)
+            det_rotated = torch.det(rotated_stress_matrix)
+            
+            # Check that invariants are preserved
+            self.assertAlmostEqual(
+                trace_original.item(),
+                trace_rotated.item(),
+                delta=1e-5,
+                msg=f"Trace not preserved for {angle} degree rotation",
+            )
+            
+            self.assertAlmostEqual(
+                det_original.item(),
+                det_rotated.item(),
+                delta=1e-5,
+                msg=f"Determinant not preserved for {angle} degree rotation",
+            )
+
+    def test_random_rotation_preserves_distances(self):
+        """Test that random rotations preserve distances between atoms."""
+        # Get a sample from the dataset
+        sample = dataset[0]
+        positions = sample["positions"]
+
+        # Calculate pairwise distances before rotation
+        n_atoms = positions.shape[0]
+        original_distances = torch.zeros((n_atoms, n_atoms), device=positions.device)
+        for i in range(n_atoms):
+            for j in range(i + 1, n_atoms):
+                original_distances[i, j] = torch.norm(positions[i] - positions[j])
+                original_distances[j, i] = original_distances[i, j]
+
+        # Apply random rotation
+        rotated_positions, _ = random_rotate_atom_positions(positions)
+
+        # Calculate pairwise distances after rotation
+        rotated_distances = torch.zeros((n_atoms, n_atoms), device=positions.device)
+        for i in range(n_atoms):
+            for j in range(i + 1, n_atoms):
+                rotated_distances[i, j] = torch.norm(
+                    rotated_positions[i] - rotated_positions[j]
+                )
+                rotated_distances[j, i] = rotated_distances[i, j]
+
+        # Verify distances are preserved
+        max_diff = torch.max(torch.abs(original_distances - rotated_distances))
+        self.assertLess(
+            max_diff, 1e-5, "Random rotation didn't preserve inter-atomic distances"
+        )
+        
 
 
 if __name__ == "__main__":
