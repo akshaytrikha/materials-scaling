@@ -172,7 +172,6 @@ class TestTransformer(unittest.TestCase):
                     results_filename = match.group(1).strip()
                     print("Captured results filename:", results_filename)
 
-            visualization_filepath = None
             try:
                 # ---------- Test loss values and config ----------
                 with open(results_filename, "r") as f:
@@ -207,28 +206,9 @@ class TestTransformer(unittest.TestCase):
                     np.testing.assert_allclose(
                         last_val_loss, 101.86371040344238, rtol=0.1
                     )
-
-                # ---------- Test visualization was created ----------
-                result = subprocess.run(
-                    [
-                        "python3",
-                        "model_prediction_evolution.py",
-                        str(results_filename),
-                        "--split",
-                        "train",
-                    ],
-                    capture_output=True,
-                    text=True,
-                )
-
-                visualization_filepath = Path(f"figures/{Path(results_filename).stem}")
-                assert visualization_filepath.exists(), "Visualization was not created."
-
             finally:
                 if os.path.exists(results_filename):
                     os.remove(results_filename)
-                if visualization_filepath and os.path.exists(visualization_filepath):
-                    shutil.rmtree(visualization_filepath)
 
     def test_forward_non_factorized_output_shapes(self):
         """

@@ -30,11 +30,6 @@ VALID_DATASETS = [
 
 with open("dataset_stats.json", "r") as f:
     DATASET_INFO = json.load(f)
-DATASET_INFO.setdefault("train", {}).setdefault("all", {})["means"] = {
-    "energy": -97.73,
-    "forces": [0, 0, 0],
-    "stress": [-0.03071, -0.03048, -0.03014, 2.67e-6, -9.82e-6, -1.06e-4],
-}
 
 
 def get_dataset_url(dataset_name: str, split_name: str):

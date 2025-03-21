@@ -12,7 +12,12 @@ from torch_geometric.loader import DataLoader as PyGDataLoader
 from torch.utils.data.distributed import DistributedSampler
 
 # Internal
-from matrix import compute_distance_matrix, factorize_matrix, random_rotate_atoms
+from matrix import (
+    compute_distance_matrix,
+    factorize_matrix,
+    random_rotate_atom_positions,
+    rotate_stress,
+)
 from data_utils import (
     custom_collate_fn_batch_padded,
     custom_collate_fn_dataset_padded,
@@ -86,6 +91,7 @@ def get_dataloaders(
     graph: bool = False,
     factorize: bool = False,
     distributed: bool = False,
+    augment: bool = False,
 ):
     """Creates training and validation DataLoaders from a list of dataset paths.
     Each dataset is loaded, split into training and validation subsets, and then
@@ -104,6 +110,7 @@ def get_dataloaders(
         graph (bool, optional): Whether to create PyG DataLoaders for graph datasets.
         factorize (bool, optional): Whether to factorize the distance matrix into a low-rank matrix.
         distributed (bool, optional): Whether to use distributed training.
+        augment (bool, optional): Whether to apply data augmentation (random rotations). Defaults to False.
 
     Returns:
         tuple: (train_loader, val_loader)
@@ -113,12 +120,15 @@ def get_dataloaders(
 
     # Set max number of atoms per sample based on dataset split
     split_name = dataset_paths[0].parent.name
-    max_n_atoms = max(info["max_n_atoms"] for info in DATASET_INFO[split_name].values())
+    max_n_atoms = DATASET_INFO[split_name]["all"]["max_n_atoms"]
 
     # Load each dataset from its path and split it individually
     for path in dataset_paths:
         dataset = OMat24Dataset(
-            dataset_paths=[path], graph=graph, architecture=architecture
+            dataset_paths=[path],
+            graph=graph,
+            architecture=architecture,
+            augment=augment,
         )
         train_subset, val_subset, _, _ = split_dataset(
             dataset, train_data_fraction, val_data_fraction, seed
@@ -210,7 +220,7 @@ class OMat24Dataset(Dataset):
         dataset_path (Path): Path to the extracted dataset directory.
         architecture (str): Model architecture name (e.g., "FCN", "Transformer", "SchNet", "EquiformerV2").
         config_kwargs (dict, optional): Additional configuration parameters for AseDBDataset. Defaults to {}.
-        augment (bool, optional): Whether to apply data augmentation (random rotations). Defaults to True.
+        augment (bool, optional): Whether to apply data augmentation (random rotations). Defaults to False.
         graph (bool, optional): Whether to generate graph data for PyG. Defaults to False.
     """
 
@@ -301,9 +311,10 @@ class OMat24Dataset(Dataset):
         )  # Shape: (6,) if stress tensor
 
         if self.augment:
-            # Apply random rotation to positions and forces
-            positions, R = random_rotate_atoms(positions)
+            # Apply random rotation to positions, forces & stress
+            positions, R = random_rotate_atom_positions(positions)
             forces = forces @ R.T
+            stress = rotate_stress(stress, R)
 
         if self.graph:
             pyg_args = {
