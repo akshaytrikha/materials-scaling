@@ -292,10 +292,6 @@ class OMat24Dataset(Dataset):
         atomic_numbers = atoms.get_atomic_numbers()  # Shape: (N_atoms,)
         positions = atoms.get_positions(wrap=True)  # Shape: (N_atoms, 3)
         scaled_positions = atoms.get_scaled_positions(wrap=True)  # Shape: (N_atoms, 3)
-        # Concatenate regular and scaled positions
-        combined_positions = np.concatenate(
-            [positions, scaled_positions], axis=1
-        )  # Shape: (N_atoms, 6)
 
         symbols = (
             atoms.symbols.get_chemical_formula()
@@ -305,7 +301,9 @@ class OMat24Dataset(Dataset):
         # Convert to tensors
         atomic_numbers = torch.tensor(atomic_numbers, dtype=torch.long)
         positions = torch.tensor(positions, dtype=torch.float)
-        combined_positions = torch.tensor(combined_positions, dtype=torch.float)
+        scaled_positions = torch.tensor(scaled_positions, dtype=torch.float)
+        combined_positions = torch.cat([positions, scaled_positions], dim=1)
+        # combined_positions = torch.tensor(combined_positions, dtype=torch.float)
         cell = torch.tensor(np.array(cell), dtype=torch.float)
 
         # Extract target properties (e.g., energy, forces, stress)
