@@ -142,48 +142,13 @@ def get_dataloaders(
     # val_dataset = ConcatAseDBDataset(val_subsets)
 
     # ---------------- Eric stuff ----------------
-    if not Path("dataset.pkl").exists():
-        config_kwargs = {}
-        ase_dataset = AseDBDataset(
-            config=dict(src="datasets/val/rattled-500-subsampled", **config_kwargs)
+    pickle_path = dataset_paths[0] / f"{dataset_paths[0].name}.pkl"
+    if not pickle_path.exists():
+        raise FileNotFoundError(
+            f"\n\n{pickle_path.name} not found. Please run python3 scripts/pickle_dataset.py {pickle_path.stem} --split {split_name}"
         )
-        symbols = []
-        positions = []
-        atomic_numbers = []
-        forces = []
-        energy = []
-        stress = []
-
-        for i in range(len(ase_dataset.ids)):
-            atoms = ase_dataset.get_atoms(i)
-            symbols.append(atoms.get_chemical_formula())
-
-            # inputs
-            positions.append(
-                np.concatenate(
-                    [
-                        atoms.get_positions(wrap=True),
-                        atoms.get_scaled_positions(wrap=True),
-                    ],
-                    axis=1,
-                )
-            )
-            atomic_numbers.append(atoms.get_atomic_numbers())
-
-            # labels
-            forces.append(atoms.get_forces())
-            energy.append(atoms.get_potential_energy())
-            stress.append(atoms.get_stress())
-
-        dataset = OMat24Dataset(
-            symbols, positions, atomic_numbers, forces, energy, stress
-        )
-
-        # save dataset to pickle
-        with open("dataset.pkl", "wb") as f:
-            pickle.dump(dataset, f)
     else:
-        with open("dataset.pkl", "rb") as f:
+        with open(pickle_path, "rb") as f:
             dataset = pickle.load(f)
 
     # train_dataset, val_dataset = random_split(
