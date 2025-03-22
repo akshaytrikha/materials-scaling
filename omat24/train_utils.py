@@ -54,7 +54,6 @@ def forward_pass(
 
     with context_manager:
         if type(batch) == dict:
-
             atomic_numbers = batch["atomic_numbers"].to(device, non_blocking=True)
             positions = batch["positions"].to(device, non_blocking=True)
             true_forces = batch["forces"].to(device, non_blocking=True)
@@ -63,18 +62,22 @@ def forward_pass(
             mask = atomic_numbers != 0
             natoms = mask.sum(dim=1).to(device)
 
-            if factorize:
-                factorized_distances = batch["factorized_matrix"].to(
-                    device, non_blocking=True
-                )
-                pred_forces, pred_energy, pred_stress = model(
-                    atomic_numbers, positions, factorized_distances, mask
-                )
-            else:
-                distance_matrix = batch["distance_matrix"].to(device, non_blocking=True)
-                pred_forces, pred_energy, pred_stress = model(
-                    atomic_numbers, positions, distance_matrix, mask
-                )
+            pred_forces, pred_energy, pred_stress = model(
+                atomic_numbers, positions, torch.tensor(0).to(device), mask
+            )
+
+            # if factorize:
+            #     factorized_distances = batch["factorized_matrix"].to(
+            #         device, non_blocking=True
+            #     )
+            #     pred_forces, pred_energy, pred_stress = model(
+            #         atomic_numbers, positions, factorized_distances, mask
+            #     )
+            # else:
+            #     distance_matrix = batch["distance_matrix"].to(device, non_blocking=True)
+            #     pred_forces, pred_energy, pred_stress = model(
+            #         atomic_numbers, positions, distance_matrix, mask
+            #     )
 
         elif isinstance(batch, Batch):
             # PyG Batch
@@ -109,15 +112,13 @@ def forward_pass(
                 pred_forces, pred_energy, pred_stress = model(batch)
 
         elif type(batch) == tuple:
-            positions, atomic_numbers, true_forces, mask = batch
+            positions, atomic_numbers, true_forces, true_energy, true_stress, mask = (
+                batch
+            )
             positions = positions.to(device, non_blocking=True)
             atomic_numbers = atomic_numbers.to(device, non_blocking=True)
             true_forces = true_forces.to(device, non_blocking=True)
             mask = mask.to(device, non_blocking=True)
-
-            # dummy values for energy and stress
-            true_energy = torch.tensor(0).to(device)
-            true_stress = torch.tensor(0).to(device)
 
             natoms = mask.sum(dim=1).to(device)
 

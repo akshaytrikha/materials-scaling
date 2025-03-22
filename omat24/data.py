@@ -147,17 +147,37 @@ def get_dataloaders(
         ase_dataset = AseDBDataset(
             config=dict(src="datasets/val/rattled-500-subsampled", **config_kwargs)
         )
-        all_atoms = [ase_dataset.get_atoms(i) for i in range(len(ase_dataset.ids))]
-        labels = [atoms.get_forces() for atoms in all_atoms]
-        X_coords = [
-            np.concatenate(
-                [atoms.get_positions(wrap=True), atoms.get_scaled_positions(wrap=True)],
-                axis=1,
+        symbols = []
+        positions = []
+        atomic_numbers = []
+        forces = []
+        energy = []
+        stress = []
+
+        for i in range(len(ase_dataset.ids)):
+            atoms = ase_dataset.get_atoms(i)
+            symbols.append(atoms.get_chemical_formula())
+
+            # inputs
+            positions.append(
+                np.concatenate(
+                    [
+                        atoms.get_positions(wrap=True),
+                        atoms.get_scaled_positions(wrap=True),
+                    ],
+                    axis=1,
+                )
             )
-            for atoms in all_atoms
-        ]
-        X_numbers = [atoms.get_atomic_numbers() for atoms in all_atoms]
-        dataset = OMat24Dataset(X_coords, X_numbers, labels)
+            atomic_numbers.append(atoms.get_atomic_numbers())
+
+            # labels
+            forces.append(atoms.get_forces())
+            energy.append(atoms.get_potential_energy())
+            stress.append(atoms.get_stress())
+
+        dataset = OMat24Dataset(
+            symbols, positions, atomic_numbers, forces, energy, stress
+        )
 
         # save dataset to pickle
         with open("dataset.pkl", "wb") as f:
@@ -256,21 +276,37 @@ class PyGData(Data):
 
 
 class OMat24Dataset(torch.utils.data.Dataset):
-    def __init__(self, X_coords, X_numbers, y):
-        self.X_coords = X_coords
-        self.X_numbers = X_numbers
-        self.y = y
+    def __init__(self, symbols, positions, atomic_numbers, forces, energy, stress):
+        self.symbols = symbols
+        self.positions = positions
+        self.atomic_numbers = atomic_numbers
+        self.forces = forces
+        self.energy = energy
+        self.stress = stress
 
     def __len__(self):
-        return len(self.X_numbers)
+        return len(self.atomic_numbers)
 
     def __getitem__(self, idx):
-        return (
-            self.X_coords[idx],
-            self.X_numbers[idx],
-            self.y[idx],
-            torch.tensor([1] * len(self.y[idx]), dtype=torch.int64),
-        )
+        atomic_numbers = torch.tensor(self.atomic_numbers[idx], dtype=torch.long)
+        positions = torch.tensor(self.positions[idx], dtype=torch.float)
+        forces = torch.tensor(self.forces[idx], dtype=torch.float)
+        energy = torch.tensor(self.energy[idx], dtype=torch.float)
+        stress = torch.tensor(self.stress[idx], dtype=torch.float)
+
+        sample = {
+            "idx": idx,
+            "symbols": self.symbols[idx],
+            "atomic_numbers": atomic_numbers,  # Element types
+            "positions": positions,  # Cartesian & fractional coordinates
+            # "distance_matrix": distance_matrix,  # [N_atoms, N_atoms]
+            # "factorized_matrix": factorized_matrix,  # [N_atoms, k=5]
+            "energy": energy,  # Target energy
+            "forces": forces,  # Target forces on each atom
+            "stress": stress,  # Target stress tensor
+        }
+
+        return sample
 
 
 class OMat24DataLoader(torch.utils.data.DataLoader):
@@ -280,24 +316,57 @@ class OMat24DataLoader(torch.utils.data.DataLoader):
 
 
 def collate_fn(batch):
-    X_coords, X_numbers, labels, mask = zip(*batch)
-    # print(len(X_numbers[0]), len(X_coords[0]), len(labels[0]))
-    # print(len(X_numbers[1]), len(X_coords[1]), len(labels[1]))
+    import torch
+    from torch.nn.utils.rnn import pad_sequence
 
-    X_coords_t = pad_sequence(
-        [torch.tensor(c, dtype=torch.float32) for c in X_coords], batch_first=True
-    )
-    X_numbers_t = pad_sequence(
-        [torch.tensor(n, dtype=torch.int64) for n in X_numbers], batch_first=True
-    )
-    labels_t = pad_sequence(
-        [torch.tensor(y, dtype=torch.float32) for y in labels], batch_first=True
-    )
-    mask_t = pad_sequence(
-        [torch.tensor(m, dtype=torch.int64) for m in mask], batch_first=True
-    ).to(torch.bool)
+    # Extract items from the dataset
+    positions_list = [
+        torch.tensor(item["positions"], dtype=torch.float32) for item in batch
+    ]
+    numbers_list = [
+        torch.tensor(item["atomic_numbers"], dtype=torch.int64) for item in batch
+    ]
+    energy_list = [
+        torch.tensor(item["energy"], dtype=torch.float32).unsqueeze(0) for item in batch
+    ]
+    forces_list = [torch.tensor(item["forces"], dtype=torch.float32) for item in batch]
+    stress_list = [torch.tensor(item["stress"], dtype=torch.float32) for item in batch]
 
-    return X_coords_t, X_numbers_t, labels_t, mask_t
+    # Create a mask of ones for each sample
+    mask_list = [
+        torch.ones(len(item["atomic_numbers"]), dtype=torch.int64) for item in batch
+    ]
+
+    # Pad variable-length sequences
+    positions_t = pad_sequence(positions_list, batch_first=True)
+    numbers_t = pad_sequence(numbers_list, batch_first=True)
+    forces_t = pad_sequence(forces_list, batch_first=True)
+    mask_t = pad_sequence(mask_list, batch_first=True).to(torch.bool)
+
+    # Stack energy and stress
+    energy_t = torch.cat(energy_list, dim=0)  # shape: [batch_size]
+    stress_t = torch.stack(stress_list, dim=0)  # shape: [batch_size, 6] if stress is 6D
+
+    return positions_t, numbers_t, forces_t, energy_t, stress_t, mask_t
+
+
+# def collate_fn(batch):
+#     X_coords, X_numbers, labels, mask = zip(*batch)
+
+#     X_coords_t = pad_sequence(
+#         [torch.tensor(c, dtype=torch.float32) for c in X_coords], batch_first=True
+#     )
+#     X_numbers_t = pad_sequence(
+#         [torch.tensor(n, dtype=torch.int64) for n in X_numbers], batch_first=True
+#     )
+#     labels_t = pad_sequence(
+#         [torch.tensor(y, dtype=torch.float32) for y in labels], batch_first=True
+#     )
+#     mask_t = pad_sequence(
+#         [torch.tensor(m, dtype=torch.int64) for m in mask], batch_first=True
+#     ).to(torch.bool)
+
+#     return X_coords_t, X_numbers_t, labels_t, mask_t
 
 
 # Old dataset class

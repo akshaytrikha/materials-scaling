@@ -111,6 +111,8 @@ def plot_force_comparison(
     """
     # Extract data from sample and predictions
     positions = np.array(sample["positions"])
+    if positions.shape[1] == 6:
+        positions = positions[:, :3]
     numbers = np.array(sample["atomic_numbers"])
     forces_true = np.array(sample["forces"])
     forces_pred = np.array(predictions["forces"])
