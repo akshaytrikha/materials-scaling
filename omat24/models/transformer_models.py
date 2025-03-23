@@ -110,10 +110,10 @@ class MetaTransformerModels:
         """
         # fmt: off
         self.configurations = [
-            {"d_model": 1, "depth": 1, "n_heads": 1, "d_ff_mult": 4}, # 1,778 params
-            {"d_model": 8, "depth": 2, "n_heads": 1, "d_ff_mult": 4}, # 9,657 params
-            {"d_model": 48, "depth": 3, "n_heads": 1, "d_ff_mult": 4}, # 119,758 params
-            {"d_model": 160, "depth": 3, "n_heads": 2, "d_ff_mult": 4}, # 1,019,086 params
+            {"d_model": 1, "depth": 1, "n_heads": 1, "d_ff_mult": 1}, # 3,335 params
+            {"d_model": 8, "depth": 2, "n_heads": 1, "d_ff_mult": 4}, # 13,086 params
+            {"d_model": 40, "depth": 3, "n_heads": 1, "d_ff_mult": 4}, # 101,440 params
+            {"d_model": 160, "depth": 3, "n_heads": 2, "d_ff_mult": 4}, # 1,051,288 params
         ]
         # fmt: on
 
