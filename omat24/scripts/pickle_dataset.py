@@ -76,12 +76,12 @@ def main():
     for dataset in VALID_DATASETS:
         for split in args.splits:
             dataset_path = Path(f"{args.base_path}/{split}/{dataset}")
-            symbols, positions, atomic_numbers, forces, energy, stress = get_info(
-                dataset_path
+            symbols, positions, atomic_numbers, cells, pbc, forces, energy, stress = (
+                get_info(dataset_path)
             )
 
             dataset = OMat24Dataset(
-                symbols, positions, atomic_numbers, forces, energy, stress
+                symbols, positions, atomic_numbers, cells, pbc, forces, energy, stress
             )
 
             # save dataset to pickle
