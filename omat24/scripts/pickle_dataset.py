@@ -17,6 +17,8 @@ def get_info(dataset_path):
     symbols = []
     positions = []
     atomic_numbers = []
+    cells = []
+    pbc = []
     forces = []
     energy = []
     stress = []
@@ -36,6 +38,8 @@ def get_info(dataset_path):
             )
         )
         atomic_numbers.append(atoms.get_atomic_numbers())
+        cells.append(atoms.get_cell())
+        pbc.append(atoms.get_pbc())
 
         # labels
         forces.append(atoms.get_forces())
@@ -69,7 +73,7 @@ def main():
 
     args = parser.parse_args()
 
-    for dataset in args.datasets:
+    for dataset in VALID_DATASETS:
         for split in args.splits:
             dataset_path = Path(f"{args.base_path}/{split}/{dataset}")
             symbols, positions, atomic_numbers, forces, energy, stress = get_info(

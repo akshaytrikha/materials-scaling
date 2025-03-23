@@ -12,6 +12,8 @@ from torch_geometric.loader import DataLoader as PyGDataLoader
 from torch.utils.data.distributed import DistributedSampler
 from torch.nn.utils.rnn import pad_sequence
 import pickle
+from bisect import bisect_right
+
 
 # Internal
 from matrix import (
@@ -95,131 +97,47 @@ def get_dataloaders(
     distributed: bool = False,
     augment: bool = False,
 ):
-    """Creates training and validation DataLoaders from a list of dataset paths.
-    Each dataset is loaded, split into training and validation subsets, and then
-    the splits are concatenated. This works for a single dataset path as well as multiple paths.
+    train_datasets = []
+    val_datasets = []
 
-    Args:
-        dataset_paths (List[str]): List of dataset paths.
-        train_data_fraction (float): Fraction of each dataset (after validation split) to use for training.
-        batch_size (int): Number of samples per batch.
-        seed (int): Seed for reproducibility.
-        architecture (str): Model architecture name (e.g., "FCN", "Transformer", "SchNet", "EquiformerV2").
-        batch_padded (bool, optional): Whether to pad variable-length tensors.
-        val_data_fraction (float, optional): Fraction of each dataset to use for validation.
-        train_workers (int, optional): Number of worker processes for the training DataLoader.
-        val_workers (int, optional): Number of worker processes for the validation DataLoader.
-        graph (bool, optional): Whether to create PyG DataLoaders for graph datasets.
-        factorize (bool, optional): Whether to factorize the distance matrix into a low-rank matrix.
-        distributed (bool, optional): Whether to use distributed training.
-        augment (bool, optional): Whether to apply data augmentation (random rotations). Defaults to False.
-
-    Returns:
-        tuple: (train_loader, val_loader)
-    """
-    train_subsets = []
-    val_subsets = []
-
-    # Set max number of atoms per sample based on dataset split
+    # Set max number of atoms based on dataset split
     split_name = dataset_paths[0].parent.name
     max_n_atoms = DATASET_INFO[split_name]["all"]["max_n_atoms"]
 
-    # # Load each dataset from its path and split it individually
-    # for path in dataset_paths:
-    #     dataset = OMat24Dataset(
-    #         dataset_paths=[path],
-    #         graph=graph,
-    #         architecture=architecture,
-    #         augment=augment,
-    #     )
-    #     train_subset, val_subset, _, _ = split_dataset(
-    #         dataset, train_data_fraction, val_data_fraction, seed
-    #     )
-    #     train_subsets.append(train_subset)
-    #     val_subsets.append(val_subset)
+    # Load and split each pickled dataset
+    for path in dataset_paths:
+        pickle_path = path / f"{path.name}.pkl"
+        if not pickle_path.exists():
+            raise FileNotFoundError(
+                f"\n\n{pickle_path.name} not found. Please run python3 scripts/pickle_dataset.py {pickle_path.stem} --split {split_name}"
+            )
 
-    # train_dataset = ConcatAseDBDataset(train_subsets)
-    # val_dataset = ConcatAseDBDataset(val_subsets)
-
-    # ---------------- Eric stuff ----------------
-    pickle_path = dataset_paths[0] / f"{dataset_paths[0].name}.pkl"
-    if not pickle_path.exists():
-        raise FileNotFoundError(
-            f"\n\n{pickle_path.name} not found. Please run python3 scripts/pickle_dataset.py {pickle_path.stem} --split {split_name}"
-        )
-    else:
+        print(f"Loading dataset from {pickle_path}")
         with open(pickle_path, "rb") as f:
             dataset = pickle.load(f)
 
-    # train_dataset, val_dataset = random_split(
-    #     dataset, [train_split, len(dataset) - train_split]
-    # )
-    train_dataset, val_dataset, _, _ = split_dataset(
-        dataset, train_data_fraction, val_data_fraction, seed
-    )
-    # ---------------- Eric stuff ----------------
+        # Split the dataset
+        train_subset, val_subset, _, _ = split_dataset(
+            dataset, train_data_fraction, val_data_fraction, seed
+        )
 
-    # # Configure samplers for DDP
-    # if distributed:
-    #     train_sampler = DistributedSampler(train_dataset, seed=seed)
-    #     val_sampler = DistributedSampler(val_dataset, seed=seed, shuffle=False)
-    #     shuffle = False
-    # else:
-    #     train_sampler = None
-    #     val_sampler = None
-    #     shuffle = True
+        train_datasets.append(train_subset)
+        val_datasets.append(val_subset)
 
-    # if graph:
-    #     # Create PyG DataLoaders
-    #     train_loader = PyGDataLoader(
-    #         train_dataset,
-    #         batch_size=batch_size,
-    #         shuffle=shuffle and not distributed,
-    #         sampler=train_sampler,
-    #         num_workers=train_workers,
-    #         pin_memory=torch.cuda.is_available(),
-    #     )
-    #     val_loader = PyGDataLoader(
-    #         val_dataset,
-    #         batch_size=batch_size,
-    #         shuffle=False,
-    #         sampler=val_sampler,
-    #         num_workers=val_workers,
-    #         pin_memory=torch.cuda.is_available(),
-    #     )
-    # else:
-    #     # Create collate function instances
-    #     if batch_padded:
-    #         collate_fn = BatchPaddedCollate(factorize)
-    #     else:
-    #         collate_fn = DatasetPaddedCollate(max_n_atoms, factorize)
+    # Create concatenated datasets
+    if len(train_datasets) > 1:
+        train_dataset = ConcatPickledDataset(train_datasets)
+        val_dataset = ConcatPickledDataset(val_datasets)
+    else:
+        train_dataset = train_datasets[0]
+        val_dataset = val_datasets[0]
 
-    #     train_loader = DataLoader(
-    #         train_dataset,
-    #         batch_size=batch_size,
-    #         shuffle=shuffle and not distributed,
-    #         sampler=train_sampler,
-    #         collate_fn=collate_fn,
-    #         num_workers=train_workers,
-    #         persistent_workers=train_workers > 0,
-    #         pin_memory=torch.cuda.is_available(),
-    #     )
-    #     val_loader = DataLoader(
-    #         val_dataset,
-    #         batch_size=batch_size,
-    #         shuffle=False,
-    #         sampler=val_sampler,
-    #         collate_fn=collate_fn,
-    #         num_workers=val_workers,
-    #         persistent_workers=val_workers > 0,
-    #         pin_memory=torch.cuda.is_available(),
-    #     )
-
+    # Create dataloaders
     train_loader = OMat24DataLoader(
         train_dataset, batch_size=batch_size, shuffle=True, collate_fn=collate_fn
     )
     val_loader = OMat24DataLoader(
-        val_dataset, batch_size=batch_size, shuffle=True, collate_fn=collate_fn
+        val_dataset, batch_size=batch_size, shuffle=False, collate_fn=collate_fn
     )
 
     return train_loader, val_loader
@@ -274,6 +192,27 @@ class OMat24Dataset(torch.utils.data.Dataset):
         return sample
 
 
+class ConcatPickledDataset(torch.utils.data.Dataset):
+    """Concatenates multiple pickled datasets into a single dataset.
+    __getitem__() returns the sample from the appropriate dataset."""
+
+    def __init__(self, datasets):
+        self.datasets = datasets
+        self.lengths = [len(dataset) for dataset in datasets]
+        self.cumulative_lengths = [0] + list(np.cumsum(self.lengths))
+
+    def __len__(self):
+        return sum(self.lengths)
+
+    def __getitem__(self, idx):
+        # Find which dataset the index belongs to
+        dataset_idx = bisect_right(self.cumulative_lengths, idx) - 1
+        sample_idx = idx - self.cumulative_lengths[dataset_idx]
+
+        # Get the sample from the appropriate dataset
+        return self.datasets[dataset_idx][sample_idx]
+
+
 class OMat24DataLoader(torch.utils.data.DataLoader):
     # Sequences are different
     def __init__(self, *args, **kwargs):
@@ -313,25 +252,6 @@ def collate_fn(batch):
     stress_t = torch.stack(stress_list, dim=0)  # shape: [batch_size, 6] if stress is 6D
 
     return positions_t, numbers_t, forces_t, energy_t, stress_t, mask_t
-
-
-# def collate_fn(batch):
-#     X_coords, X_numbers, labels, mask = zip(*batch)
-
-#     X_coords_t = pad_sequence(
-#         [torch.tensor(c, dtype=torch.float32) for c in X_coords], batch_first=True
-#     )
-#     X_numbers_t = pad_sequence(
-#         [torch.tensor(n, dtype=torch.int64) for n in X_numbers], batch_first=True
-#     )
-#     labels_t = pad_sequence(
-#         [torch.tensor(y, dtype=torch.float32) for y in labels], batch_first=True
-#     )
-#     mask_t = pad_sequence(
-#         [torch.tensor(m, dtype=torch.int64) for m in mask], batch_first=True
-#     ).to(torch.bool)
-
-#     return X_coords_t, X_numbers_t, labels_t, mask_t
 
 
 # Old dataset class
