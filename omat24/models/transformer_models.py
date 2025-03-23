@@ -112,7 +112,9 @@ class MetaTransformerModels:
         self.configurations = [
             {"d_model": 1, "depth": 1, "n_heads": 1, "d_ff_mult": 1}, # 3,335 params
             {"d_model": 8, "depth": 2, "n_heads": 1, "d_ff_mult": 4}, # 13,086 params
+            {"d_model": 24, "depth": 3, "n_heads": 1, "d_ff_mult": 4}, # 52,720 params
             {"d_model": 40, "depth": 3, "n_heads": 1, "d_ff_mult": 4}, # 101,440 params
+            {"d_model": 96, "depth": 4, "n_heads": 1, "d_ff_mult": 4}, # 494,914 params
             {"d_model": 160, "depth": 3, "n_heads": 2, "d_ff_mult": 4}, # 1,051,288 params
         ]
         # fmt: on
