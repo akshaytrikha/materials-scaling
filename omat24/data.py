@@ -159,10 +159,14 @@ class PyGData(Data):
 
 
 class OMat24Dataset(torch.utils.data.Dataset):
-    def __init__(self, symbols, positions, atomic_numbers, forces, energy, stress):
+    def __init__(
+        self, symbols, positions, atomic_numbers, cells, pbc, forces, energy, stress
+    ):
         self.symbols = symbols
         self.positions = positions
         self.atomic_numbers = atomic_numbers
+        self.cells = cells
+        self.pbc = pbc
         self.forces = forces
         self.energy = energy
         self.stress = stress
@@ -173,6 +177,8 @@ class OMat24Dataset(torch.utils.data.Dataset):
     def __getitem__(self, idx):
         atomic_numbers = torch.tensor(self.atomic_numbers[idx], dtype=torch.long)
         positions = torch.tensor(self.positions[idx], dtype=torch.float)
+        # cell = torch.tensor(self.cells[idx], dtype=torch.float)
+        # pbc = torch.tensor(self.pbc[idx], dtype=torch.float)
         forces = torch.tensor(self.forces[idx], dtype=torch.float)
         energy = torch.tensor(self.energy[idx], dtype=torch.float)
         stress = torch.tensor(self.stress[idx], dtype=torch.float)

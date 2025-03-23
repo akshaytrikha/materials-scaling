@@ -46,7 +46,7 @@ def get_info(dataset_path):
         energy.append(atoms.get_potential_energy())
         stress.append(atoms.get_stress())
 
-    return symbols, positions, atomic_numbers, forces, energy, stress
+    return symbols, positions, atomic_numbers, cells, pbc, forces, energy, stress
 
 
 def main():
