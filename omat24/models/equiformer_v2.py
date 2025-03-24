@@ -124,18 +124,12 @@ class MetaEquiformerV2Models:
                 "max_num_elements": 96,
                 "avg_num_nodes": 31.17,
                 "avg_degree": 61.95,
-                "sphere_channels": 128,
-                "attn_hidden_channels": 64,
                 "num_heads": 8,
-                "attn_alpha_channels": 64,
-                "attn_value_channels": 16,
-                "ffn_hidden_channels": 128,
                 "norm_type": "layer_norm_sh",
                 "lmax_list": [4],
                 "mmax_list": [2],
                 "grid_resolution": 18,
                 "num_sphere_samples": 128,
-                "edge_channels": 128,
                 "use_atom_edge_embedding": True,
                 "share_atom_edge_embedding": False,
                 "use_m_share_rad": False,
@@ -218,45 +212,6 @@ class MetaEquiformerV2Models:
                     "attn_value_channels": 4,
                 }
             },
-            # ~10M params
-            {
-                "backbone": {
-                    "ffn_hidden_channels": 48,
-                    "edge_channels": 36,
-                    "sphere_channels": 36,
-                    "num_layers": 20,
-                    "attn_hidden_channels": 48,
-                    "num_heads": 6,
-                    "attn_alpha_channels": 24,
-                    "attn_value_channels": 12,
-                }
-            },
-            # ~98M params
-            {
-                "backbone": {
-                    "ffn_hidden_channels": 96,
-                    "edge_channels": 96,
-                    "sphere_channels": 96,
-                    "num_layers": 40,
-                    "attn_hidden_channels": 96,
-                    "num_heads": 12,
-                    "attn_alpha_channels": 48,
-                    "attn_value_channels": 24,
-                }
-            },
-            # ~244M params
-            {
-                "backbone": {
-                    "ffn_hidden_channels": 128,
-                    "edge_channels": 128,
-                    "sphere_channels": 128,
-                    "num_layers": 60,
-                    "attn_hidden_channels": 128,
-                    "num_heads": 16,
-                    "attn_alpha_channels": 64,
-                    "attn_value_channels": 32,
-                }
-            },
         ]
 
         # From the Open Materials 2024 Paper
@@ -271,6 +226,12 @@ class MetaEquiformerV2Models:
                     "use_m_share_rad": False,
                     "use_attn_renorm": True,
                     "use_sep_s2_act": True,
+                    "sphere_channels": 128,
+                    "attn_hidden_channels": 64,
+                    "attn_alpha_channels": 64,
+                    "attn_value_channels": 16,
+                    "ffn_hidden_channels": 128,
+                    "edge_channels": 128,
                 }
             },
             # eqV2-M: 86M params
@@ -283,10 +244,28 @@ class MetaEquiformerV2Models:
                     "use_m_share_rad": False,
                     "use_attn_renorm": True,
                     "use_sep_s2_act": True,
+                    "sphere_channels": 128,
+                    "attn_hidden_channels": 64,
+                    "attn_alpha_channels": 64,
+                    "attn_value_channels": 16,
+                    "ffn_hidden_channels": 128,
+                    "edge_channels": 128,
                 }
             },
             # eqV2-L: 153M params
-            {"backbone": {"num_layers": 20, "lmax_list": [6], "mmax_list": [3]}},
+            {
+                "backbone": {
+                    "num_layers": 20,
+                    "lmax_list": [6],
+                    "mmax_list": [3],
+                    "sphere_channels": 128,
+                    "attn_hidden_channels": 64,
+                    "attn_alpha_channels": 64,
+                    "attn_value_channels": 16,
+                    "ffn_hidden_channels": 128,
+                    "edge_channels": 128,
+                }
+            },
         ]
 
         self.device = device
