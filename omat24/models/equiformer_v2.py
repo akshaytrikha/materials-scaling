@@ -160,58 +160,253 @@ class MetaEquiformerV2Models:
         }
 
         self.configs = [
-            # ~3K params
+            # # 1,926 params
+            # {
+            #     "backbone": {
+            #         "ffn_hidden_channels": 1,
+            #         "edge_channels": 1,
+            #         "sphere_channels": 1,
+            #         "num_layers": 1,
+            #         "attn_hidden_channels": 1,
+            #         "num_heads": 1,
+            #         "attn_alpha_channels": 1,
+            #         "attn_value_channels": 1,
+            #     }
+            # },
+            # # 4,195 params
+            # {
+            #     "backbone": {
+            #         "ffn_hidden_channels": 1,
+            #         "edge_channels": 1,
+            #         "sphere_channels": 1,
+            #         "num_layers": 2,
+            #         "attn_hidden_channels": 2,
+            #         "num_heads": 2,
+            #         "attn_alpha_channels": 2,
+            #         "attn_value_channels": 1,
+            #     }
+            # },
+            # # 9,548 params
+            # {
+            #     "backbone": {
+            #         "ffn_hidden_channels": 2,
+            #         "edge_channels": 2,
+            #         "sphere_channels": 2,
+            #         "num_layers": 2,
+            #         "attn_hidden_channels": 4,
+            #         "num_heads": 1,
+            #         "attn_alpha_channels": 4,
+            #         "attn_value_channels": 1,
+            #     }
+            # },
+            # # 27,633 params
+            # {
+            #     "backbone": {
+            #         "ffn_hidden_channels": 3,
+            #         "edge_channels": 3,
+            #         "sphere_channels": 3,
+            #         "num_layers": 2,
+            #         "attn_hidden_channels": 8,
+            #         "num_heads": 2,
+            #         "attn_alpha_channels": 8,
+            #         "attn_value_channels": 2,
+            #     }
+            # },
+            # # 36,836 params
+            # {
+            #     "backbone": {
+            #         "ffn_hidden_channels": 3,
+            #         "edge_channels": 3,
+            #         "sphere_channels": 3,
+            #         "num_layers": 3,
+            #         "attn_hidden_channels": 8,
+            #         "num_heads": 2,
+            #         "attn_alpha_channels": 8,
+            #         "attn_value_channels": 2,
+            #     }
+            # },
+            # 52,732 params
             {
                 "backbone": {
-                    "ffn_hidden_channels": 1,
-                    "edge_channels": 1,
-                    "sphere_channels": 1,
-                    "num_layers": 1,
-                    "attn_hidden_channels": 1,
-                    "num_heads": 1,
-                    "attn_alpha_channels": 1,
-                    "attn_value_channels": 1,
+                    "ffn_hidden_channels": 4,
+                    "edge_channels": 4,
+                    "sphere_channels": 4,
+                    "num_layers": 3,
+                    "attn_hidden_channels": 8,
+                    "num_heads": 3,
+                    "attn_alpha_channels": 8,
+                    "attn_value_channels": 2,
                 }
             },
-            # ~13K params
-            {
-                "backbone": {
-                    "ffn_hidden_channels": 2,
-                    "edge_channels": 2,
-                    "sphere_channels": 2,
-                    "num_layers": 2,
-                    "attn_hidden_channels": 2,
-                    "num_heads": 1,
-                    "attn_alpha_channels": 1,
-                    "attn_value_channels": 1,
-                }
-            },
-            # ~95K params
+            # params
             {
                 "backbone": {
                     "ffn_hidden_channels": 5,
                     "edge_channels": 5,
                     "sphere_channels": 5,
-                    "num_layers": 5,
-                    "attn_hidden_channels": 5,
+                    "num_layers": 4,
+                    "attn_hidden_channels": 8,
                     "num_heads": 2,
-                    "attn_alpha_channels": 3,
+                    "attn_alpha_channels": 8,
                     "attn_value_channels": 2,
                 }
             },
-            # ~1M params
-            {
-                "backbone": {
-                    "ffn_hidden_channels": 16,
-                    "edge_channels": 16,
-                    "sphere_channels": 16,
-                    "num_layers": 10,
-                    "attn_hidden_channels": 12,
-                    "num_heads": 4,
-                    "attn_alpha_channels": 8,
-                    "attn_value_channels": 4,
-                }
-            },
+            # # params
+            # {
+            #     "backbone": {
+            #         "ffn_hidden_channels": 6,
+            #         "edge_channels": 8,
+            #         "sphere_channels": 12,
+            #         "num_layers": 4,
+            #         "attn_hidden_channels": 8,
+            #         "num_heads": 4,
+            #         "attn_alpha_channels": 8,
+            #         "attn_value_channels": 2,
+            #     }
+            # },
+            # params
+            # {
+            #     "backbone": {
+            #         "ffn_hidden_channels": 8,
+            #         "edge_channels": 10,
+            #         "sphere_channels": 16,
+            #         "num_layers": 4,
+            #         "attn_hidden_channels": 10,
+            #         "num_heads": 4,
+            #         "attn_alpha_channels": 10,
+            #         "attn_value_channels": 2,
+            #     }
+            # },
+            # params
+            # {
+            #     "backbone": {
+            #         "ffn_hidden_channels": 10,
+            #         "edge_channels": 10,
+            #         "sphere_channels": 12,
+            #         "num_layers": 4,
+            #         "attn_hidden_channels": 12,
+            #         "num_heads": 4,
+            #         "attn_alpha_channels": 12,
+            #         "attn_value_channels": 3,
+            #     }
+            # },
+            # params
+            # {
+            #     "backbone": {
+            #         "ffn_hidden_channels": 12,
+            #         "edge_channels": 12,
+            #         "sphere_channels": 16,
+            #         "num_layers": 4,
+            #         "attn_hidden_channels": 12,
+            #         "num_heads": 4,
+            #         "attn_alpha_channels": 12,
+            #         "attn_value_channels": 3,
+            #     }
+            # },
+            # params
+            # {
+            #     "backbone": {
+            #         "ffn_hidden_channels": 16,
+            #         "edge_channels": 16,
+            #         "sphere_channels": 16,
+            #         "num_layers": 4,
+            #         "attn_hidden_channels": 16,
+            #         "num_heads": 4,
+            #         "attn_alpha_channels": 16,
+            #         "attn_value_channels": 4,
+            #     }
+            # },
+            # # params
+            # {
+            #     "backbone": {
+            #         "ffn_hidden_channels": 18,
+            #         "edge_channels": 18,
+            #         "sphere_channels": 18,
+            #         "num_layers": 4,
+            #         "attn_hidden_channels": 20,
+            #         "num_heads": 5,
+            #         "attn_alpha_channels": 20,
+            #         "attn_value_channels": 5
+            #     }
+            # },
+            # # params
+            # {
+            #     "backbone": {
+            #         "ffn_hidden_channels": 24,
+            #         "edge_channels": 24,
+            #         "sphere_channels": 24,
+            #         "num_layers": 4,
+            #         "attn_hidden_channels": 24,
+            #         "num_heads": 6,
+            #         "attn_alpha_channels": 24,
+            #         "attn_value_channels": 6
+            #     }
+            # },
+            # # params
+            # {
+            #     "backbone": {
+            #         "ffn_hidden_channels": 36,
+            #         "edge_channels": 36,
+            #         "sphere_channels": 36,
+            #         "num_layers": 5,
+            #         "attn_hidden_channels": 32,
+            #         "num_heads": 6,
+            #         "attn_alpha_channels": 32,
+            #         "attn_value_channels": 8
+            #     }
+            # },
+            # # params
+            # {
+            #     "backbone": {
+            #         "ffn_hidden_channels": 48,
+            #         "edge_channels": 48,
+            #         "sphere_channels": 48,
+            #         "num_layers": 6,
+            #         "attn_hidden_channels": 32,
+            #         "num_heads": 6,
+            #         "attn_alpha_channels": 32,
+            #         "attn_value_channels": 8
+            #     }
+            # },
+            # # params
+            # {
+            #     "backbone": {
+            #         "ffn_hidden_channels": 64,
+            #         "edge_channels": 64,
+            #         "sphere_channels": 64,
+            #         "num_layers": 6,
+            #         "attn_hidden_channels": 32,
+            #         "num_heads": 6,
+            #         "attn_alpha_channels": 32,
+            #         "attn_value_channels": 8
+            #     }
+            # },
+            # # params
+            # {
+            #     "backbone": {
+            #         "ffn_hidden_channels": 72,
+            #         "edge_channels": 72,
+            #         "sphere_channels": 72,
+            #         "num_layers": 6,
+            #         "attn_hidden_channels": 32,
+            #         "num_heads": 6,
+            #         "attn_alpha_channels": 32,
+            #         "attn_value_channels": 8
+            #     }
+            # },
+            # # params
+            # {
+            #     "backbone": {
+            #         "ffn_hidden_channels": 96,
+            #         "edge_channels": 96,
+            #         "sphere_channels": 96,
+            #         "num_layers": 6,
+            #         "attn_hidden_channels": 40,
+            #         "num_heads": 6,
+            #         "attn_alpha_channels": 40,
+            #         "attn_value_channels": 10
+            #     }
+            # },
         ]
 
         # From the Open Materials 2024 Paper
