@@ -199,7 +199,7 @@ class MetaEquiformerV2Models:
                     "attn_value_channels": 1,
                 }
             },
-            # params
+            # 14,175 params
             {
                 "backbone": {
                     "ffn_hidden_channels": 3,
