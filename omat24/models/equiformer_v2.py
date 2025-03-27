@@ -173,7 +173,7 @@ class MetaEquiformerV2Models:
                     "attn_value_channels": 1,
                 }
             },
-            #  params
+            # 3,643 params
             {
                 "backbone": {
                     "ffn_hidden_channels": 1,
@@ -212,7 +212,7 @@ class MetaEquiformerV2Models:
                     "attn_value_channels": 1,
                 }
             },
-            # params
+            # 23,165 params
             {
                 "backbone": {
                     "ffn_hidden_channels": 3,
@@ -225,7 +225,7 @@ class MetaEquiformerV2Models:
                     "attn_value_channels": 2,
                 }
             },
-            # params
+            # 30,872 params
             {
                 "backbone": {
                     "ffn_hidden_channels": 3,
@@ -238,7 +238,7 @@ class MetaEquiformerV2Models:
                     "attn_value_channels": 2,
                 }
             },
-            # params
+            # 40,104 params
             {
                 "backbone": {
                     "ffn_hidden_channels": 4,
@@ -251,7 +251,7 @@ class MetaEquiformerV2Models:
                     "attn_value_channels": 2,
                 }
             },
-            # params
+            # 62,065 params
             {
                 "backbone": {
                     "ffn_hidden_channels": 5,
@@ -264,7 +264,7 @@ class MetaEquiformerV2Models:
                     "attn_value_channels": 2,
                 }
             },
-            # params
+            # 125,040 params
             {
                 "backbone": {
                     "ffn_hidden_channels": 6,
@@ -277,7 +277,7 @@ class MetaEquiformerV2Models:
                     "attn_value_channels": 2,
                 }
             },
-            # params
+            # 175,710 params
             {
                 "backbone": {
                     "ffn_hidden_channels": 8,
@@ -290,7 +290,7 @@ class MetaEquiformerV2Models:
                     "attn_value_channels": 2,
                 }
             },
-            # params
+            # 204,250 params
             {
                 "backbone": {
                     "ffn_hidden_channels": 10,
@@ -303,7 +303,7 @@ class MetaEquiformerV2Models:
                     "attn_value_channels": 3,
                 }
             },
-            # params
+            # 278,492 params
             {
                 "backbone": {
                     "ffn_hidden_channels": 12,
@@ -316,7 +316,7 @@ class MetaEquiformerV2Models:
                     "attn_value_channels": 3,
                 }
             },
-            # params
+            # 348,882 params
             {
                 "backbone": {
                     "ffn_hidden_channels": 16,
@@ -329,7 +329,7 @@ class MetaEquiformerV2Models:
                     "attn_value_channels": 4,
                 }
             },
-            # params
+            # 472,154 params
             {
                 "backbone": {
                     "ffn_hidden_channels": 18,
