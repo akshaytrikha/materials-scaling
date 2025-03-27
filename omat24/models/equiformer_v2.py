@@ -419,7 +419,7 @@ class MetaEquiformerV2Models:
                     "attn_alpha_channels": 40,
                     "attn_value_channels": 10
                 }
-            },
+            }
         ]
 
         # From the Open Materials 2024 Paper
