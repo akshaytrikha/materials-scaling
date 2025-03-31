@@ -350,7 +350,7 @@ class MetaEquiformerV2Models:
                     "sphere_channels": 24,
                     "num_layers": 4,
                     "attn_hidden_channels": 24,
-                    "num_heads": 6,
+                    "num_heads": 2,
                     "attn_alpha_channels": 24,
                     "attn_value_channels": 6
                 }
@@ -363,7 +363,7 @@ class MetaEquiformerV2Models:
                     "sphere_channels": 36,
                     "num_layers": 5,
                     "attn_hidden_channels": 32,
-                    "num_heads": 6,
+                    "num_heads": 3,
                     "attn_alpha_channels": 32,
                     "attn_value_channels": 8
                 }
@@ -376,7 +376,7 @@ class MetaEquiformerV2Models:
                     "sphere_channels": 48,
                     "num_layers": 6,
                     "attn_hidden_channels": 32,
-                    "num_heads": 6,
+                    "num_heads": 4,
                     "attn_alpha_channels": 32,
                     "attn_value_channels": 8
                 }
@@ -389,7 +389,7 @@ class MetaEquiformerV2Models:
                     "sphere_channels": 64,
                     "num_layers": 6,
                     "attn_hidden_channels": 32,
-                    "num_heads": 6,
+                    "num_heads": 5,
                     "attn_alpha_channels": 32,
                     "attn_value_channels": 8
                 }
@@ -415,7 +415,7 @@ class MetaEquiformerV2Models:
                     "sphere_channels": 96,
                     "num_layers": 6,
                     "attn_hidden_channels": 40,
-                    "num_heads": 6,
+                    "num_heads": 7,
                     "attn_alpha_channels": 40,
                     "attn_value_channels": 10
                 }
