@@ -263,24 +263,17 @@ class TestSchNet(unittest.TestCase):
                 "500",
             ]
             with patch.object(sys, "argv", test_args):
-                with patch("train.subprocess.run") as mock_subproc_run:
-                    mock_subproc_run.return_value = subprocess.CompletedProcess(
-                        args=["python3", "model_prediction_evolution.py"],
-                        returncode=0,
-                        stdout="dummy output",
-                        stderr="",
-                    )
-                    buf = io.StringIO()
-                    with redirect_stdout(buf):
-                        train_main()
-                    output = buf.getvalue()
-                    match = re.search(
-                        r"Results will be saved to (?P<results_path>.+)", output
-                    )
-                    self.assertIsNotNone(
-                        match, "Results path not found in training output."
-                    )
-                    results_path = match.group("results_path").strip()
+                buf = io.StringIO()
+                with redirect_stdout(buf):
+                    train_main()
+                output = buf.getvalue()
+                match = re.search(
+                    r"Results will be saved to (?P<results_path>.+)", output
+                )
+                self.assertIsNotNone(
+                    match, "Results path not found in training output."
+                )
+                results_path = match.group("results_path").strip()
 
         try:
             with open(results_path, "r") as f:
