@@ -134,6 +134,14 @@ def get_args():
         help="Use mixed precision training with FP16",
     )
 
+    # Slurm arguments
+    parser.add_argument("--job_name", type=str, default="omat24")
+    parser.add_argument("--account", type=str, default="ac_msemeng")
+    parser.add_argument("--time", type=str, default="00:30:00")
+    parser.add_argument("--gpu", type=str, default="A40")
+    parser.add_argument("--gpus", type=int, default=1)
+    parser.add_argument("--cpus_per_task", type=int, default=8)
+
     return parser.parse_args()
 
 
