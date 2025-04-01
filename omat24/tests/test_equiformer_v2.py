@@ -368,26 +368,18 @@ class TestEquiformerV2(unittest.TestCase):
                     "500",
                 ]
                 with patch.object(sys, "argv", test_args):
-                    with patch("train.subprocess.run") as mock_subproc_run:
-                        # Prevent the actual generation of prediction evolution plots.
-                        mock_subproc_run.return_value = subprocess.CompletedProcess(
-                            args=["python3", "model_prediction_evolution.py"],
-                            returncode=0,
-                            stdout="dummy output",
-                            stderr="",
-                        )
-                        buf = io.StringIO()
-                        with redirect_stdout(buf):
-                            train_main()
-                        output = buf.getvalue()
-                        match = re.search(
-                            r"Results will be saved to (?P<results_path>.+)", output
-                        )
-                        self.assertIsNotNone(
-                            match, "Could not find results filename in output"
-                        )
-                        results_filename = match.group("results_path").strip()
-                        print("Captured results filename:", results_filename)
+                    buf = io.StringIO()
+                    with redirect_stdout(buf):
+                        train_main()
+                    output = buf.getvalue()
+                    match = re.search(
+                        r"Results will be saved to (?P<results_path>.+)", output
+                    )
+                    self.assertIsNotNone(
+                        match, "Could not find results filename in output"
+                    )
+                    results_filename = match.group("results_path").strip()
+                    print("Captured results filename:", results_filename)
         try:
             with open(results_filename, "r") as f:
                 result_json = json.load(f)
