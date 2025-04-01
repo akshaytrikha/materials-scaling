@@ -206,11 +206,12 @@ def main(rank=None, world_size=None, args=None):
             # Optimization setup
             optimizer = optim.AdamW(model.parameters(), lr=lr)
             # Even though some of the parameters say "epochs", they really are steps! Be very careful!
+            num_steps = args.epochs * dataset_size / batch_size
             cosine_lr_lambda = CosineLRLambda(
-                warmup_epochs=int(0.02 * args.epochs * dataset_size / batch_size),
-                warmup_factor=1e-7 / 6e-4,
+                warmup_epochs=int(0.01 * num_steps),
+                warmup_factor=0.2,
                 epochs=int(args.epochs * dataset_size / batch_size),
-                lr_min_factor=0.1,
+                lr_min_factor=0.01,
             )
             scheduler = lr_scheduler.LambdaLR(optimizer, lr_lambda=cosine_lr_lambda)
 
