@@ -156,31 +156,18 @@ class TestFCN(unittest.TestCase):
                 "500",
             ]
             with patch.object(sys, "argv", test_args):
-                # Patch subprocess.run inside train.py to intercept the call to model_prediction_evolution.py.
-                # This prevents the production code from trying to read an empty results file.
-                with patch("train.subprocess.run") as mock_subproc_run:
-                    mock_subproc_run.return_value = subprocess.CompletedProcess(
-                        args=["python3", "model_prediction_evolution.py"],
-                        returncode=0,
-                        stdout="dummy output",
-                        stderr="",
-                    )
-                    # Capture stdout from train_main() to retrieve the generated results filename.
+                buf = io.StringIO()
+                with redirect_stdout(buf):
+                    train_main()
+                output = buf.getvalue()
 
-                    buf = io.StringIO()
-                    with redirect_stdout(buf):
-                        train_main()
-                    output = buf.getvalue()
-
-                    # Extract the experiment JSON filename from the output.
-                    match = re.search(
-                        r"Results will be saved to (?P<results_path>.+)", output
-                    )
-                    self.assertIsNotNone(
-                        match, "Could not find results filename in output"
-                    )
-                    results_filename = match.group(1).strip()
-                    print("Captured results filename:", results_filename)
+                # Extract the experiment JSON filename from the output.
+                match = re.search(
+                    r"Results will be saved to (?P<results_path>.+)", output
+                )
+                self.assertIsNotNone(match, "Could not find results filename in output")
+                results_filename = match.group(1).strip()
+                print("Captured results filename:", results_filename)
 
             try:
                 # ---------- Test loss values and config ----------
