@@ -35,6 +35,7 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data.distributed import DistributedSampler
 from fairchem.core.modules.scheduler import CosineLRLambda
 import torch.optim.lr_scheduler as lr_scheduler
+import math
 
 # Internal
 from data import get_dataloaders
@@ -206,11 +207,11 @@ def main(rank=None, world_size=None, args=None):
             # Optimization setup
             optimizer = optim.AdamW(model.parameters(), lr=lr, weight_decay=0.001)
             # Even though some of the parameters say "epochs", they really are steps! Be very careful!
-            num_steps = args.epochs * dataset_size / batch_size
+            num_steps = args.epochs * math.ceil(dataset_size / batch_size)
             cosine_lr_lambda = CosineLRLambda(
-                warmup_epochs=int(0.01 * num_steps),
+                warmup_epochs=int(max(1, 0.01 * num_steps)),
                 warmup_factor=0.2,
-                epochs=int(num_steps),
+                epochs=int(max(1, num_steps)),
                 lr_min_factor=0.01,
             )
             scheduler = lr_scheduler.LambdaLR(optimizer, lr_lambda=cosine_lr_lambda)
