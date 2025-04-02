@@ -204,7 +204,7 @@ def main(rank=None, world_size=None, args=None):
                 )
 
             # Optimization setup
-            optimizer = optim.AdamW(model.parameters(), lr=lr)
+            optimizer = optim.AdamW(model.parameters(), lr=lr, weight_decay=0.001)
             # Even though some of the parameters say "epochs", they really are steps! Be very careful!
             num_steps = args.epochs * dataset_size / batch_size
             cosine_lr_lambda = CosineLRLambda(
