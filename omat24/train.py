@@ -208,9 +208,9 @@ def main(rank=None, world_size=None, args=None):
             # Even though some of the parameters say "epochs", they really are steps! Be very careful!
             num_steps = args.epochs * dataset_size / batch_size
             cosine_lr_lambda = CosineLRLambda(
-                warmup_epochs=1,
+                warmup_epochs=int(0.01 * num_steps),
                 warmup_factor=0.2,
-                epochs=1,
+                epochs=int(num_steps),
                 lr_min_factor=0.01,
             )
             scheduler = lr_scheduler.LambdaLR(optimizer, lr_lambda=cosine_lr_lambda)
