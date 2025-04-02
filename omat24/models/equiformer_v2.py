@@ -165,6 +165,7 @@ class MetaEquiformerV2Models:
                 "backbone": {
                     "ffn_hidden_channels": 1,
                     "edge_channels": 1,
+                    "sphere_channels": 1,
                     "num_layers": 1,
                     "attn_hidden_channels": 1,
                     "num_heads": 1,
@@ -177,6 +178,7 @@ class MetaEquiformerV2Models:
                 "backbone": {
                     "ffn_hidden_channels": 1,
                     "edge_channels": 1,
+                    "sphere_channels": 1,
                     "num_layers": 2,
                     "attn_hidden_channels": 2,
                     "num_heads": 1,
