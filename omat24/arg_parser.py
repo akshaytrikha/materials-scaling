@@ -13,7 +13,7 @@ def get_args():
     parser.add_argument(
         "--architecture",
         type=str,
-        choices=["FCN", "Transformer", "SchNet", "EquiformerV2"],
+        choices=["FCN", "Transformer", "SchNet", "EquiformerV2", "ADiT"],
         default="FCN",
         help="Model architecture to use",
     )
@@ -63,11 +63,6 @@ def get_args():
         help="Maximum number of unique elements in a sample",
     )
     parser.add_argument("--augment", action="store_true", help="Rotation augmentation")
-    parser.add_argument(
-        "--factorize",
-        action="store_true",
-        help="Factorize and use inverse distance matrix",
-    )
     parser.add_argument(
         "--gradient_clip",
         type=float,

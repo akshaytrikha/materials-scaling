@@ -211,7 +211,7 @@ class MLPOutput(nn.Module):
         super().__init__()
         self.net = nn.Sequential(
             nn.Linear(in_dim, in_dim),
-            nn.LeakyReLU(negative_slope=0.01),
+            nn.SiLU(),
             nn.Linear(in_dim, out_dim),
         )
 
