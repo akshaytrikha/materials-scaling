@@ -45,6 +45,7 @@ from models.fcn import MetaFCNModels
 from models.transformer_models import MetaTransformerModels
 from models.schnet import MetaSchNetModels
 from models.equiformer_v2 import MetaEquiformerV2Models
+from models.adit import MetaADiTModels
 from train_utils import train
 
 # Set seed & device
@@ -116,30 +117,26 @@ def main(rank=None, world_size=None, args=None):
     batch_size = args.batch_size[0]
     lr = args.lr[0]
     args.epochs
-    use_factorize = args.factorize
-    graph = args.architecture in ["SchNet", "EquiformerV2"]
+    graph = args.architecture in ["SchNet", "EquiformerV2", "ADiT"]
+    if graph:
+        if DEVICE == torch.device("mps"):
+            print(f"MPS is not supported for {args.architecture}. Switching to CPU.")
+            DEVICE = torch.device("cpu")
 
     # Initialize meta model class based on architecture choice
     if args.architecture == "FCN":
-        meta_models = MetaFCNModels(
-            vocab_size=args.n_elements, use_factorized=use_factorize
-        )
+        meta_models = MetaFCNModels(vocab_size=args.n_elements)
     elif args.architecture == "Transformer":
         meta_models = MetaTransformerModels(
             vocab_size=args.n_elements,
             max_seq_len=DATASET_INFO[args.split_name]["all"]["max_n_atoms"],
-            use_factorized=use_factorize,
         )
     elif args.architecture == "SchNet":
-        if DEVICE == torch.device("mps"):
-            print("MPS is not supported for SchNet. Switching to CPU.")
-            DEVICE = torch.device("cpu")
         meta_models = MetaSchNetModels(device=DEVICE)
     elif args.architecture == "EquiformerV2":
-        if DEVICE == torch.device("mps"):
-            print("MPS is not supported for EquiformerV2. Switching to CPU.")
-            DEVICE = torch.device("cpu")
         meta_models = MetaEquiformerV2Models(device=DEVICE)
+    elif args.architecture == "ADiT":
+        meta_models = MetaADiTModels()
 
     # Create results path and initialize file if logging is enabled
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -165,12 +162,10 @@ def main(rank=None, world_size=None, args=None):
             batch_size=batch_size,
             seed=SEED,
             architecture=args.architecture,
-            batch_padded=False,
             val_data_fraction=args.val_data_fraction,
             train_workers=args.train_workers,
             val_workers=args.val_workers,
             graph=graph,
-            factorize=use_factorize,
             distributed=world_size is not None,
             augment=args.augment,
         )
@@ -261,7 +256,6 @@ def main(rank=None, world_size=None, args=None):
                 "distributed": (world_size is not None),
                 "rank": rank,
                 "patience": 5,
-                "factorize": use_factorize,
                 "writer": writer if is_main_process else None,
                 "tensorboard_prefix": model_name,
                 "num_visualization_samples": args.num_visualization_samples,
@@ -304,9 +298,6 @@ def main(rank=None, world_size=None, args=None):
                     "depth": getattr(model_instance, "depth", None),
                     "n_heads": getattr(model_instance, "n_heads", None),
                     "d_ff_mult": getattr(model_instance, "d_ff_mult", None),
-                    "use_factorized": getattr(
-                        model_instance, "use_factorized", use_factorize
-                    ),
                     "num_params": getattr(model_instance, "num_params", None),
                     "architecture": getattr(model_instance, "name", None),
                 }
