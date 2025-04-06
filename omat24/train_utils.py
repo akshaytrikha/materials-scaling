@@ -54,60 +54,36 @@ def forward_pass(
     )
 
     with context_manager:
-        if type(batch) == dict:
+        # PyG Batch
+        atomic_numbers = batch.atomic_numbers.to(device, non_blocking=True)
+        positions = batch.pos.to(device, non_blocking=True)
+        true_forces = batch.forces.to(device, non_blocking=True)
+        true_energy = batch.energy.to(device, non_blocking=True)
+        true_stress = batch.stress.to(device, non_blocking=True)
+        mask = None
+        if hasattr(batch, "natoms"):
+            natoms = (
+                batch.natoms.to(device)
+                if hasattr(batch.natoms, "to")
+                else torch.tensor(batch.natoms, device=device)
+            )
+        else:
+            natoms = None
 
-            atomic_numbers = batch["atomic_numbers"].to(device, non_blocking=True)
-            positions = batch["positions"].to(device, non_blocking=True)
-            true_forces = batch["forces"].to(device, non_blocking=True)
-            true_energy = batch["energy"].to(device, non_blocking=True)
-            true_stress = batch["stress"].to(device, non_blocking=True)
-            mask = atomic_numbers != 0
-            natoms = mask.sum(dim=1).to(device)
+        if model_name == "SchNet":
+            edge_index = batch.edge_index.to(device, non_blocking=True)
+            structure_index = batch.batch.to(device, non_blocking=True)
 
-            if factorize:
-                factorized_distances = batch["factorized_matrix"].to(
-                    device, non_blocking=True
-                )
-                pred_forces, pred_energy, pred_stress = model(
-                    atomic_numbers, positions, factorized_distances, mask
-                )
-            else:
-                distance_matrix = batch["distance_matrix"].to(device, non_blocking=True)
-                pred_forces, pred_energy, pred_stress = model(
-                    atomic_numbers, positions, distance_matrix, mask
-                )
-
-        elif isinstance(batch, Batch):
-            # PyG Batch
-            atomic_numbers = batch.atomic_numbers.to(device, non_blocking=True)
-            positions = batch.pos.to(device, non_blocking=True)
-            true_forces = batch.forces.to(device, non_blocking=True)
-            true_energy = batch.energy.to(device, non_blocking=True)
-            true_stress = batch.stress.to(device, non_blocking=True)
-            mask = None
-            if hasattr(batch, "natoms"):
-                natoms = (
-                    batch.natoms.to(device)
-                    if hasattr(batch.natoms, "to")
-                    else torch.tensor(batch.natoms, device=device)
-                )
-            else:
-                natoms = None
-
-            if model_name == "SchNet":
-                edge_index = batch.edge_index.to(device, non_blocking=True)
-                structure_index = batch.batch.to(device, non_blocking=True)
-
-                pred_forces, pred_energy, pred_stress = model(
-                    atomic_numbers,
-                    positions,
-                    edge_index,
-                    structure_index,
-                )
-            elif model_name == "EquiformerV2":
-                # equiformer constructs graphs internally
-                batch = batch.to(device)
-                pred_forces, pred_energy, pred_stress = model(batch)
+            pred_forces, pred_energy, pred_stress = model(
+                atomic_numbers,
+                positions,
+                edge_index,
+                structure_index,
+            )
+        elif model_name in ["EquiformerV2", "ADiT"]:
+            # equiformer constructs graphs internally
+            batch = batch.to(device)
+            pred_forces, pred_energy, pred_stress = model(batch)
 
     return (
         pred_forces,

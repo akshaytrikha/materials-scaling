@@ -70,20 +70,39 @@ def random_rotate_atom_positions(positions):
 
 def rotate_stress(stress, R):
     """Rotate a stress tensor by applying a rotation matrix.
-
     Args:
         stress (torch.Tensor): Stress tensor in Voigt notation [xx, yy, zz, yz, xz, xy]
+                              or batch of stress tensors with shape [batch_size, 6]
         R (torch.Tensor): 3x3 rotation matrix
-
     Returns:
-        torch.Tensor: Rotated stress tensor in Voigt notation
+        torch.Tensor: Rotated stress tensor in Voigt notation with same shape as input
     """
+    # Handle case where stress is a batch of tensors (shape [batch, 6])
+    input_is_batched = stress.dim() > 1
+    if input_is_batched:
+        # Extract the first (and only) tensor from the batch
+        stress_unbatched = stress.squeeze(0)
+    else:
+        stress_unbatched = stress
+
     # Convert from Voigt notation to 3x3 matrix
     stress_matrix = torch.tensor(
         [
-            [stress[0], stress[5], stress[4]],  # xx, xy, xz
-            [stress[5], stress[1], stress[3]],  # xy, yy, yz
-            [stress[4], stress[3], stress[2]],  # xz, yz, zz
+            [
+                stress_unbatched[0],
+                stress_unbatched[5],
+                stress_unbatched[4],
+            ],  # xx, xy, xz
+            [
+                stress_unbatched[5],
+                stress_unbatched[1],
+                stress_unbatched[3],
+            ],  # xy, yy, yz
+            [
+                stress_unbatched[4],
+                stress_unbatched[3],
+                stress_unbatched[2],
+            ],  # xz, yz, zz
         ],
         dtype=torch.float,
         device=stress.device if hasattr(stress, "device") else None,
@@ -105,6 +124,10 @@ def rotate_stress(stress, R):
         dtype=torch.float,
         device=stress.device if hasattr(stress, "device") else None,
     )
+
+    # If input was a batch tensor, return a batch tensor
+    if input_is_batched:
+        rotated_stress = rotated_stress.unsqueeze(0)
 
     return rotated_stress
 

@@ -5,7 +5,7 @@ import ase
 import random
 from pathlib import Path
 import numpy as np
-from torch.utils.data import DataLoader, Subset, Dataset, ConcatDataset
+from torch.utils.data import Subset, Dataset, ConcatDataset
 from fairchem.core.datasets import AseDBDataset
 from torch_geometric.data import Data
 from torch_geometric.loader import DataLoader as PyGDataLoader
@@ -13,14 +13,10 @@ from torch.utils.data.distributed import DistributedSampler
 
 # Internal
 from matrix import (
-    compute_distance_matrix,
-    factorize_matrix,
     random_rotate_atom_positions,
     rotate_stress,
 )
 from data_utils import (
-    custom_collate_fn_batch_padded,
-    custom_collate_fn_dataset_padded,
     generate_graph,
     DATASET_INFO,
 )
@@ -46,35 +42,16 @@ def split_dataset(dataset, train_data_fraction, val_data_fraction, seed):
     return train_subset, val_subset, train_indices, val_indices
 
 
-class BatchPaddedCollate:
-    def __init__(self, factorize):
-        self.factorize = factorize
-
-    def __call__(self, batch):
-        return custom_collate_fn_batch_padded(batch, self.factorize)
-
-
-class DatasetPaddedCollate:
-    def __init__(self, max_n_atoms, factorize):
-        self.max_n_atoms = max_n_atoms
-        self.factorize = factorize
-
-    def __call__(self, batch):
-        return custom_collate_fn_dataset_padded(batch, self.max_n_atoms, self.factorize)
-
-
 def get_dataloaders(
     dataset_paths: List[str],
     train_data_fraction: float,
     batch_size: int,
     seed: int,
     architecture: str,
-    batch_padded: bool = False,
     val_data_fraction: float = 0.1,
     train_workers: int = 0,
     val_workers: int = 0,
     graph: bool = False,
-    factorize: bool = False,
     distributed: bool = False,
     augment: bool = False,
 ):
@@ -88,12 +65,10 @@ def get_dataloaders(
         batch_size (int): Number of samples per batch.
         seed (int): Seed for reproducibility.
         architecture (str): Model architecture name (e.g., "FCN", "Transformer", "SchNet", "EquiformerV2").
-        batch_padded (bool, optional): Whether to pad variable-length tensors.
         val_data_fraction (float, optional): Fraction of each dataset to use for validation.
         train_workers (int, optional): Number of worker processes for the training DataLoader.
         val_workers (int, optional): Number of worker processes for the validation DataLoader.
         graph (bool, optional): Whether to create PyG DataLoaders for graph datasets.
-        factorize (bool, optional): Whether to factorize the distance matrix into a low-rank matrix.
         distributed (bool, optional): Whether to use distributed training.
         augment (bool, optional): Whether to apply data augmentation (random rotations). Defaults to False.
 
@@ -134,67 +109,42 @@ def get_dataloaders(
         val_sampler = None
         shuffle = True
 
-    if graph:
-        # Create PyG DataLoaders
-        train_loader = PyGDataLoader(
-            train_dataset,
-            batch_size=batch_size,
-            shuffle=shuffle and not distributed,
-            sampler=train_sampler,
-            num_workers=train_workers,
-            pin_memory=torch.cuda.is_available(),
-        )
-        val_loader = PyGDataLoader(
-            val_dataset,
-            batch_size=batch_size,
-            shuffle=False,
-            sampler=val_sampler,
-            num_workers=val_workers,
-            pin_memory=torch.cuda.is_available(),
-        )
-    else:
-        # Create collate function instances
-        if batch_padded:
-            collate_fn = BatchPaddedCollate(factorize)
-        else:
-            collate_fn = DatasetPaddedCollate(max_n_atoms, factorize)
-
-        train_loader = DataLoader(
-            train_dataset,
-            batch_size=batch_size,
-            shuffle=shuffle and not distributed,
-            sampler=train_sampler,
-            collate_fn=collate_fn,
-            num_workers=train_workers,
-            persistent_workers=train_workers > 0,
-            pin_memory=torch.cuda.is_available(),
-        )
-        val_loader = DataLoader(
-            val_dataset,
-            batch_size=batch_size,
-            shuffle=False,
-            sampler=val_sampler,
-            collate_fn=collate_fn,
-            num_workers=val_workers,
-            persistent_workers=val_workers > 0,
-            pin_memory=torch.cuda.is_available(),
-        )
+    # Create PyG DataLoaders
+    train_loader = PyGDataLoader(
+        train_dataset,
+        batch_size=batch_size,
+        shuffle=shuffle and not distributed,
+        sampler=train_sampler,
+        num_workers=train_workers,
+        pin_memory=torch.cuda.is_available(),
+    )
+    val_loader = PyGDataLoader(
+        val_dataset,
+        batch_size=batch_size,
+        shuffle=False,
+        sampler=val_sampler,
+        num_workers=val_workers,
+        pin_memory=torch.cuda.is_available(),
+    )
 
     return train_loader, val_loader
 
 
 class PyGData(Data):
-    """Custom PyG Data class with additional attributes for running EquiformerV2 on OMat24 dataset."""
+    """Custom PyG Data class with proper batching behavior for periodic systems."""
 
     def __cat_dim__(self, key, value, *args, **kwargs):
+        """Define how tensors should be concatenated during batching"""
         if key == "cell":
-            return 0
+            return 0  # Concatenate cells along first dimension
+        elif key == "pbc":
+            return 0  # Concatenate PBC flags along first dimension
         return super().__cat_dim__(key, value, *args, **kwargs)
 
     def __inc__(self, key, value, *args, **kwargs):
-        # Also ensure 'cell' does not get incremented.
-        if key == "cell":
-            return 0
+        """Define how indices should be incremented during batching"""
+        if key == "cell" or key == "pbc":
+            return 0  # No increment for these attributes
         return super().__inc__(key, value, *args, **kwargs)
 
 
@@ -279,12 +229,10 @@ class OMat24Dataset(Dataset):
         symbols = (
             atoms.symbols.get_chemical_formula()
         )  # Keep as string, no tensor conversion needed
-        cell = atoms.get_cell()
 
         # Convert to tensors
         atomic_numbers = torch.tensor(atomic_numbers, dtype=torch.long)
         positions = torch.tensor(positions, dtype=torch.float)
-        cell = torch.tensor(np.array(cell), dtype=torch.float)
 
         # Extract target properties (e.g., energy, forces, stress)
         energy = torch.tensor(atoms.get_potential_energy(), dtype=torch.float)
@@ -301,52 +249,45 @@ class OMat24Dataset(Dataset):
             forces = forces @ R.T
             stress = rotate_stress(stress, R)
 
-        if self.graph:
-            pyg_args = {
-                "pos": positions,
-                "atomic_numbers": atomic_numbers,
-                "energy": energy,
-                "forces": forces,
-                "stress": stress.unsqueeze(0),
-            }
+        pyg_args = {
+            "pos": positions,
+            "atomic_numbers": atomic_numbers,
+            "energy": energy,
+            "forces": forces,
+            "stress": stress.unsqueeze(0),
+        }
 
-            if self.architecture == "SchNet":
-                # Generate graph connectivity (edge_index) and edge attributes (edge_attr)
-                edge_index, edge_attr = generate_graph(positions)
-                pyg_args["edge_index"] = edge_index
-                pyg_args["edge_attr"] = edge_attr
-            elif self.architecture == "EquiformerV2":
-                pyg_args["cell"] = cell.unsqueeze(0)  # Shape: [1, 3, 3]
-                pyg_args["pbc"] = torch.tensor(atoms.get_pbc(), dtype=torch.float)
+        if self.architecture == "SchNet":
+            # Generate graph connectivity (edge_index) and edge attributes (edge_attr)
+            edge_index, edge_attr = generate_graph(positions)
+            pyg_args["edge_index"] = edge_index
+            pyg_args["edge_attr"] = edge_attr
+        elif self.architecture == "EquiformerV2":
+            pyg_args["cell"] = torch.tensor(
+                atoms.get_cell(), dtype=torch.float
+            ).unsqueeze(
+                0
+            )  # Shape: [1, 3, 3]
+            pyg_args["pbc"] = torch.tensor(atoms.get_pbc(), dtype=torch.float)
+        elif self.architecture == "ADiT":
+            pyg_args["cell"] = torch.tensor(
+                np.array(atoms.get_cell()), dtype=torch.float
+            ).unsqueeze(
+                0
+            )  # Shape: [1, 3, 3]
+            pyg_args["pbc"] = torch.tensor(atoms.get_pbc(), dtype=torch.float)
+            pyg_args["frac_coords"] = torch.tensor(
+                atoms.get_scaled_positions(), dtype=torch.float
+            )
+            pyg_args["token_idx"] = torch.arange(
+                len(atoms)
+            )  # atom indices within the structure
 
-            # Create PyG Data object
-            sample = PyGData(**pyg_args)
-            sample.natoms = torch.tensor(len(atoms))
-            sample.idx = idx
-            sample.symbols = symbols
-
-        else:
-            # Compute the distance matrix from (possibly rotated) positions
-            distance_matrix = compute_distance_matrix(
-                positions
-            )  # Shape: [N_atoms, N_atoms]
-
-            factorized_matrix = factorize_matrix(
-                distance_matrix
-            )  # Left matrix: U * sqrt(Sigma) - Shape: [N_atoms, k=5]
-
-            # Package into a dictionary
-            sample = {
-                "idx": idx,
-                "symbols": symbols,
-                "atomic_numbers": atomic_numbers,  # Element types
-                "positions": positions,  # 3D atomic coordinates
-                "distance_matrix": distance_matrix,  # [N_atoms, N_atoms]
-                "factorized_matrix": factorized_matrix,  # [N_atoms, k=5]
-                "energy": energy,  # Target energy
-                "forces": forces,  # Target forces on each atom
-                "stress": stress,  # Target stress tensor
-            }
+        # Create PyG Data object
+        sample = PyGData(**pyg_args)
+        sample.natoms = torch.tensor(len(atoms))
+        sample.idx = idx
+        sample.symbols = symbols
 
         # Add source information for verifying mutli-dataset usage
         if self.debug:
