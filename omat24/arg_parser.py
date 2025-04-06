@@ -115,7 +115,7 @@ def get_args():
     parser.add_argument(
         "--distributed",
         action="store_true",
-        help="Enable distributed training" "--datasets_base_path",
+        help="Enable distributed training",
     )
     parser.add_argument(
         "--datasets_base_path",
@@ -127,6 +127,12 @@ def get_args():
         "--mixed_precision",
         action="store_true",
         help="Use mixed precision training with FP16",
+    )
+    parser.add_argument(
+        "--in_memory",
+        action="store_true",
+        help="Load the entire dataset into memory for faster training",
+        default=False,
     )
 
     # Slurm arguments

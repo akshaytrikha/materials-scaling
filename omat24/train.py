@@ -168,6 +168,7 @@ def main(rank=None, world_size=None, args=None):
             graph=graph,
             distributed=world_size is not None,
             augment=args.augment,
+            in_memory=args.in_memory,
         )
         dataset_size = len(train_loader.dataset)
         if is_main_process:
