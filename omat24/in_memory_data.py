@@ -3,6 +3,7 @@ from typing import List
 import torch
 import numpy as np
 from pathlib import Path
+import os
 from torch.utils.data import Dataset, ConcatDataset, DataLoader
 from fairchem.core.datasets import AseDBDataset
 from torch_geometric.data import Batch
@@ -11,7 +12,23 @@ from tqdm import tqdm
 
 # Internal
 from matrix import random_rotate_atom_positions, rotate_stress
-from data_utils import split_dataset, PyGData
+from data_utils import split_dataset, PyGData, VALID_DATASETS
+
+
+def get_cache_path(dataset_paths, data_fraction):
+    """Generate a simple cache path based on datasets and data fraction."""
+    # Create cache directory
+    cache_dir = Path("./cached_datasets")
+    cache_dir.mkdir(exist_ok=True, parents=True)
+
+    # Simple naming scheme
+    if len(dataset_paths) == 1:
+        # Single dataset case
+        dataset_name = os.path.basename(dataset_paths[0])
+        return cache_dir / f"cached-{dataset_name}-{data_fraction}.pt"
+    else:
+        # Multiple datasets case
+        return cache_dir / f"cached-all-{data_fraction}.pt"
 
 
 def get_in_memory_dataloaders(
@@ -27,7 +44,7 @@ def get_in_memory_dataloaders(
     distributed: bool = False,
     augment: bool = False,
 ):
-    """Creates in-memory training and validation DataLoaders.
+    """Creates in-memory training and validation DataLoaders with simple caching.
 
     Args:
         dataset_paths (List[str]): List of dataset paths.
@@ -38,13 +55,64 @@ def get_in_memory_dataloaders(
         val_data_fraction (float, optional): Fraction of each dataset to use for validation.
         train_workers (int, optional): Number of worker processes for the training DataLoader.
         val_workers (int, optional): Number of worker processes for the validation DataLoader.
-        graph (bool, optional): Whether the model is graph-based.
+        graph (bool, optional): Whether to generate graph data for PyG.
         distributed (bool, optional): Whether to use distributed training.
         augment (bool, optional): Whether to apply data augmentation (random rotations).
 
     Returns:
         tuple: (train_loader, val_loader)
     """
+    # Only use caching if ALL datasets are in VALID_DATASETS
+    use_cache = all(os.path.basename(path) in VALID_DATASETS for path in dataset_paths)
+
+    if use_cache:
+        # Get simple cache path based just on datasets and fraction
+        cache_path = get_cache_path(dataset_paths, train_data_fraction)
+
+        if cache_path.exists():
+            print(f"Loading cached data from {cache_path}")
+            try:
+                cached_data = torch.load(cache_path)
+                train_dataset, val_dataset = cached_data
+
+                # Create DataLoaders from cached datasets
+                if distributed:
+                    train_sampler = DistributedSampler(train_dataset, seed=seed)
+                    val_sampler = DistributedSampler(
+                        val_dataset, seed=seed, shuffle=False
+                    )
+                    shuffle = False
+                else:
+                    train_sampler = None
+                    val_sampler = None
+                    shuffle = True
+
+                # Create DataLoaders
+                train_loader = DataLoader(
+                    train_dataset,
+                    batch_size=batch_size,
+                    shuffle=shuffle and not distributed,
+                    sampler=train_sampler,
+                    num_workers=train_workers,
+                    pin_memory=torch.cuda.is_available(),
+                    collate_fn=Batch.from_data_list,
+                )
+                val_loader = DataLoader(
+                    val_dataset,
+                    batch_size=batch_size,
+                    shuffle=False,
+                    sampler=val_sampler,
+                    num_workers=val_workers,
+                    pin_memory=torch.cuda.is_available(),
+                    collate_fn=Batch.from_data_list,
+                )
+
+                print(f"Successfully loaded datasets from cache")
+                return train_loader, val_loader
+            except Exception as e:
+                print(f"Error loading cache: {e}. Reloading from source.")
+
+    # Load datasets normally if cache doesn't exist or isn't valid
     train_subsets = []
     val_subsets = []
 
@@ -63,9 +131,15 @@ def get_in_memory_dataloaders(
         train_subsets.append(train_subset)
         val_subsets.append(val_subset)
 
-    # Concatenate the datasets
+    # Combine into full datasets
     train_dataset = ConcatDataset(train_subsets)
     val_dataset = ConcatDataset(val_subsets)
+
+    # Save cache for valid datasets
+    if use_cache:
+        cache_path = get_cache_path(dataset_paths, train_data_fraction)
+        print(f"Saving dataset to {cache_path}")
+        torch.save((train_dataset, val_dataset), cache_path)
 
     # Configure samplers for DDP
     if distributed:
@@ -106,7 +180,7 @@ class InMemoryOMat24Dataset(Dataset):
     Pre-loads all data into memory for faster access during training.
 
     Args:
-        dataset_paths (Path): Path to the extracted dataset directory.
+        dataset_paths (List[Path]): Path to the extracted dataset directory.
         architecture (str): Model architecture name.
         augment (bool, optional): Whether to apply data augmentation (random rotations).
     """
@@ -117,7 +191,7 @@ class InMemoryOMat24Dataset(Dataset):
         architecture: str,
         augment: bool = False,
     ):
-        self.dataset_path = dataset_paths
+        self.dataset_paths = dataset_paths
         self.architecture = architecture
         self.augment = augment
 
