@@ -356,18 +356,18 @@ class MetaEquiformerV2Models:
             #     }
             # },
             # # 2,723,134 params
-            {
-                "backbone": {
-                    "ffn_hidden_channels": 36,
-                    "edge_channels": 36,
-                    "sphere_channels": 36,
-                    "num_layers": 5,
-                    "attn_hidden_channels": 32,
-                    "num_heads": 3,
-                    "attn_alpha_channels": 32,
-                    "attn_value_channels": 8
-                }
-            },
+            # {
+            #     "backbone": {
+            #         "ffn_hidden_channels": 36,
+            #         "edge_channels": 36,
+            #         "sphere_channels": 36,
+            #         "num_layers": 5,
+            #         "attn_hidden_channels": 32,
+            #         "num_heads": 3,
+            #         "attn_alpha_channels": 32,
+            #         "attn_value_channels": 8
+            #     }
+            # },
             # # 4,133,018 params
             # {
             #     "backbone": {
@@ -408,18 +408,18 @@ class MetaEquiformerV2Models:
             #     }
             # },
             # # 10,462,026 params
-            # {
-            #     "backbone": {
-            #         "ffn_hidden_channels": 96,
-            #         "edge_channels": 96,
-            #         "sphere_channels": 96,
-            #         "num_layers": 6,
-            #         "attn_hidden_channels": 40,
-            #         "num_heads": 7,
-            #         "attn_alpha_channels": 40,
-            #         "attn_value_channels": 10
-            #     }
-            # }
+            {
+                "backbone": {
+                    "ffn_hidden_channels": 96,
+                    "edge_channels": 96,
+                    "sphere_channels": 96,
+                    "num_layers": 6,
+                    "attn_hidden_channels": 40,
+                    "num_heads": 7,
+                    "attn_alpha_channels": 40,
+                    "attn_value_channels": 10
+                }
+            }
         ]
 
         # From the Open Materials 2024 Paper
