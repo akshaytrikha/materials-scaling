@@ -41,7 +41,7 @@ class XTransformerModel(TransformerWrapper):
         # Initialize base TransformerWrapper without its own embedding
         super().__init__(
             num_tokens=num_tokens,
-            max_seq_len=300,
+            max_seq_len=236,
             emb_dim=d_model,
             attn_layers=Encoder(
                 dim=d_model + self.additional_dim,
@@ -113,10 +113,10 @@ class MetaTransformerModels:
         """
         # fmt: off
         self.configurations = [
-            {"d_model": 1, "depth": 1, "n_heads": 1, "d_ff_mult": 4}, # 1,778 params
-            {"d_model": 8, "depth": 2, "n_heads": 1, "d_ff_mult": 4}, # 9,657 params
-            {"d_model": 48, "depth": 3, "n_heads": 1, "d_ff_mult": 4}, # 119,758 params
-            {"d_model": 160, "depth": 3, "n_heads": 2, "d_ff_mult": 4}, # 1,019,086 params
+            # {"d_model": 1, "depth": 1, "n_heads": 1, "d_ff_mult": 4}, # 1,778 params
+            # {"d_model": 8, "depth": 2, "n_heads": 1, "d_ff_mult": 4}, # 9,657 params
+            # {"d_model": 48, "depth": 3, "n_heads": 1, "d_ff_mult": 4}, # 119,758 params
+            {"d_model": 256, "depth": 3, "n_heads": 2, "d_ff_mult": 4}, # 1,019,086 params
         ]
         # fmt: on
 
