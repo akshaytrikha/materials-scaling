@@ -317,18 +317,18 @@ class MetaEquiformerV2Models:
             #     }
             # },
             # # 348,882 params
-            {
-                "backbone": {
-                    "ffn_hidden_channels": 16,
-                    "edge_channels": 16,
-                    "sphere_channels": 16,
-                    "num_layers": 4,
-                    "attn_hidden_channels": 16,
-                    "num_heads": 1,
-                    "attn_alpha_channels": 16,
-                    "attn_value_channels": 4,
-                }
-            },
+            # {
+            #     "backbone": {
+            #         "ffn_hidden_channels": 16,
+            #         "edge_channels": 16,
+            #         "sphere_channels": 16,
+            #         "num_layers": 4,
+            #         "attn_hidden_channels": 16,
+            #         "num_heads": 1,
+            #         "attn_alpha_channels": 16,
+            #         "attn_value_channels": 4,
+            #     }
+            # },
             # # 472,154 params
             # {
             #     "backbone": {
@@ -343,18 +343,18 @@ class MetaEquiformerV2Models:
             #     }
             # },
             # # 1,175,914 params
-            # {
-            #     "backbone": {
-            #         "ffn_hidden_channels": 24,
-            #         "edge_channels": 24,
-            #         "sphere_channels": 24,
-            #         "num_layers": 4,
-            #         "attn_hidden_channels": 24,
-            #         "num_heads": 2,
-            #         "attn_alpha_channels": 24,
-            #         "attn_value_channels": 6
-            #     }
-            # },
+            {
+                "backbone": {
+                    "ffn_hidden_channels": 24,
+                    "edge_channels": 24,
+                    "sphere_channels": 24,
+                    "num_layers": 4,
+                    "attn_hidden_channels": 24,
+                    "num_heads": 2,
+                    "attn_alpha_channels": 24,
+                    "attn_value_channels": 6
+                }
+            },
             # # 2,723,134 params
             # {
             #     "backbone": {
