@@ -155,7 +155,6 @@ class TestModelInit(unittest.TestCase):
                     val_loader=val_loader,
                     graph=graph,
                     device=self.device,
-                    factorize=False,
                     use_mixed_precision=False,
                 )
 

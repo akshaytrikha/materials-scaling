@@ -2,7 +2,6 @@
 from typing import List
 import torch
 import ase
-import random
 from pathlib import Path
 import numpy as np
 from torch.utils.data import Subset, Dataset, ConcatDataset
@@ -18,28 +17,10 @@ from matrix import (
 )
 from data_utils import (
     generate_graph,
-    DATASET_INFO,
+    split_dataset,
+    PyGData,
 )
-
-
-def split_dataset(dataset, train_data_fraction, val_data_fraction, seed):
-    """Splits a dataset into training and validation subsets."""
-    dataset_size = len(dataset)
-    val_size = int(dataset_size * val_data_fraction)
-    remaining_size = dataset_size - val_size
-    train_size = max(1, int(remaining_size * train_data_fraction))
-
-    random.seed(seed)
-    indices = list(range(dataset_size))
-    random.shuffle(indices)
-
-    val_indices = indices[:val_size]
-    train_indices = indices[val_size : val_size + train_size]
-
-    train_subset = Subset(dataset, indices=train_indices)
-    val_subset = Subset(dataset, indices=val_indices)
-
-    return train_subset, val_subset, train_indices, val_indices
+from in_memory_data import get_in_memory_dataloaders
 
 
 def get_dataloaders(
@@ -54,6 +35,7 @@ def get_dataloaders(
     graph: bool = False,
     distributed: bool = False,
     augment: bool = False,
+    in_memory: bool = False,
 ):
     """Creates training and validation DataLoaders from a list of dataset paths.
     Each dataset is loaded, split into training and validation subsets, and then
@@ -71,16 +53,29 @@ def get_dataloaders(
         graph (bool, optional): Whether to create PyG DataLoaders for graph datasets.
         distributed (bool, optional): Whether to use distributed training.
         augment (bool, optional): Whether to apply data augmentation (random rotations). Defaults to False.
+        in_memory (bool, optional): Whether to use in-memory dataset loading. Defaults to False.
 
     Returns:
         tuple: (train_loader, val_loader)
     """
+    # If in_memory is True, use the implementation from in_memory_data.py instead
+    if in_memory:
+        return get_in_memory_dataloaders(
+            dataset_paths,
+            train_data_fraction,
+            batch_size,
+            seed,
+            architecture,
+            val_data_fraction,
+            train_workers,
+            val_workers,
+            graph,
+            distributed,
+            augment,
+        )
+
     train_subsets = []
     val_subsets = []
-
-    # Set max number of atoms per sample based on dataset split
-    split_name = dataset_paths[0].parent.name
-    max_n_atoms = DATASET_INFO[split_name]["all"]["max_n_atoms"]
 
     # Load each dataset from its path and split it individually
     for path in dataset_paths:
@@ -128,24 +123,6 @@ def get_dataloaders(
     )
 
     return train_loader, val_loader
-
-
-class PyGData(Data):
-    """Custom PyG Data class with proper batching behavior for periodic systems."""
-
-    def __cat_dim__(self, key, value, *args, **kwargs):
-        """Define how tensors should be concatenated during batching"""
-        if key == "cell":
-            return 0  # Concatenate cells along first dimension
-        elif key == "pbc":
-            return 0  # Concatenate PBC flags along first dimension
-        return super().__cat_dim__(key, value, *args, **kwargs)
-
-    def __inc__(self, key, value, *args, **kwargs):
-        """Define how indices should be incremented during batching"""
-        if key == "cell" or key == "pbc":
-            return 0  # No increment for these attributes
-        return super().__inc__(key, value, *args, **kwargs)
 
 
 class OMat24Dataset(Dataset):

@@ -25,21 +25,19 @@ def reduce_losses(tensor, average=True):
 
 def forward_pass(
     model: nn.Module,
-    batch: Union[dict, Batch],
+    batch: Union[dict, Batch, tuple],
     graph: bool,
     training: bool,
     device: torch.device,
-    factorize: bool,
 ):
     """A common forward pass function for inference across different architectures & dataloaders.
 
     Args:
         model (nn.Module): PyTorch model to use.
-        batch (Union[Dict, Batch]): The batch of data to forward pass.
+        batch (Union[Dict, Batch, tuple]): The batch of data to forward pass.
         graph (bool): Whether the model is a graph-based model.
         training (bool): Whether the model is in training mode.
         device (torch.device): The device to run the model on.
-        factorize (bool): Whether to factorize the distance matrix.
     """
     if training or graph:
         context_manager = torch.enable_grad()
@@ -54,7 +52,7 @@ def forward_pass(
     )
 
     with context_manager:
-        # PyG Batch
+        # PyG Batch (for graph-based models)
         atomic_numbers = batch.atomic_numbers.to(device, non_blocking=True)
         positions = batch.pos.to(device, non_blocking=True)
         true_forces = batch.forces.to(device, non_blocking=True)
@@ -81,7 +79,7 @@ def forward_pass(
                 structure_index,
             )
         elif model_name in ["EquiformerV2", "ADiT"]:
-            # equiformer constructs graphs internally
+            # equiformer and ADiT construct graphs internally
             batch = batch.to(device)
             pred_forces, pred_energy, pred_stress = model(batch)
 
@@ -137,12 +135,56 @@ def get_amp_context(use_mixed_precision: bool, device_type: str) -> tuple:
 def collect_samples_helper(num_visualization_samples, dataset, model, graph, device):
     samples = []
     for i in range(min(num_visualization_samples, len(dataset))):
-        if graph:
+        # Handle in-memory dataset
+        if hasattr(dataset, "dataset") and hasattr(dataset.dataset, "X_positions"):
+            # This is an in-memory dataset subset
+            positions, distances, atomic_numbers, forces = dataset[i]
+            # Create batch of size 1
+            batch = (
+                positions.unsqueeze(0).to(device),
+                distances.unsqueeze(0).to(device),
+                atomic_numbers.unsqueeze(0).to(device),
+                forces.unsqueeze(0).to(device),
+                torch.ones((1, len(atomic_numbers)), dtype=torch.bool, device=device),
+            )
+            sample_length = len(atomic_numbers)
+            idx = i
+            symbols = "Unknown"  # In-memory datasets don't store symbols
+
+            (
+                pred_forces,
+                pred_energy,
+                pred_stress,
+                true_forces,
+                true_energy,
+                true_stress,
+                _,
+                _,
+            ) = forward_pass(model, batch, graph, False, device)
+
+            # Squeeze batch dimension
+            pred_forces = pred_forces.squeeze(0)
+            true_forces = true_forces.squeeze(0)
+            pred_stress = pred_stress.squeeze(0)
+            true_stress = true_stress.squeeze(0)
+        elif graph:
             batch = Batch.from_data_list([dataset[i]])
             positions = batch["pos"]
             atomic_numbers = batch["atomic_numbers"]
             sample_length = len(atomic_numbers)
             idx = batch["idx"].cpu().tolist()[0]
+            symbols = batch["symbols"]
+
+            (
+                pred_forces,
+                pred_energy,
+                pred_stress,
+                true_forces,
+                true_energy,
+                true_stress,
+                _,
+                _,
+            ) = forward_pass(model, batch, graph, False, device)
         else:
             batch = {
                 k: torch.unsqueeze(v, 0) if isinstance(v, torch.Tensor) else v
@@ -153,21 +195,19 @@ def collect_samples_helper(num_visualization_samples, dataset, model, graph, dev
             atomic_numbers = batch["atomic_numbers"].squeeze(0)
             sample_length = (batch["atomic_numbers"] != 0).sum(dim=1)[0].item()
             idx = batch["idx"]
+            symbols = batch["symbols"]
 
-        symbols = batch["symbols"]
+            (
+                pred_forces,
+                pred_energy,
+                pred_stress,
+                true_forces,
+                true_energy,
+                true_stress,
+                _,
+                _,
+            ) = forward_pass(model, batch, graph, False, device)
 
-        (
-            pred_forces,
-            pred_energy,
-            pred_stress,
-            true_forces,
-            true_energy,
-            true_stress,
-            _,
-            _,
-        ) = forward_pass(model, batch, graph, False, device, False)
-
-        if not graph:
             pred_forces = pred_forces.squeeze(0)
             true_forces = true_forces.squeeze(0)
             pred_stress = pred_stress.squeeze(0)
@@ -180,14 +220,30 @@ def collect_samples_helper(num_visualization_samples, dataset, model, graph, dev
                 "atomic_numbers": atomic_numbers[:sample_length].cpu().tolist(),
                 "positions": positions[:sample_length].cpu().tolist(),
                 "true": {
-                    "forces": true_forces[:, :sample_length].cpu().tolist(),
-                    "energy": true_energy.cpu().tolist()[0],
-                    "stress": true_stress.cpu().tolist(),
+                    "forces": true_forces[:sample_length].cpu().tolist(),
+                    "energy": (
+                        true_energy.cpu().tolist()[0]
+                        if hasattr(true_energy, "cpu")
+                        else 0.0
+                    ),
+                    "stress": (
+                        true_stress.cpu().tolist()
+                        if hasattr(true_stress, "cpu")
+                        else [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+                    ),
                 },
                 "pred": {
-                    "forces": pred_forces[:, :sample_length].cpu().tolist(),
-                    "energy": pred_energy.cpu().tolist()[0],
-                    "stress": pred_stress.cpu().tolist(),
+                    "forces": pred_forces[:sample_length].cpu().tolist(),
+                    "energy": (
+                        pred_energy.cpu().tolist()[0]
+                        if hasattr(pred_energy, "cpu")
+                        else 0.0
+                    ),
+                    "stress": (
+                        pred_stress.cpu().tolist()
+                        if hasattr(pred_stress, "cpu")
+                        else [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+                    ),
                 },
             }
         )
@@ -224,9 +280,7 @@ def collect_samples_for_visualizing(
     }
 
 
-def run_validation(
-    model, val_loader, graph, device, factorize=False, use_mixed_precision=False
-):
+def run_validation(model, val_loader, graph, device, use_mixed_precision=False):
     """
     Run validation on the validation set and return the average validation loss.
 
@@ -235,7 +289,6 @@ def run_validation(
         val_loader (DataLoader): The validation data loader.
         graph (bool): Whether the model is a graph-based model.
         device (torch.device): The device to run validation on.
-        factorize (bool, optional): Whether to factorize. Defaults to False.
         use_mixed_precision (bool, optional): Whether to use mixed precision. Defaults to False.
 
     Returns:
@@ -268,7 +321,6 @@ def run_validation(
                 graph=graph,
                 training=False,
                 device=device,
-                factorize=factorize,
             )
 
             # Mapping atoms to their respective structures (for graphs)
@@ -316,7 +368,6 @@ def train(
     distributed=False,
     rank=0,
     patience=5,
-    factorize=False,
     results_path=None,
     experiment_results=None,
     data_size_key=None,
@@ -379,7 +430,7 @@ def train(
         val_force_loss,
         val_stress_iso_loss,
         val_stress_aniso_loss,
-    ) = run_validation(model, val_loader, graph, device, factorize, use_mixed_precision)
+    ) = run_validation(model, val_loader, graph, device, use_mixed_precision)
     losses[0] = {"val_loss": float(val_loss)}
     if writer is not None:
         # Logging each metric individually using log_tb_metrics
@@ -458,7 +509,6 @@ def train(
                         graph=graph,
                         training=True,
                         device=device,
-                        factorize=factorize,
                     )
 
                     # Mapping atoms to their respective structures (for graphs)
@@ -591,9 +641,7 @@ def train(
                 val_force_loss,
                 val_stress_iso_loss,
                 val_stress_aniso_loss,
-            ) = run_validation(
-                model, val_loader, graph, device, factorize, use_mixed_precision
-            )
+            ) = run_validation(model, val_loader, graph, device, use_mixed_precision)
 
             if distributed:
                 val_loss_tensor = torch.tensor(val_loss, device=device)

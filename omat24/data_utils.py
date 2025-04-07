@@ -4,10 +4,12 @@ import torch
 import tarfile
 import requests
 import os
-from typing import Dict
 from tqdm.auto import tqdm
 import json
+import random
+from torch.utils.data import Subset
 from torch_geometric.nn import radius_graph
+from torch_geometric.data import Data
 
 BASE_URL = "https://dl.fbaipublicfiles.com/opencatalystproject/data/omat/"
 TRAIN_BASE_URL = BASE_URL + "241018/omat/train"
@@ -216,3 +218,41 @@ def generate_graph(positions):
     edge_attr = edge_distances  # You can add more features as needed
 
     return edge_index, edge_attr
+
+
+def split_dataset(dataset, train_data_fraction, val_data_fraction, seed):
+    """Splits a dataset into training and validation subsets."""
+    dataset_size = len(dataset)
+    val_size = int(dataset_size * val_data_fraction)
+    remaining_size = dataset_size - val_size
+    train_size = max(1, int(remaining_size * train_data_fraction))
+
+    random.seed(seed)
+    indices = list(range(dataset_size))
+    random.shuffle(indices)
+
+    val_indices = indices[:val_size]
+    train_indices = indices[val_size : val_size + train_size]
+
+    train_subset = Subset(dataset, indices=train_indices)
+    val_subset = Subset(dataset, indices=val_indices)
+
+    return train_subset, val_subset, train_indices, val_indices
+
+
+class PyGData(Data):
+    """Custom PyG Data class with proper batching behavior for periodic systems."""
+
+    def __cat_dim__(self, key, value, *args, **kwargs):
+        """Define how tensors should be concatenated during batching"""
+        if key == "cell":
+            return 0  # Concatenate cells along first dimension
+        elif key == "pbc":
+            return 0  # Concatenate PBC flags along first dimension
+        return super().__cat_dim__(key, value, *args, **kwargs)
+
+    def __inc__(self, key, value, *args, **kwargs):
+        """Define how indices should be incremented during batching"""
+        if key == "cell" or key == "pbc":
+            return 0  # No increment for these attributes
+        return super().__inc__(key, value, *args, **kwargs)
