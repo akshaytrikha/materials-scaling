@@ -343,31 +343,31 @@ class MetaEquiformerV2Models:
             #     }
             # },
             # # 1,175,914 params
-            {
-                "backbone": {
-                    "ffn_hidden_channels": 24,
-                    "edge_channels": 24,
-                    "sphere_channels": 24,
-                    "num_layers": 4,
-                    "attn_hidden_channels": 24,
-                    "num_heads": 2,
-                    "attn_alpha_channels": 24,
-                    "attn_value_channels": 6
-                }
-            },
-            # # 2,723,134 params
             # {
             #     "backbone": {
-            #         "ffn_hidden_channels": 36,
-            #         "edge_channels": 36,
-            #         "sphere_channels": 36,
-            #         "num_layers": 5,
-            #         "attn_hidden_channels": 32,
-            #         "num_heads": 3,
-            #         "attn_alpha_channels": 32,
-            #         "attn_value_channels": 8
+            #         "ffn_hidden_channels": 24,
+            #         "edge_channels": 24,
+            #         "sphere_channels": 24,
+            #         "num_layers": 4,
+            #         "attn_hidden_channels": 24,
+            #         "num_heads": 2,
+            #         "attn_alpha_channels": 24,
+            #         "attn_value_channels": 6
             #     }
             # },
+            # # 2,723,134 params
+            {
+                "backbone": {
+                    "ffn_hidden_channels": 36,
+                    "edge_channels": 36,
+                    "sphere_channels": 36,
+                    "num_layers": 5,
+                    "attn_hidden_channels": 32,
+                    "num_heads": 3,
+                    "attn_alpha_channels": 32,
+                    "attn_value_channels": 8
+                }
+            },
             # # 4,133,018 params
             # {
             #     "backbone": {
