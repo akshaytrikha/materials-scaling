@@ -107,7 +107,6 @@ def main(rank=None, world_size=None, args=None):
                 "epochs": args.epochs,
                 "batch_size": args.batch_size[0],
                 "learning_rate": args.lr[0],
-                "factorize": args.factorize,
                 "augment": args.augment,
                 "gradient_clip": args.gradient_clip,
             },
