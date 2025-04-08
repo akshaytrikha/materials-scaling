@@ -128,6 +128,20 @@ def get_args():
         action="store_true",
         help="Use mixed precision training with FP16",
     )
+    parser.add_argument(
+        "--patience",
+        type=int,
+        nargs="+",
+        default=[500],
+        required=True,
+        help="Early stopping patience epochs = patience * val_every",
+    )
+    parser.add_argument(
+        "--name",
+        type=str,
+        required=True,
+        help="Experiment Name for logging (required)",
+    )
 
     # Slurm arguments
     parser.add_argument("--job_name", type=str, default="omat24")
