@@ -113,10 +113,19 @@ class MetaTransformerModels:
         """
         # fmt: off
         self.configurations = [
-            # {"d_model": 1, "depth": 1, "n_heads": 1, "d_ff_mult": 4}, # 1,778 params
-            {"d_model": 8, "depth": 2, "n_heads": 1, "d_ff_mult": 4}, # 9,657 params
-            # {"d_model": 48, "depth": 3, "n_heads": 1, "d_ff_mult": 4}, # 119,758 params
-            # {"d_model": 160, "depth": 3, "n_heads": 2, "d_ff_mult": 4}, # 1,019,086 params
+            {"d_model": 2, "depth": 1, "n_heads": 1, "d_ff_mult": 4}, # 2,280 params
+            {"d_model": 8, "depth": 1, "n_heads": 1, "d_ff_mult": 4}, # 5,796 params
+            {"d_model": 16, "depth": 1, "n_heads": 1, "d_ff_mult": 4}, # 11,828 params
+            {"d_model": 32, "depth": 1, "n_heads": 1, "d_ff_mult": 4}, # 28,500 params
+            {"d_model": 32, "depth": 2, "n_heads": 1, "d_ff_mult": 4}, # 47,505 params
+            {"d_model": 64, "depth": 1, "n_heads": 1, "d_ff_mult": 4}, # 80,726 params
+            {"d_model": 64, "depth": 2, "n_heads": 1, "d_ff_mult": 4}, # 133,809 params
+            {"d_model": 96, "depth": 2, "n_heads": 1, "d_ff_mult": 4}, # 261,073 params
+            {"d_model": 128, "depth": 2, "n_heads": 1, "d_ff_mult": 4}, # 429,297 params
+            {"d_model": 128, "depth": 3, "n_heads": 1, "d_ff_mult": 4}, # 601,038 params
+            {"d_model": 192, "depth": 3, "n_heads": 1, "d_ff_mult": 4}, # 1,244,110 params
+            {"d_model": 224, "depth": 3, "n_heads": 2, "d_ff_mult": 4},
+            {"d_model": 256, "depth": 3, "n_heads": 2, "d_ff_mult": 4},
         ]
         # fmt: on
 

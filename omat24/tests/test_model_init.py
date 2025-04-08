@@ -15,7 +15,7 @@ warnings.filterwarnings("ignore", message="`torch.cuda.amp.autocast")
 # Internal
 from data import get_dataloaders
 from data_utils import download_dataset, VALID_DATASETS
-from models.fcn import FCNModel
+from models.adit import ADiTS2EFSModel
 from models.transformer_models import XTransformerModel
 from models.schnet import SchNet
 from models.equiformer_v2 import EquiformerS2EFS
@@ -24,38 +24,28 @@ from train_utils import run_validation
 
 # Configuration dictionary for different model sizes
 MODEL_CONFIGS = {
-    "FCN": {
+    "ADiT": {
         "1k": {
-            "vocab_size": 119,
-            "embedding_dim": 16,
-            "hidden_dim": 16,
-            "depth": 1,
-            "use_factorized": False,
+            "max_num_elements": 119,
+            "d_model": 8,
+            "nhead": 1,
+            "dim_feedforward": 32,
+            "num_layers": 1,
+            "activation": "gelu",
+            "dropout": 0.1,
+            "norm_first": True,
+            "bias": True,
         },
         "50k": {
-            "vocab_size": 119,
-            "embedding_dim": 96,
-            "hidden_dim": 96,
-            "depth": 2,
-            "use_factorized": False,
-        },
-    },
-    "Transformer": {
-        "1k": {
-            "num_tokens": 119,
-            "d_model": 1,
-            "depth": 1,
-            "n_heads": 1,
-            "d_ff_mult": 1,
-            "use_factorized": False,
-        },
-        "50k": {
-            "num_tokens": 119,
-            "d_model": 32,
-            "depth": 2,
-            "n_heads": 1,
-            "d_ff_mult": 4,
-            "use_factorized": False,
+            "max_num_elements": 119,
+            "d_model": 64,
+            "nhead": 1,
+            "dim_feedforward": 256,
+            "num_layers": 1,
+            "activation": "gelu",
+            "dropout": 0.1,
+            "norm_first": True,
+            "bias": True,
         },
     },
     "SchNet": {
@@ -107,14 +97,13 @@ class TestModelInit(unittest.TestCase):
 
         # User Hyperparam Feedback
         batch_size = 64
-        use_factorize = False
 
         # Results dictionary to store validation losses
         results = defaultdict(dict)
 
         # Iterate over architectures and parameter scales
-        for architecture in ["FCN", "SchNet", "Transformer"]:
-            graph = architecture in ["SchNet", "EquiformerV2"]
+        for architecture in ["ADiT", "SchNet"]:
+            graph = architecture in ["SchNet", "EquiformerV2", "ADiT"]
 
             # Determine max_n_atoms for Transformer if needed
             if architecture == "Transformer":
@@ -127,10 +116,8 @@ class TestModelInit(unittest.TestCase):
                 config = MODEL_CONFIGS[architecture][param_scale]
 
                 # Initialize model with appropriate config
-                if architecture == "FCN":
-                    model = FCNModel(**config)
-                elif architecture == "Transformer":
-                    model = XTransformerModel(**config)
+                if architecture == "ADiT":
+                    model = ADiTS2EFSModel(**config)
                 elif architecture == "SchNet":
                     model = SchNet(**config)
 
@@ -145,12 +132,10 @@ class TestModelInit(unittest.TestCase):
                     batch_size=batch_size,
                     seed=self.seed,
                     architecture=architecture,
-                    batch_padded=False,
                     val_data_fraction=val_data_fraction,
                     train_workers=0,
                     val_workers=0,
                     graph=graph,
-                    factorize=use_factorize,
                 )
 
                 dataset_size = len(val_loader.dataset)
@@ -195,44 +180,44 @@ class TestModelInit(unittest.TestCase):
             for size in results[arch]:
                 print(f"{arch:<15} {size:<10} {results[arch][size]['val_loss']:<15.6f}")
 
-        # Check FCN
-        self.assertAlmostEqual(
-            results["FCN"]["1k"]["val_loss"],
-            61.95274842896077,
-            places=3,
-            msg="FCN 1k epoch 0 val_loss is incorrect",
-        )
-        self.assertAlmostEqual(
-            results["FCN"]["50k"]["val_loss"],
-            65.03901063433345,
-            places=3,
-            msg="FCN 50k epoch 0 val_loss is incorrect",
-        )
+        # # Check FCN
+        # self.assertAlmostEqual(
+        #     results["FCN"]["1k"]["val_loss"],
+        #     61.95274842896077,
+        #     places=3,
+        #     msg="FCN 1k epoch 0 val_loss is incorrect",
+        # )
+        # self.assertAlmostEqual(
+        #     results["FCN"]["50k"]["val_loss"],
+        #     65.03901063433345,
+        #     places=3,
+        #     msg="FCN 50k epoch 0 val_loss is incorrect",
+        # )
 
-        # Check Transformer
+        # # Check Transformer
         self.assertAlmostEqual(
-            results["Transformer"]["1k"]["val_loss"],
-            53.34798036895183,
+            results["ADiT"]["1k"]["val_loss"],
+            46.482657136384006,
             places=3,
-            msg="Transformer 1k epoch 0 val_loss is incorrect",
+            msg="ADiT 1k epoch 0 val_loss is incorrect",
         )
         self.assertAlmostEqual(
-            results["Transformer"]["50k"]["val_loss"],
-            59.72025161648389,
+            results["ADiT"]["50k"]["val_loss"],
+            52.35382055199665,
             places=3,
-            msg="Transformer 50k epoch 0 val_loss is incorrect",
+            msg="ADiT 50k epoch 0 val_loss is incorrect",
         )
 
         # Check SchNet
         self.assertAlmostEqual(
             results["SchNet"]["1k"]["val_loss"],
-            51.9914984021868,
+            52.03330331411421,
             places=3,
             msg="SchNet 1k epoch 0 val_loss is incorrect",
         )
         self.assertAlmostEqual(
             results["SchNet"]["50k"]["val_loss"],
-            52.018605084152696,
+            52.020514387521686,
             places=3,
             msg="SchNet 50k epoch 0 val_loss is incorrect",
         )

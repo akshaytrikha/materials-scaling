@@ -13,7 +13,7 @@ def get_args():
     parser.add_argument(
         "--architecture",
         type=str,
-        choices=["FCN", "Transformer", "SchNet", "EquiformerV2"],
+        choices=["FCN", "Transformer", "SchNet", "EquiformerV2", "ADiT"],
         default="FCN",
         help="Model architecture to use",
     )
@@ -63,11 +63,6 @@ def get_args():
         help="Maximum number of unique elements in a sample",
     )
     parser.add_argument("--augment", action="store_true", help="Rotation augmentation")
-    parser.add_argument(
-        "--factorize",
-        action="store_true",
-        help="Factorize and use inverse distance matrix",
-    )
     parser.add_argument(
         "--gradient_clip",
         type=float,
@@ -138,6 +133,14 @@ def get_args():
         action="store_true",
         help="Enable Weights & Biases logging and sweeps",
     )
+
+    # Slurm arguments
+    parser.add_argument("--job_name", type=str, default="omat24")
+    parser.add_argument("--account", type=str, default="ac_msemeng")
+    parser.add_argument("--time", type=str, default="00:30:00")
+    parser.add_argument("--gpu", type=str, default="A40")
+    parser.add_argument("--gpus", type=int, default=1)
+    parser.add_argument("--cpus_per_task", type=int, default=8)
 
     return parser.parse_args()
 

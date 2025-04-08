@@ -26,16 +26,17 @@ from torch.optim.lr_scheduler import LambdaLR
 from pathlib import Path
 import pprint
 import json
-import math
 from datetime import datetime
 from tqdm import tqdm
 from torch.utils.tensorboard import SummaryWriter
 import os
-import subprocess
 import torch.distributed as dist
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data.distributed import DistributedSampler
 import wandb
+from fairchem.core.modules.scheduler import CosineLRLambda
+import torch.optim.lr_scheduler as lr_scheduler
+import math
 
 # Internal
 from data import get_dataloaders
@@ -45,6 +46,7 @@ from models.fcn import MetaFCNModels
 from models.transformer_models import MetaTransformerModels
 from models.schnet import MetaSchNetModels
 from models.equiformer_v2 import MetaEquiformerV2Models
+from models.adit import MetaADiTModels
 from train_utils import train
 
 # Set seed & device
@@ -78,9 +80,10 @@ def cleanup_ddp():
     dist.destroy_process_group()
 
 
-def main(rank=None, world_size=None):
+def main(rank=None, world_size=None, args=None):
     is_main_process = rank == 0 if world_size is not None else True
-    args = get_args()
+    if args is None:
+        args = get_args()
     log = not args.no_log
     global DEVICE
 
@@ -134,31 +137,27 @@ def main(rank=None, world_size=None):
 
     batch_size = args.batch_size[0]
     lr = args.lr[0]
-    num_epochs = args.epochs
-    use_factorize = args.factorize
-    graph = args.architecture in ["SchNet", "EquiformerV2"]
+    args.epochs
+    graph = args.architecture in ["SchNet", "EquiformerV2", "ADiT"]
+    if graph:
+        if DEVICE == torch.device("mps"):
+            print(f"MPS is not supported for {args.architecture}. Switching to CPU.")
+            DEVICE = torch.device("cpu")
 
     # Initialize meta model class based on architecture choice
     if args.architecture == "FCN":
-        meta_models = MetaFCNModels(
-            vocab_size=args.n_elements, use_factorized=use_factorize
-        )
+        meta_models = MetaFCNModels(vocab_size=args.n_elements)
     elif args.architecture == "Transformer":
         meta_models = MetaTransformerModels(
             vocab_size=args.n_elements,
             max_seq_len=DATASET_INFO[args.split_name]["all"]["max_n_atoms"],
-            use_factorized=use_factorize,
         )
     elif args.architecture == "SchNet":
-        if DEVICE == torch.device("mps"):
-            print("MPS is not supported for SchNet. Switching to CPU.")
-            DEVICE = torch.device("cpu")
         meta_models = MetaSchNetModels(device=DEVICE)
     elif args.architecture == "EquiformerV2":
-        if DEVICE == torch.device("mps"):
-            print("MPS is not supported for EquiformerV2. Switching to CPU.")
-            DEVICE = torch.device("cpu")
         meta_models = MetaEquiformerV2Models(device=DEVICE)
+    elif args.architecture == "ADiT":
+        meta_models = MetaADiTModels()
 
     # Create results path and initialize file if logging is enabled
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -184,12 +183,10 @@ def main(rank=None, world_size=None):
             batch_size=batch_size,
             seed=SEED,
             architecture=args.architecture,
-            batch_padded=False,
             val_data_fraction=args.val_data_fraction,
             train_workers=args.train_workers,
             val_workers=args.val_workers,
             graph=graph,
-            factorize=use_factorize,
             distributed=world_size is not None,
             augment=args.augment,
         )
@@ -226,8 +223,6 @@ def main(rank=None, world_size=None):
             embedding_dim = getattr(model, "embedding_dim", None)
             depth = getattr(model, "depth", None)
 
-            optimizer = optim.AdamW(model.parameters(), lr=lr)
-
             if world_size is not None:
                 # Wrap model in DDP to use multiple GPUs
                 model = DDP(
@@ -237,11 +232,17 @@ def main(rank=None, world_size=None):
                     broadcast_buffers=False,
                 )
 
-            # lambda_schedule = lambda epoch: 0.5 * (
-            #     1 + math.cos(math.pi * epoch / num_epochs)
-            # )
-            # scheduler = LambdaLR(optimizer, lr_lambda=lambda_schedule)
-            scheduler = None
+            # Optimization setup
+            optimizer = optim.AdamW(model.parameters(), lr=lr, weight_decay=0.001)
+            # Even though some of the parameters say "epochs", they really are steps! Be very careful!
+            num_steps = args.epochs * math.ceil(dataset_size / batch_size)
+            cosine_lr_lambda = CosineLRLambda(
+                warmup_epochs=int(max(1, 0.01 * num_steps)),
+                warmup_factor=0.2,
+                epochs=int(max(1, num_steps)),
+                lr_min_factor=0.01,
+            )
+            scheduler = lr_scheduler.LambdaLR(optimizer, lr_lambda=cosine_lr_lambda)
 
             # Prepare run entry etc.
             model_name = f"model_ds{dataset_size}_p{int(num_params)}"
@@ -254,7 +255,7 @@ def main(rank=None, world_size=None):
                     "depth": depth,
                     "num_params": num_params,
                     "dataset_size": dataset_size,
-                    "num_epochs": num_epochs,
+                    "num_epochs": args.epochs,
                     "batch_size": batch_size,
                     "learning_rate": lr,
                     "seed": SEED,
@@ -272,9 +273,9 @@ def main(rank=None, world_size=None):
 
             # Create progress bar only on main process
             if is_main_process:
-                progress_bar = tqdm(range(num_epochs + 1))
+                progress_bar = tqdm(range(args.epochs + 1))
             else:
-                progress_bar = range(num_epochs + 1)
+                progress_bar = range(args.epochs + 1)
 
             training_args = {
                 "model": model,
@@ -288,7 +289,6 @@ def main(rank=None, world_size=None):
                 "distributed": (world_size is not None),
                 "rank": rank,
                 "patience": 5,
-                "factorize": use_factorize,
                 # "writer": writer if is_main_process else None,
                 "writer": None,
                 "tensorboard_prefix": model_name,
@@ -320,24 +320,23 @@ def main(rank=None, world_size=None):
                     if isinstance(trained_model, DDP)
                     else trained_model.state_dict()
                 )
-                
+
                 # Extract model configuration
                 if hasattr(trained_model, "module"):
                     model_instance = trained_model.module
                 else:
                     model_instance = trained_model
-                
+
                 # Create a model config dictionary with all relevant parameters
                 model_config = {
                     "d_model": getattr(model_instance, "embedding_dim", None),
                     "depth": getattr(model_instance, "depth", None),
                     "n_heads": getattr(model_instance, "n_heads", None),
                     "d_ff_mult": getattr(model_instance, "d_ff_mult", None),
-                    "use_factorized": getattr(model_instance, "use_factorized", use_factorize),
                     "num_params": getattr(model_instance, "num_params", None),
                     "architecture": getattr(model_instance, "name", None),
                 }
-                
+
                 torch.save(
                     {
                         "model_state_dict": model_state,
@@ -376,4 +375,4 @@ if __name__ == "__main__":
         world_size = torch.cuda.device_count()
         mp.spawn(main, args=(world_size,), nprocs=world_size, join=True)
     else:
-        main()
+        main(args=args)
