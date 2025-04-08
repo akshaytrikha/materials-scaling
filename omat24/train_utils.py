@@ -30,7 +30,6 @@ def forward_pass(
     graph: bool,
     training: bool,
     device: torch.device,
-    factorize: bool,
 ):
     """A common forward pass function for inference across different architectures & dataloaders.
 
@@ -40,7 +39,6 @@ def forward_pass(
         graph (bool): Whether the model is a graph-based model.
         training (bool): Whether the model is in training mode.
         device (torch.device): The device to run the model on.
-        factorize (bool): Whether to factorize the distance matrix.
     """
     if training or graph:
         context_manager = torch.enable_grad()
@@ -166,7 +164,7 @@ def collect_samples_helper(num_visualization_samples, dataset, model, graph, dev
             true_stress,
             _,
             _,
-        ) = forward_pass(model, batch, graph, False, device, False)
+        ) = forward_pass(model, batch, graph, False, device)
 
         if not graph:
             pred_forces = pred_forces.squeeze(0)
@@ -226,7 +224,7 @@ def collect_samples_for_visualizing(
 
 
 def run_validation(
-    model, val_loader, graph, device, factorize=False, use_mixed_precision=False
+    model, val_loader, graph, device, use_mixed_precision=False
 ):
     """
     Run validation on the validation set and return the average validation loss.
@@ -236,7 +234,6 @@ def run_validation(
         val_loader (DataLoader): The validation data loader.
         graph (bool): Whether the model is a graph-based model.
         device (torch.device): The device to run validation on.
-        factorize (bool, optional): Whether to factorize. Defaults to False.
         use_mixed_precision (bool, optional): Whether to use mixed precision. Defaults to False.
 
     Returns:
@@ -269,7 +266,6 @@ def run_validation(
                 graph=graph,
                 training=False,
                 device=device,
-                factorize=factorize,
             )
 
             # Mapping atoms to their respective structures (for graphs)
@@ -317,7 +313,6 @@ def train(
     distributed=False,
     rank=0,
     patience=5,
-    factorize=False,
     results_path=None,
     experiment_results=None,
     data_size_key=None,
@@ -382,7 +377,7 @@ def train(
         val_force_loss,
         val_stress_iso_loss,
         val_stress_aniso_loss,
-    ) = run_validation(model, val_loader, graph, device, factorize, use_mixed_precision)
+    ) = run_validation(model, val_loader, graph, device, use_mixed_precision)
     losses[0] = {"val_loss": float(val_loss)}
 
     # Log initial validation to wandb
@@ -476,7 +471,6 @@ def train(
                         graph=graph,
                         training=True,
                         device=device,
-                        factorize=factorize,
                     )
 
                     # Mapping atoms to their respective structures (for graphs)
@@ -625,7 +619,7 @@ def train(
                 val_stress_iso_loss,
                 val_stress_aniso_loss,
             ) = run_validation(
-                model, val_loader, graph, device, factorize, use_mixed_precision
+                model, val_loader, graph, device, use_mixed_precision
             )
 
             if distributed:
