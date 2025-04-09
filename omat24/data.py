@@ -267,11 +267,8 @@ class OMat24Dataset(Dataset):
             pyg_args["edge_index"] = edge_index
             pyg_args["edge_attr"] = edge_attr
         elif self.architecture == "EquiformerV2":
-            pyg_args["cell"] = torch.tensor(
-                atoms.get_cell(), dtype=torch.float
-            ).unsqueeze(
-                0
-            )  # Shape: [1, 3, 3]
+            cell_array = np.array(atoms.get_cell())
+            pyg_args["cell"] = torch.tensor(cell_array, dtype=torch.float).unsqueeze(0)
             pyg_args["pbc"] = torch.tensor(atoms.get_pbc(), dtype=torch.float)
         elif self.architecture == "ADiT":
             pyg_args["cell"] = torch.tensor(
