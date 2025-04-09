@@ -132,6 +132,7 @@ def get_args():
         "--cache_data",
         action="store_true",
         help="Enable caching of loaded data in memory to speed up training",
+        default=False,
     )
 
     # Slurm arguments
