@@ -95,22 +95,27 @@ def main(rank=None, world_size=None, args=None):
 
     # Initialize wandb if requested and on main process
     if is_main_process and args.wandb:
-        # Initialize wandb run - if launched from sweep, this will pick up sweep config
-        wandb.init(
-            project="omat24",
-            config={
-                "architecture": args.architecture,
-                "datasets": args.datasets,
-                "split_name": args.split_name,
-                "data_fractions": args.data_fractions,
-                "val_data_fraction": args.val_data_fraction,
-                "epochs": args.epochs,
-                "batch_size": args.batch_size[0],
-                "learning_rate": args.lr[0],
-                "augment": args.augment,
-                "gradient_clip": args.gradient_clip,
-            },
-        )
+        # Check if this is running as part of a sweep
+        if os.environ.get("WANDB_RUN_ID"):
+            # Already initialized in the parent process, just make sure we resume the same run
+            wandb.init(id=os.environ.get("WANDB_RUN_ID"), resume="allow")
+        else:
+            # Regular standalone run, initialize normally
+            wandb.init(
+                project="omat24",
+                config={
+                    "architecture": args.architecture,
+                    "datasets": args.datasets,
+                    "split_name": args.split_name,
+                    "data_fractions": args.data_fractions,
+                    "val_data_fraction": args.val_data_fraction,
+                    "epochs": args.epochs,
+                    "batch_size": args.batch_size[0],
+                    "learning_rate": args.lr[0],
+                    "augment": args.augment,
+                    "gradient_clip": args.gradient_clip,
+                },
+            )
 
     # Convinience for running all datasets
     if args.datasets[0] == "all":
