@@ -223,9 +223,7 @@ def collect_samples_for_visualizing(
     }
 
 
-def run_validation(
-    model, val_loader, graph, device, use_mixed_precision=False
-):
+def run_validation(model, val_loader, graph, device, use_mixed_precision=False):
     """
     Run validation on the validation set and return the average validation loss.
 
@@ -325,6 +323,7 @@ def train(
     visualize_every=500,
     use_mixed_precision=False,
     args=None,  # Added for wandb support
+    wandb_initialized=False,  # Flag to track if wandb is initialized
 ):
     """
     Train model with validation at epoch 0 and every 'validate_every' epochs.
@@ -353,6 +352,7 @@ def train(
         visualize_every (int, optional): Frequency (in epochs) to collect visualization samples.
         use_mixed_precision (bool, optional): Whether to use mixed precision training. Defaults to False.
         args (Namespace, optional): Command-line arguments, needed for wandb. Defaults to None.
+        wandb_initialized (bool, optional): Whether wandb has been initialized. Defaults to False.
 
     Returns:
         (nn.Module, dict): The trained model and a dictionary of recorded losses.
@@ -381,17 +381,18 @@ def train(
     losses[0] = {"val_loss": float(val_loss)}
 
     # Log initial validation to wandb
-    if is_main_process and args and args.wandb:
-        wandb.log(
-            {
-                "epoch": 0,
-                "val_loss": val_loss,
-                "val_energy_loss": val_energy_loss,
-                "val_force_loss": val_force_loss,
-                "val_stress_iso_loss": val_stress_iso_loss,
-                "val_stress_aniso_loss": val_stress_aniso_loss,
-            }
-        )
+    if is_main_process and args and args.wandb and wandb_initialized:
+        if hasattr(wandb, "run") and wandb.run is not None:
+            wandb.log(
+                {
+                    "epoch": 0,
+                    "val_loss": val_loss,
+                    "val_energy_loss": val_energy_loss,
+                    "val_force_loss": val_force_loss,
+                    "val_stress_iso_loss": val_stress_iso_loss,
+                    "val_stress_aniso_loss": val_stress_aniso_loss,
+                }
+            )
 
     # Log to TensorBoard
     if writer is not None:
@@ -556,18 +557,19 @@ def train(
         losses[epoch] = {"train_loss": float(avg_epoch_train_loss)}
 
         # Log to wandb
-        if is_main_process and args and args.wandb:
-            wandb.log(
-                {
-                    "epoch": epoch,
-                    "train_loss": avg_epoch_train_loss,
-                    "train_energy_loss": avg_epoch_energy_loss,
-                    "train_force_loss": avg_epoch_force_loss,
-                    "train_stress_iso_loss": avg_epoch_stress_iso_loss,
-                    "train_stress_aniso_loss": avg_epoch_stress_aniso_loss,
-                    "learning_rate": optimizer.param_groups[0]["lr"],
-                }
-            )
+        if is_main_process and args and args.wandb and wandb_initialized:
+            if hasattr(wandb, "run") and wandb.run is not None:
+                wandb.log(
+                    {
+                        "epoch": epoch,
+                        "train_loss": avg_epoch_train_loss,
+                        "train_energy_loss": avg_epoch_energy_loss,
+                        "train_force_loss": avg_epoch_force_loss,
+                        "train_stress_iso_loss": avg_epoch_stress_iso_loss,
+                        "train_stress_aniso_loss": avg_epoch_stress_aniso_loss,
+                        "learning_rate": optimizer.param_groups[0]["lr"],
+                    }
+                )
 
         # TensorBoard logging for training loss
         if writer is not None:
@@ -618,9 +620,7 @@ def train(
                 val_force_loss,
                 val_stress_iso_loss,
                 val_stress_aniso_loss,
-            ) = run_validation(
-                model, val_loader, graph, device, use_mixed_precision
-            )
+            ) = run_validation(model, val_loader, graph, device, use_mixed_precision)
 
             if distributed:
                 val_loss_tensor = torch.tensor(val_loss, device=device)
@@ -648,17 +648,18 @@ def train(
                 ).item()
 
             # Log to wandb
-            if is_main_process and args and args.wandb:
-                wandb.log(
-                    {
-                        "epoch": epoch,
-                        "val_loss": val_loss,
-                        "val_energy_loss": val_energy_loss,
-                        "val_force_loss": val_force_loss,
-                        "val_stress_iso_loss": val_stress_iso_loss,
-                        "val_stress_aniso_loss": val_stress_aniso_loss,
-                    }
-                )
+            if is_main_process and args and args.wandb and wandb_initialized:
+                if hasattr(wandb, "run") and wandb.run is not None:
+                    wandb.log(
+                        {
+                            "epoch": epoch,
+                            "val_loss": val_loss,
+                            "val_energy_loss": val_energy_loss,
+                            "val_force_loss": val_force_loss,
+                            "val_stress_iso_loss": val_stress_iso_loss,
+                            "val_stress_aniso_loss": val_stress_aniso_loss,
+                        }
+                    )
 
             # Log to TensorBoard
             if writer is not None:
@@ -689,8 +690,9 @@ def train(
                     print(f"Early stopping triggered at epoch {epoch}")
 
                     # Log best val loss to wandb
-                    if is_main_process and args and args.wandb:
-                        wandb.run.summary["best_val_loss"] = best_val_loss
+                    if is_main_process and args and args.wandb and wandb_initialized:
+                        if hasattr(wandb, "run") and wandb.run is not None:
+                            wandb.run.summary["best_val_loss"] = best_val_loss
 
                     return best_val_model, best_val_loss_dict
 
@@ -723,7 +725,8 @@ def train(
             pbar.update(1)
 
     # Log best val loss to wandb
-    if is_main_process and args and args.wandb:
-        wandb.run.summary["best_val_loss"] = best_val_loss
+    if is_main_process and args and args.wandb and wandb_initialized:
+        if hasattr(wandb, "run") and wandb.run is not None:
+            wandb.run.summary["best_val_loss"] = best_val_loss
 
     return model, losses

@@ -93,12 +93,15 @@ def main(rank=None, world_size=None, args=None):
         DEVICE = torch.device(f"cuda:{rank}")
         dist.barrier()
 
+    # Flag to track if wandb is actually initialized
+    wandb_initialized = False
+
     # Initialize wandb if requested and on main process
     if is_main_process and args.wandb:
-        # Check if this is running as part of a sweep
-        if os.environ.get("WANDB_RUN_ID"):
-            # Already initialized in the parent process, just make sure we resume the same run
-            wandb.init(id=os.environ.get("WANDB_RUN_ID"), resume="allow")
+        # Check if running as part of a sweep
+        if os.environ.get("WANDB_SWEEP_RUN") == "true":
+            # For sweep runs, don't initialize wandb - the parent process already did
+            print("Running as part of a sweep - skipping wandb initialization")
         else:
             # Regular standalone run, initialize normally
             wandb.init(
@@ -116,6 +119,7 @@ def main(rank=None, world_size=None, args=None):
                     "gradient_clip": args.gradient_clip,
                 },
             )
+            wandb_initialized = True
 
     # Convinience for running all datasets
     if args.datasets[0] == "all":
@@ -211,7 +215,12 @@ def main(rank=None, world_size=None, args=None):
             model.to(DEVICE)
 
             # Log model details to wandb
-            if is_main_process and args.wandb:
+            if (
+                is_main_process
+                and wandb_initialized
+                and hasattr(wandb, "run")
+                and wandb.run is not None
+            ):
                 # Log model architecture details
                 wandb.config.update({"num_params": model.num_params})
                 if hasattr(model, "embedding_dim"):
@@ -302,6 +311,7 @@ def main(rank=None, world_size=None, args=None):
                 "visualize_every": args.vis_every,
                 "use_mixed_precision": args.mixed_precision,
                 "args": args,  # Pass args to train function for wandb logging
+                "wandb_initialized": wandb_initialized,  # Pass wandb init state
             }
 
             if log and is_main_process:
@@ -358,7 +368,12 @@ def main(rank=None, world_size=None, args=None):
     # writer.close()
 
     # Finish wandb run
-    if is_main_process and args.wandb:
+    if (
+        is_main_process
+        and wandb_initialized
+        and hasattr(wandb, "run")
+        and wandb.run is not None
+    ):
         wandb.finish()
 
     print(

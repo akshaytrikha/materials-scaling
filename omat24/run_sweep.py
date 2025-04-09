@@ -2,7 +2,6 @@ import os
 import wandb
 import subprocess
 
-
 sweep_config = {
     "method": "grid",
     "name": "ADiT-df=0.001",
@@ -87,10 +86,16 @@ def sweep_agent():
     if no_log:
         cmd.append("--no_log")
 
-    # Set the WANDB_RUN_ID environment variable to ensure the subprocess
-    # connects to the same run
+    # Set environment variables to ensure the subprocess connects properly
     env = os.environ.copy()
     env["WANDB_RUN_ID"] = wandb.run.id
+    env["WANDB_SWEEP_RUN"] = "true"  # Flag to indicate we're in a sweep
+    env["WANDB_API_KEY"] = os.environ.get(
+        "WANDB_API_KEY", ""
+    )  # Ensure API key is passed
+
+    # Increase the init timeout for wandb
+    env["WANDB_INIT_TIMEOUT"] = "120"  # 2 minutes instead of default 90 seconds
 
     # Run the training script as a subprocess
     process = subprocess.Popen(
