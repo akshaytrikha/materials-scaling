@@ -102,6 +102,7 @@ def main(rank=None, world_size=None, args=None):
         if os.environ.get("WANDB_SWEEP_RUN") == "true":
             # For sweep runs, don't initialize wandb - the parent process already did
             print("Running as part of a sweep - skipping wandb initialization")
+            wandb_initialized = True
         else:
             # Regular standalone run, initialize normally
             wandb.init(

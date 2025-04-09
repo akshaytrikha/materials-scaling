@@ -223,7 +223,9 @@ def collect_samples_for_visualizing(
     }
 
 
-def run_validation(model, val_loader, graph, device, use_mixed_precision=False):
+def run_validation(
+    model, val_loader, graph, device, use_mixed_precision=False
+):
     """
     Run validation on the validation set and return the average validation loss.
 
@@ -382,7 +384,7 @@ def train(
 
     # Log initial validation to wandb
     if is_main_process and args and args.wandb and wandb_initialized:
-        if hasattr(wandb, "run") and wandb.run is not None:
+        if hasattr(wandb, 'run') and wandb.run is not None:
             wandb.log(
                 {
                     "epoch": 0,
@@ -558,7 +560,7 @@ def train(
 
         # Log to wandb
         if is_main_process and args and args.wandb and wandb_initialized:
-            if hasattr(wandb, "run") and wandb.run is not None:
+            if hasattr(wandb, 'run') and wandb.run is not None:
                 wandb.log(
                     {
                         "epoch": epoch,
@@ -620,7 +622,9 @@ def train(
                 val_force_loss,
                 val_stress_iso_loss,
                 val_stress_aniso_loss,
-            ) = run_validation(model, val_loader, graph, device, use_mixed_precision)
+            ) = run_validation(
+                model, val_loader, graph, device, use_mixed_precision
+            )
 
             if distributed:
                 val_loss_tensor = torch.tensor(val_loss, device=device)
@@ -647,19 +651,23 @@ def train(
                     val_stress_aniso_loss_tensor, average=True
                 ).item()
 
-            # Log to wandb
+            # WandB log
             if is_main_process and args and args.wandb and wandb_initialized:
-                if hasattr(wandb, "run") and wandb.run is not None:
-                    wandb.log(
-                        {
-                            "epoch": epoch,
-                            "val_loss": val_loss,
-                            "val_energy_loss": val_energy_loss,
-                            "val_force_loss": val_force_loss,
-                            "val_stress_iso_loss": val_stress_iso_loss,
-                            "val_stress_aniso_loss": val_stress_aniso_loss,
-                        }
-                    )
+                if hasattr(wandb, 'run') and wandb.run is not None:
+                    # Log metrics for step tracking
+                    wandb.log({
+                        "epoch": epoch,
+                        "val_loss": val_loss,
+                        "val_energy_loss": val_energy_loss,
+                        "val_force_loss": val_force_loss,
+                        "val_stress_iso_loss": val_stress_iso_loss,
+                        "val_stress_aniso_loss": val_stress_aniso_loss,
+                    })
+                    
+                    # Also add to summary for sweep comparison
+                    wandb.run.summary["val_loss"] = val_loss
+                    wandb.run.summary["val_energy_loss"] = val_energy_loss
+                    wandb.run.summary["val_force_loss"] = val_force_loss
 
             # Log to TensorBoard
             if writer is not None:
@@ -691,7 +699,7 @@ def train(
 
                     # Log best val loss to wandb
                     if is_main_process and args and args.wandb and wandb_initialized:
-                        if hasattr(wandb, "run") and wandb.run is not None:
+                        if hasattr(wandb, 'run') and wandb.run is not None:
                             wandb.run.summary["best_val_loss"] = best_val_loss
 
                     return best_val_model, best_val_loss_dict
@@ -726,7 +734,7 @@ def train(
 
     # Log best val loss to wandb
     if is_main_process and args and args.wandb and wandb_initialized:
-        if hasattr(wandb, "run") and wandb.run is not None:
+        if hasattr(wandb, 'run') and wandb.run is not None:
             wandb.run.summary["best_val_loss"] = best_val_loss
 
     return model, losses
