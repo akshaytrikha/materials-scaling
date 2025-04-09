@@ -180,6 +180,7 @@ class OMat24Dataset(Dataset):
         # Shard the dataset if using DDP
         self.rank = rank
         self.world_size = world_size
+        self.cache = {}
 
         # Initialize the dataset
         self._init_dataset()
@@ -221,6 +222,9 @@ class OMat24Dataset(Dataset):
 
     def __getitem__(self, idx):
         # Retrieve atoms object for the given index
+        if idx in self.cache:
+            return self.cache[idx]
+
         atoms: ase.atoms.Atoms = self.dataset.get_atoms(idx)
 
         # Extract atomic numbers, positions, symbols, and cell parameters
@@ -292,6 +296,8 @@ class OMat24Dataset(Dataset):
         # Add source information for verifying mutli-dataset usage
         if self.debug:
             sample["source"] = atoms.info["calc_id"]
+
+        self.cache[idx] = sample
 
         return sample
 
