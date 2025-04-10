@@ -187,8 +187,6 @@ class ADiTS2EFSModel(nn.Module):
         Returns:
             Tuple of (forces, energy, stress) tensors
         """
-
-    def forward(self, batch):
         # Forward through the transformer
         transformer_output = self.transformer(batch)
 

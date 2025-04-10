@@ -7,7 +7,7 @@ from pathlib import Path
 import numpy as np
 from torch.utils.data import Subset, Dataset, ConcatDataset
 from fairchem.core.datasets import AseDBDataset
-from torch_geometric.data import Data
+from torch_geometric.data import Data, Batch
 from torch_geometric.loader import DataLoader as PyGDataLoader
 from torch.utils.data.distributed import DistributedSampler
 
@@ -40,6 +40,30 @@ def split_dataset(dataset, train_data_fraction, val_data_fraction, seed):
     val_subset = Subset(dataset, indices=val_indices)
 
     return train_subset, val_subset, train_indices, val_indices
+
+
+def adit_collate_fn(data_list):
+    """Custom collate function for ADiT model."""
+    batch = Batch.from_data_list(data_list)
+
+    # Ensure natoms is properly formatted
+    if hasattr(data_list[0], "natoms"):
+        batch.natoms = torch.tensor(
+            [data.natoms.item() for data in data_list],
+            dtype=torch.long,
+            device=data_list[0].natoms.device,
+        )
+
+    # Create token indices that are unique per molecule
+    # This is CRITICAL for transformer positional embeddings
+    token_indices = []
+    for data in data_list:
+        token_indices.append(data.token_idx)
+
+    # Store token indices in batch
+    batch.token_idx = torch.cat(token_indices)
+
+    return batch
 
 
 def get_dataloaders(
@@ -117,6 +141,7 @@ def get_dataloaders(
         sampler=train_sampler,
         num_workers=train_workers,
         pin_memory=torch.cuda.is_available(),
+        collate_fn=adit_collate_fn if architecture == "ADiT" else None,
     )
     val_loader = PyGDataLoader(
         val_dataset,
@@ -125,6 +150,7 @@ def get_dataloaders(
         sampler=val_sampler,
         num_workers=val_workers,
         pin_memory=torch.cuda.is_available(),
+        collate_fn=adit_collate_fn if architecture == "ADiT" else None,
     )
 
     return train_loader, val_loader
