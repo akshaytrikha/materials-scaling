@@ -144,6 +144,7 @@ class TestTransformer(unittest.TestCase):
                 "500",
                 "--vis_every",
                 "500",
+                "--cache_data",
             ]
             with patch.object(sys, "argv", test_args):
                 buf = io.StringIO()

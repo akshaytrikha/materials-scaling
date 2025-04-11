@@ -142,6 +142,12 @@ def get_args():
         required=True,
         help="Experiment Name for logging (required)",
     )
+    parser.add_argument(
+        "--cache_data",
+        action="store_true",
+        help="Enable caching of loaded data in memory to speed up training",
+        default=False,
+    )
 
     # Slurm arguments
     parser.add_argument("--job_name", type=str, default="omat24")
