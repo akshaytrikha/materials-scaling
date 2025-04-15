@@ -124,7 +124,6 @@ class MetaEquiformerV2Models:
                 "max_num_elements": 96,
                 "avg_num_nodes": 31.17,
                 "avg_degree": 61.95,
-                "num_heads": 8,
                 "norm_type": "layer_norm_sh",
                 "lmax_list": [4],
                 "mmax_list": [2],
