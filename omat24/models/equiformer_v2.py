@@ -27,7 +27,7 @@ class EquiformerS2EFS(nn.Module):
         # Create HydraModel with our modified config
         self.hydra_model = HydraModel(
             backbone=backbone_config,
-            heads=config.get("heads"),
+            heads=config.get("num_heads"),
             otf_graph=config.get("otf_graph", True),
             pass_through_head_outputs=config.get("pass_through_head_outputs", True),
         )
