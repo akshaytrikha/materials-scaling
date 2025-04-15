@@ -49,7 +49,7 @@ class EquiformerS2EFS(nn.Module):
 
         # Calculate number of parameters
         self.num_params = sum(
-            p.numel() for name, p in self.named_parameters() if "embedding" not in name
+            p.numel() for name, p in self.named_parameters() # if "embedding" not in name
         )
 
     def merge_stress_components(self, stress_isotropic, stress_anisotropic):
