@@ -350,7 +350,7 @@ class MetaEquiformerV2Models:
                     "sphere_channels": 24,
                     "num_layers": 4,
                     "attn_hidden_channels": 24,
-                    "num_heads": 1,
+                    "num_heads": 2,
                     "attn_alpha_channels": 24,
                     "attn_value_channels": 6
                 }
