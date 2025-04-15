@@ -124,6 +124,7 @@ class MetaEquiformerV2Models:
                 "max_num_elements": 96,
                 "avg_num_nodes": 31.17,
                 "avg_degree": 61.95,
+                "num_heads": 8,
                 "norm_type": "layer_norm_sh",
                 "lmax_list": [4],
                 "mmax_list": [2],
@@ -349,7 +350,7 @@ class MetaEquiformerV2Models:
                     "sphere_channels": 24,
                     "num_layers": 4,
                     "attn_hidden_channels": 24,
-                    "num_heads": 2,
+                    "num_heads": 1,
                     "attn_alpha_channels": 24,
                     "attn_value_channels": 6
                 }
