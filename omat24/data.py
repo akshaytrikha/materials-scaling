@@ -99,6 +99,10 @@ def get_dataloaders(
         train_subsets.append(train_subset)
         val_subsets.append(val_subset)
 
+        del dataset  # Free memory
+        del train_subset
+        del val_subset
+
     train_dataset = ConcatAseDBDataset(train_subsets)
     val_dataset = ConcatAseDBDataset(val_subsets)
 
