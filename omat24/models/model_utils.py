@@ -212,7 +212,9 @@ class MLPOutput(nn.Module):
         self.net = nn.Sequential(
             nn.Linear(in_dim, in_dim),
             nn.SiLU(),
-            nn.Linear(in_dim, out_dim),
+            nn.Linear(in_dim, 128),
+            nn.SiLU(),
+            nn.Linear(128, out_dim),
         )
 
         # Apply standardized initialization to each layer
