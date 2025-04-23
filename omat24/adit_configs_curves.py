@@ -1,14 +1,13 @@
 #!/usr/bin/env python3
 """
-full_model_architecture_fits.py
+adit_configs_curves.py
 
 Loads transformer‐architecture metadata and produces six plots:
   1) Piecewise power‐law fit: Model size → # heads
   2) Power‐law fit:           Model size → # layers
   3) Piecewise quadratic fit: d_model     → # heads
-  4) Step function:           Model size → KV size
-  5) Linear fit:              d_model     → FFW size
-  6) Ratio plot:              Model size → (FFW size / d_model)
+  4) Linear fit:              d_model     → FFW size
+  5) Ratio plot:              Model size → (FFW size / d_model)
 
 Each figure is shown interactively and saved to a PNG file.
 """
@@ -20,6 +19,7 @@ import matplotlib.pyplot as plt
 # 1. Data
 # -----------------------------------------------------------------------------
 # Format: (model_size_M, d_model, ffw_size, kv_size, n_heads, n_layers)
+# kv_size column will now be ignored.
 data = np.array([
     (44,   512,  2048,  64,  8,  8),
     (57,   576,  2304,  64,  9,  9),
@@ -73,10 +73,10 @@ data = np.array([
     (16183,5120,20480,128, 40, 47)
 ])
 
+
 model_sizes = data[:,0]
 d_models    = data[:,1]
 ffw_sizes   = data[:,2]
-kv_sizes    = data[:,3]
 n_heads     = data[:,4]
 n_layers    = data[:,5]
 
@@ -84,17 +84,11 @@ n_layers    = data[:,5]
 # 2. Piecewise helpers
 # -----------------------------------------------------------------------------
 def piecewise_power_law_grid(x, y, candidate_breaks, min_pts=4):
-    """
-    Log–log piecewise power‐law via grid search.
-    Returns breakpoint, (a1,b1), (a2,b2) minimizing SSE in log space.
-    """
     logx, logy = np.log(x), np.log(y)
     best = {'sse': np.inf}
     for b in candidate_breaks:
-        m1 = x <= b
-        m2 = x >  b
-        if m1.sum() < min_pts or m2.sum() < min_pts:
-            continue
+        m1, m2 = x<=b, x>b
+        if m1.sum()<min_pts or m2.sum()<min_pts: continue
         p1 = np.polyfit(logx[m1], logy[m1], 1)
         p2 = np.polyfit(logx[m2], logy[m2], 1)
         pred1 = np.polyval(p1, logx[m1])
@@ -102,160 +96,106 @@ def piecewise_power_law_grid(x, y, candidate_breaks, min_pts=4):
         sse = ((logy[m1]-pred1)**2).sum() + ((logy[m2]-pred2)**2).sum()
         if sse < best['sse']:
             best.update(bp=b, p1=p1, p2=p2, sse=sse)
-    b = best['bp']
-    slope1, intercept1 = best['p1']
-    slope2, intercept2 = best['p2']
-    return b, (np.exp(intercept1), slope1), (np.exp(intercept2), slope2)
+    b   = best['bp']
+    a1, sl1 = np.exp(best['p1'][1]), best['p1'][0]
+    a2, sl2 = np.exp(best['p2'][1]), best['p2'][0]
+    return b, (a1, sl1), (a2, sl2)
 
 def piecewise_quadratic_grid(x, y, breaks, min_pts=4):
-    """
-    Piecewise quadratic (linear‐space) via grid search.
-    Returns breakpoint, coeffs1, coeffs2 minimizing SSE.
-    """
     best = {'sse': np.inf}
     for b in breaks:
-        m1 = x <= b
-        m2 = x >  b
-        if m1.sum() < min_pts or m2.sum() < min_pts:
-            continue
-        p1 = np.polyfit(x[m1], y[m1], 2)
-        p2 = np.polyfit(x[m2], y[m2], 2)
-        pred1 = np.polyval(p1, x[m1])
-        pred2 = np.polyval(p2, x[m2])
+        m1, m2 = x<=b, x>b
+        if m1.sum()<min_pts or m2.sum()<min_pts: continue
+        p1, p2 = np.polyfit(x[m1], y[m1], 2), np.polyfit(x[m2], y[m2], 2)
+        pred1, pred2 = np.polyval(p1, x[m1]), np.polyval(p2, x[m2])
         sse = ((y[m1]-pred1)**2).sum() + ((y[m2]-pred2)**2).sum()
-        if sse < best['sse']:
+        if sse<best['sse']:
             best.update(bp=b, p1=p1, p2=p2, sse=sse)
     return best['bp'], best['p1'], best['p2']
 
-# Candidate breakpoints (10th–90th percentiles)
 model_breaks  = np.percentile(model_sizes, np.linspace(10,90,80))
 dmodel_breaks = np.percentile(d_models,    np.linspace(10,90,80))
 
 # -----------------------------------------------------------------------------
-# 3. Plot 1: Piecewise power law — model_size vs n_heads
+# Plot 1: model_size → heads (piecewise power law)
 # -----------------------------------------------------------------------------
-bp_h, (a1_h, b1_h), (a2_h, b2_h) = piecewise_power_law_grid(
-    model_sizes, n_heads, model_breaks
-)
+bp_h, (A1_h,B1_h),(A2_h,B2_h) = piecewise_power_law_grid(model_sizes, n_heads, model_breaks)
 xs1 = np.linspace(model_sizes.min(), bp_h, 300)
 xs2 = np.linspace(bp_h, model_sizes.max(), 300)
-ys1 = a1_h * xs1**b1_h
-ys2 = a2_h * xs2**b2_h
+ys1 = A1_h * xs1**B1_h
+ys2 = A2_h * xs2**B2_h
 
 plt.figure(figsize=(10,6))
 plt.scatter(model_sizes, n_heads, color='C0', s=60, label='Data')
-plt.plot(xs1, ys1, 'r-', lw=2, label=f'≤{bp_h:.0f}M: {a1_h:.2f}·x^{b1_h:.3f}')
-plt.plot(xs2, ys2, 'r-', lw=2, label=f'>{bp_h:.0f}M: {a2_h:.2f}·x^{b2_h:.3f}')
-plt.axvline(bp_h, color='k', linestyle='--', alpha=0.6, label=f'Breakpoint ≈{bp_h:.0f}M')
-plt.title('Piecewise Power-Law Fit: Model Size vs Heads')
+plt.plot(xs1, ys1, 'r-', label=f'≤{bp_h:.0f}M: {A1_h:.2f}·x^{B1_h:.3f}')
+plt.plot(xs2, ys2, 'r-', label=f'>{bp_h:.0f}M: {A2_h:.2f}·x^{B2_h:.3f}')
+plt.axvline(bp_h, linestyle='--', color='k', label=f'Break ≈{bp_h:.0f}M')
+plt.title('Model Size vs # Heads')
 plt.xlabel('Model size (M params)')
-plt.ylabel('Number of heads')
-plt.legend()
-plt.grid(alpha=0.3)
-plt.tight_layout()
-plt.savefig('1_model_size_vs_heads.png', dpi=300)
+plt.ylabel('Heads')
+plt.legend(); plt.grid(alpha=0.3); plt.tight_layout()
+plt.savefig('1_model_size_vs_heads.png')
 
 # -----------------------------------------------------------------------------
-# 4. Plot 2: Power law — model_size vs n_layers
+# Plot 2: model_size → layers (power law)
 # -----------------------------------------------------------------------------
-# log–log linear fit
-m_slope, m_intercept = np.polyfit(np.log(model_sizes), np.log(n_layers), 1)
-A_layers = np.exp(m_intercept)
-B_layers = m_slope
+slope_L, inter_L = np.polyfit(np.log(model_sizes), np.log(n_layers), 1)
+A_L, B_L = np.exp(inter_L), slope_L
 xs = np.linspace(model_sizes.min(), model_sizes.max(), 300)
-ys = A_layers * xs**B_layers
+ys = A_L * xs**B_L
 
 plt.figure(figsize=(10,6))
 plt.scatter(model_sizes, n_layers, color='C1', s=60, label='Data')
-plt.plot(xs, ys, 'r-', lw=2, label=f'y={A_layers:.4f}·x^{B_layers:.3f}')
-plt.title('Power-Law Fit: Model Size vs Layers')
+plt.plot(xs, ys, 'r-', label=f'y={A_L:.4f}·x^{B_L:.3f}')
+plt.title('Model Size vs # Layers')
 plt.xlabel('Model size (M params)')
-plt.ylabel('Number of layers')
-plt.legend()
-plt.grid(alpha=0.3)
-plt.tight_layout()
-plt.savefig('2_model_size_vs_layers.png', dpi=300)
+plt.ylabel('Layers')
+plt.legend(); plt.grid(alpha=0.3); plt.tight_layout()
+plt.savefig('2_model_size_vs_layers.png')
 
 # -----------------------------------------------------------------------------
-# 5. Plot 3: Piecewise quadratic — d_model vs n_heads
+# Plot 3: d_model → heads (piecewise quadratic)
 # -----------------------------------------------------------------------------
 bp_q, q1, q2 = piecewise_quadratic_grid(d_models, n_heads, dmodel_breaks)
-a1_q, b1_q, c1_q = q1
-a2_q, b2_q, c2_q = q2
+a1_q,b1_q,c1_q = q1; a2_q,b2_q,c2_q = q2
 xs1 = np.linspace(d_models.min(), bp_q, 300)
 xs2 = np.linspace(bp_q, d_models.max(), 300)
-ys1 = np.polyval(q1, xs1)
-ys2 = np.polyval(q2, xs2)
-
 plt.figure(figsize=(10,6))
 plt.scatter(d_models, n_heads, color='purple', s=60, label='Data')
-plt.plot(xs1, ys1, 'r-', lw=2, label=f'≤{bp_q:.0f}: {a1_q:.2e}x²+{b1_q:.3f}x+{c1_q:.2f}')
-plt.plot(xs2, ys2, 'r-', lw=2, label=f'>{bp_q:.0f}: {a2_q:.2e}x²+{b2_q:.3f}x+{c2_q:.2f}')
-plt.axvline(bp_q, color='k', linestyle='--', alpha=0.6, label=f'Breakpoint ≈{bp_q:.0f}')
-plt.title('Piecewise Quadratic Fit: d_model vs Heads')
-plt.xlabel('Hidden size (d_model)')
-plt.ylabel('Number of heads')
-plt.legend()
-plt.grid(alpha=0.3)
-plt.tight_layout()
-plt.savefig('3_dmodel_vs_heads.png', dpi=300)
+plt.plot(xs1, np.polyval(q1, xs1), 'r-', label=f'≤{bp_q:.0f}: {a1_q:.2e}x²+{b1_q:.3f}x+{c1_q:.2f}')
+plt.plot(xs2, np.polyval(q2, xs2), 'r-', label=f'>{bp_q:.0f}: {a2_q:.2e}x²+{b2_q:.3f}x+{c2_q:.2f}')
+plt.axvline(bp_q, linestyle='--', color='k', label=f'Break ≈{bp_q:.0f}')
+plt.title('d_model vs # Heads')
+plt.xlabel('d_model'); plt.ylabel('Heads')
+plt.legend(); plt.grid(alpha=0.3); plt.tight_layout()
+plt.savefig('3_dmodel_vs_heads.png')
 
 # -----------------------------------------------------------------------------
-# 6. Plot 4: Step function — model_size vs kv_size
+# Plot 4: d_model → FFW size (linear)
 # -----------------------------------------------------------------------------
-# threshold midway between the flip from 64→128
-idx = np.where(kv_sizes >= 96)[0][0]
-thr = (model_sizes[idx] + model_sizes[idx-1]) / 2
-def step_fn(x): return np.where(x<=thr, 64, 128)
-
-xs = np.linspace(model_sizes.min(), model_sizes.max(), 300)
-ys = step_fn(xs)
-
-plt.figure(figsize=(10,6))
-plt.scatter(model_sizes, kv_sizes, color='orange', s=60, label='Data')
-plt.plot(xs, ys, 'r-', lw=2, label=f'Step at {thr:.0f}M: 64→128')
-plt.title('Step Function: Model Size vs KV Size')
-plt.xlabel('Model size (M params)')
-plt.ylabel('KV size')
-plt.legend()
-plt.grid(alpha=0.3)
-plt.tight_layout()
-plt.savefig('4_model_size_vs_kv.png', dpi=300)
-
-# -----------------------------------------------------------------------------
-# 7. Plot 5: Linear fit — d_model vs ffw_size
-# -----------------------------------------------------------------------------
-m, c = np.polyfit(d_models, ffw_sizes, 1)
+m_ffw, c_ffw = np.polyfit(d_models, ffw_sizes, 1)
 xs = np.linspace(d_models.min(), d_models.max(), 300)
-ys = m*xs + c
-
 plt.figure(figsize=(10,6))
 plt.scatter(d_models, ffw_sizes, color='teal', s=60, label='Data')
-plt.plot(xs, ys, 'r-', lw=2, label=f'y={m:.4f}x+{c:.1f}')
-plt.title('Linear Fit: d_model vs FFW Size')
-plt.xlabel('Hidden size (d_model)')
-plt.ylabel('FFW size')
-plt.legend()
-plt.grid(alpha=0.3)
-plt.tight_layout()
-plt.savefig('5_dmodel_vs_ffw.png', dpi=300)
+plt.plot(xs, m_ffw*xs + c_ffw, 'r-', label=f'y={m_ffw:.4f}x+{c_ffw:.1f}')
+plt.title('d_model vs FFW size')
+plt.xlabel('d_model'); plt.ylabel('FFW')
+plt.legend(); plt.grid(alpha=0.3); plt.tight_layout()
+plt.savefig('5_dmodel_vs_ffw.png')
 
 # -----------------------------------------------------------------------------
-# 8. Plot 6: Ratio — model_size vs (ffw_size / d_model)
+# Plot 5: model_size → (FFW / d_model) ratio
 # -----------------------------------------------------------------------------
 ratio = ffw_sizes / d_models
 plt.figure(figsize=(10,6))
 plt.scatter(model_sizes, ratio, color='magenta', s=60, label='Data')
-plt.axhline(4.0, color='r', linestyle='-', lw=2, label='Ratio = 4.0')
-plt.title('FFW Size to d_model Ratio Across Model Sizes')
-plt.xlabel('Model size (M params)')
-plt.ylabel('FFW size / d_model')
-plt.legend()
-plt.grid(alpha=0.3)
-plt.tight_layout()
-plt.savefig('6_ratio.png', dpi=300)
+plt.axhline(4.0, linestyle='-', label='4×')
+plt.title('FFW/d_model Ratio')
+plt.xlabel('Model size (M params)'); plt.ylabel('FFW/d_model')
+plt.legend(); plt.grid(alpha=0.3); plt.tight_layout()
+plt.savefig('6_ratio.png')
 
 # -----------------------------------------------------------------------------
-# 9. Show all
+# Show all
 # -----------------------------------------------------------------------------
 plt.show()
