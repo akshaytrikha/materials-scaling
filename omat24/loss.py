@@ -78,7 +78,8 @@ def compute_loss(
     forces_loss_fn = DDPLoss("l2mae", reduction="mean")
     stress_loss_fn = DDPLoss("mae", reduction="mean")
 
-    energy_loss = energy_loss_fn(pred_energy, true_energy, natoms)
+    # energy_loss = energy_loss_fn(pred_energy, true_energy, natoms)
+    energy_loss = torch.tensor(0.0, device=device)
 
     if graph == False:
         if mask is None:
@@ -94,10 +95,13 @@ def compute_loss(
 
     force_loss = forces_loss_fn(pred_forces, true_forces, natoms)
 
-    true_iso_stress, true_aniso_stress = unvoigt_stress(true_stress)
-    pred_iso_stress, pred_aniso_stress = unvoigt_stress(pred_stress)
-    stress_iso_loss = stress_loss_fn(pred_iso_stress, true_iso_stress, natoms)
-    stress_aniso_loss = stress_loss_fn(pred_aniso_stress, true_aniso_stress, natoms)
+    # true_iso_stress, true_aniso_stress = unvoigt_stress(true_stress)
+    # pred_iso_stress, pred_aniso_stress = unvoigt_stress(pred_stress)
+    # stress_iso_loss = stress_loss_fn(pred_iso_stress, true_iso_stress, natoms)
+    # stress_aniso_loss = stress_loss_fn(pred_aniso_stress, true_aniso_stress, natoms)
+
+    stress_iso_loss = torch.tensor(0.0, device=device)
+    stress_aniso_loss = torch.tensor(0.0, device=device)
 
     total_loss = (
         ENERGY_COEF * energy_loss
