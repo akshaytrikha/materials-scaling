@@ -160,22 +160,12 @@ class ADiTS2EFSModel(nn.Module):
             num_layers=num_layers,
         )
 
-        # Predictors for Energy, Forces, and Stresses
-        self.energy_head = MLPOutput(d_model, 1)
+        # Only keep the force head
         self.force_head = MLPOutput(d_model, 3)
-        self.stress_head = MLPOutput(d_model, 6)
 
         # Initialize weights
         initialize_weights(self.transformer)
-        initialize_output_heads(self.energy_head)
         initialize_output_heads(self.force_head)
-        initialize_output_heads(self.stress_head)
-
-        # Set energy and stress heads to not require gradients
-        for param in self.energy_head.parameters():
-            param.requires_grad = False
-        for param in self.stress_head.parameters():
-            param.requires_grad = False
 
         # Count parameters
         self.num_params = sum(
@@ -196,22 +186,15 @@ class ADiTS2EFSModel(nn.Module):
         # Predict forces (per-atom is correct)
         forces = self.force_head(atom_embeddings)  # [num_atoms, 3]
 
-        # Predict initial per-atom values
-        per_atom_energy = self.energy_head(atom_embeddings)  # [num_atoms, 1]
-        per_atom_stress = self.stress_head(atom_embeddings)  # [num_atoms, 6]
-
-        # Aggregate to per-structure values using batch index
+        # Get batch information
         batch_idx = transformer_output["batch"]  # [num_atoms]
-
-        # Sum per-atom energies for each structure
-        energy = scatter(per_atom_energy, batch_idx, dim=0, reduce="sum").squeeze(
-            -1
-        )  # [num_graphs]
-
-        # Average per-atom stress for each structure
-        stress = scatter(
-            per_atom_stress, batch_idx, dim=0, reduce="mean"
-        )  # [num_graphs, 6]
+        
+        # Count number of structures in the batch
+        num_structures = batch_idx.max().item() + 1 if len(batch_idx) > 0 else 0
+        
+        # Create dummy zero tensors for energy and stress with correct shapes
+        energy = torch.zeros(num_structures, device=forces.device)  # [num_structures]
+        stress = torch.zeros(num_structures, 6, device=forces.device)  # [num_structures, 6]
 
         return forces, energy, stress
 
