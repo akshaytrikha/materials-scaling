@@ -8,6 +8,8 @@ from contextlib import nullcontext
 import torch.distributed as dist
 from torch.amp import autocast, GradScaler
 from fairchem.core.common.typing import assert_is_instance as aii
+import psutil
+import GPUtil  # For additional GPU metrics (optional, install with: pip install gputil)
 
 # Internal
 from loss import compute_loss
@@ -328,6 +330,7 @@ def train(
     validate_every=500,
     visualize_every=500,
     use_mixed_precision=False,
+    prof=None,
 ):
     """
     Train model with validation at epoch 0 and every 'validate_every' epochs.
@@ -355,12 +358,16 @@ def train(
         validate_every (int, optional): Frequency (in epochs) to run validation.
         visualize_every (int, optional): Frequency (in epochs) to collect visualization samples.
         use_mixed_precision (bool, optional): Whether to use mixed precision training. Defaults to False.
+        prof (torch.profiler, optional): Torch profiler for profiling.
 
     Returns:
         (nn.Module, dict): The trained model and a dictionary of recorded losses.
     """
     # Set up mixed precision
     amp_context, scaler = get_amp_context(use_mixed_precision, device.type)
+
+    # Track memory usage
+    process = psutil.Process()
 
     model.to(device)
     can_write_partial = all(
@@ -397,17 +404,42 @@ def train(
             train=False,
         )
 
-    # Write partial JSON if everything is provided
-    if can_write_partial:
-        partial_json_log(
-            experiment_results,
-            data_size_key,
-            run_entry,
-            0,
-            float("nan"),
-            val_loss,
-            results_path,
-        )
+    def log_memory_usage():
+        if writer is not None and is_main_process:
+            # Log RAM usage
+            ram_used = process.memory_info().rss / (1024 * 1024)  # in MB
+            ram_percent = psutil.virtual_memory().percent
+            writer.add_scalar(f"{tensorboard_prefix}/Memory/RAM_Used_MB", ram_used, 0)
+            writer.add_scalar(
+                f"{tensorboard_prefix}/Memory/RAM_Percent", ram_percent, 0
+            )
+
+            # Additional GPU info using GPUtil (if available and using CUDA)
+            if device.type == "cuda":
+                try:
+                    gpu_info = GPUtil.getGPUs()[
+                        device.index if hasattr(device, "index") else 0
+                    ]
+                    writer.add_scalar(
+                        f"{tensorboard_prefix}/Memory/GPU_Memory_Used_MB",
+                        gpu_info.memoryUsed,
+                        0,
+                    )
+                    writer.add_scalar(
+                        f"{tensorboard_prefix}/Memory/GPU_Utilization_Percent",
+                        gpu_info.load * 100,
+                        0,
+                    )
+                    writer.add_scalar(
+                        f"{tensorboard_prefix}/Memory/GPU_Temperature",
+                        gpu_info.temperature,
+                        0,
+                    )
+                except:
+                    pass
+
+    # Log initial memory usage
+    log_memory_usage()
 
     # Early stopping setup
     best_val_loss = val_loss
@@ -583,6 +615,8 @@ def train(
                         grad_to_weight,
                         global_step=epoch,
                     )
+                    log_memory_usage()
+
         # Validate every 'validate_every' epochs
         if epoch % validate_every == 0:
             (
@@ -673,7 +707,14 @@ def train(
                 flops_per_epoch * epoch,
             )
 
+        if prof is not None:
+            prof.step()
+
         if is_main_process:
             pbar.update(1)
+
+    # Stop profiling if profiler is provided
+    if prof is not None:
+        prof.stop()
 
     return model, losses
