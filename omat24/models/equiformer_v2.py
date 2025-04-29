@@ -213,18 +213,18 @@ class MetaEquiformerV2Models:
             #     }
             # },
             # # 23,165 params
-            # {
-            #     "backbone": {
-            #         "ffn_hidden_channels": 3,
-            #         "edge_channels": 3,
-            #         "sphere_channels": 3,
-            #         "num_layers": 2,
-            #         "attn_hidden_channels": 8,
-            #         "num_heads": 1,
-            #         "attn_alpha_channels": 8,
-            #         "attn_value_channels": 2,
-            #     }
-            # },
+            {
+                "backbone": {
+                    "ffn_hidden_channels": 3,
+                    "edge_channels": 3,
+                    "sphere_channels": 3,
+                    "num_layers": 2,
+                    "attn_hidden_channels": 8,
+                    "num_heads": 1,
+                    "attn_alpha_channels": 8,
+                    "attn_value_channels": 2,
+                }
+            },
             # # 30,872 params
             # {
             #     "backbone": {
@@ -408,18 +408,18 @@ class MetaEquiformerV2Models:
             #     }
             # },
             # # 10,462,026 params
-            {
-                "backbone": {
-                    "ffn_hidden_channels": 96,
-                    "edge_channels": 96,
-                    "sphere_channels": 96,
-                    "num_layers": 6,
-                    "attn_hidden_channels": 40,
-                    "num_heads": 7,
-                    "attn_alpha_channels": 40,
-                    "attn_value_channels": 10
-                }
-            }
+            # {
+            #     "backbone": {
+            #         "ffn_hidden_channels": 96,
+            #         "edge_channels": 96,
+            #         "sphere_channels": 96,
+            #         "num_layers": 6,
+            #         "attn_hidden_channels": 40,
+            #         "num_heads": 7,
+            #         "attn_alpha_channels": 40,
+            #         "attn_value_channels": 10
+            #     }
+            # }
         ]
 
         # From the Open Materials 2024 Paper
