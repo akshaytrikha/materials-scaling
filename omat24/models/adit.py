@@ -230,19 +230,14 @@ class MetaADiTModels:
         """
         # fmt: off
         self.configurations = [
-            {"d_model": 2, "nhead": 1, "dim_feedforward": 8, "num_layers": 1},   # 126 params
-            {"d_model": 8, "nhead": 1, "dim_feedforward": 32, "num_layers": 1},  # 1,194 params
-            {"d_model": 16, "nhead": 1, "dim_feedforward": 64, "num_layers": 1}, # 4,298 params
-            {"d_model": 32, "nhead": 1, "dim_feedforward": 128, "num_layers": 1}, # 16,266 params
-            {"d_model": 32, "nhead": 1, "dim_feedforward": 128, "num_layers": 2}, # 28,970 params
-            {"d_model": 64, "nhead": 1, "dim_feedforward": 256, "num_layers": 1}, # 63,242 params
-            {"d_model": 64, "nhead": 1, "dim_feedforward": 256, "num_layers": 2}, # 113,226 params
-            {"d_model": 96, "nhead": 1, "dim_feedforward": 384, "num_layers": 2}, # 252,778 params
-            {"d_model": 128, "nhead": 1, "dim_feedforward": 512, "num_layers": 2}, # 447,626 params
-            {"d_model": 128, "nhead": 1, "dim_feedforward": 512, "num_layers": 3}, # 645,898 params
-            {"d_model": 192, "nhead": 1, "dim_feedforward": 768, "num_layers": 3}, # 1,448,074 params
-            {"d_model": 224, "nhead": 2, "dim_feedforward": 896, "num_layers": 3}, # 1,968,970 params
-            {"d_model": 256, "nhead": 2, "dim_feedforward": 1024, "num_layers": 3}, # 2,569,738 params
+            {"d_model": 64, "nhead": 1, "dim_feedforward": 256, "num_layers": 1}, # 0.063M params
+            {"d_model": 64, "nhead": 1, "dim_feedforward": 256, "num_layers": 2}, # 0.113M params
+            {"d_model": 64, "nhead": 1, "dim_feedforward": 256, "num_layers": 3}, # 0.163M params
+            {"d_model": 128, "nhead": 2, "dim_feedforward": 512, "num_layers": 3}, # 0.646M params
+            {"d_model": 192, "nhead": 3, "dim_feedforward": 768, "num_layers": 5}, # 2.338M params
+            {"d_model": 192, "nhead": 4, "dim_feedforward": 768, "num_layers": 6}, # 2.783M params
+            {"d_model": 256, "nhead": 4, "dim_feedforward": 1024, "num_layers": 6}, # 2.338M params
+            {"d_model": 320, "nhead": 5, "dim_feedforward": 1280, "num_layers": 7}, # 8.943M params
         ]
         # fmt: on
 

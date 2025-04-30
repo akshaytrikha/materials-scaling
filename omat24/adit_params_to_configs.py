@@ -5,12 +5,14 @@
 adit_params_to_configs.py
 
 Given a target parameter count (in millions), predict transformer
-hyperparameters and instantiate a real ADiTS2EFSModel to get its
-exact parameter count.
+hyperparameters using empirical power‐law fits for d_model, heads, layers,
+and then instantiate a real ADiTS2EFSModel to report the exact parameter count.
 """
 
 import sys
 import types
+import math
+from models.adit import ADiTS2EFSModel
 
 # ─── Stub torch_scatter & torch_geometric hooks ───
 _sc_mod = types.ModuleType("torch_scatter")
@@ -31,17 +33,14 @@ sys.modules["torch_geometric.typing"]     = types.ModuleType("torch_geometric.ty
 sys.modules["torch_geometric.isinstance"] = types.ModuleType("torch_geometric.isinstance")
 # ─────────────────────────────────────────────────
 
-import math
-from models.adit import ADiTS2EFSModel
-
 
 def calculate_hyperparameters(param_count_millions):
     # 1) Layers
-    A_L, B_L = 3.667, 0.270
+    A_L, B_L = 3.6667, 0.270
     n_layers = max(1, round(A_L * param_count_millions**B_L))
 
     # 2) Heads (piecewise)
-    bp_h = 389.0
+    bp_h = 346.0
     if param_count_millions <= bp_h:
         A1, B1 = 1.96, 0.370
         n_heads = max(1, round(A1 * param_count_millions**B1))
@@ -49,11 +48,10 @@ def calculate_hyperparameters(param_count_millions):
         A2, B2 = 1.15, 0.359
         n_heads = max(1, round(A2 * param_count_millions**B2))
 
-    # 3) Hidden dim
-    total = param_count_millions * 1e6
-    coeff = 12.0
-    d_raw = math.sqrt(total / (coeff * n_layers))
-    d_model = max(64, round(d_raw / 64) * 64)
+    # 3) Hidden dim (d_model)
+    A_D, B_D = 113.09, 0.394
+    d_model_raw = A_D * param_count_millions**B_D
+    d_model = max(64, round(d_model_raw / 64) * 64)
 
     # 4) FFN dim
     ffw_size = 4 * d_model
@@ -95,9 +93,9 @@ def print_hyperparameters(hp):
     print(f"Target: {hp['model_size_M']:.3f} M params")
     print(f"Exact:  {hp['exact_param_count_M']:.3f} M params\n")
     print(f"  d_model  : {hp['d_model']}")
-    print(f"  n_heads  : {hp['n_heads']}  (head_dim={hp['head_dim']})")
-    print(f"  n_layers : {hp['n_layers']}")
-    print(f"  ffw_size : {hp['ffw_size']}")
+    print(f"  nhead  : {hp['n_heads']}  (head_dim={hp['head_dim']})")
+    print(f"  dim_feedforward : {hp['ffw_size']}")
+    print(f"  num_layers : {hp['n_layers']}")
     print()
 
 

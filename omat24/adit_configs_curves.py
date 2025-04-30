@@ -4,10 +4,11 @@ adit_configs_curves.py
 
 Loads transformer‐architecture metadata and produces six plots:
   1) Piecewise power‐law fit: Model size → # heads
-  2) Power‐law fit:           Model size → # layers
-  3) Piecewise quadratic fit: d_model     → # heads
-  4) Linear fit:              d_model     → FFW size
-  5) Ratio plot:              Model size → (FFW size / d_model)
+  2) Power‐law fit:           Model size → d_model
+  3) Power‐law fit:           Model size → # layers
+  4) Piecewise quadratic fit: d_model     → # heads
+  5) Linear fit:              d_model     → FFW size
+  6) Ratio plot:              Model size → (FFW size / d_model)
 
 Each figure is shown interactively and saved to a PNG file.
 """
@@ -137,7 +138,23 @@ plt.legend(); plt.grid(alpha=0.3); plt.tight_layout()
 plt.savefig('1_model_size_vs_heads.png')
 
 # -----------------------------------------------------------------------------
-# Plot 2: model_size → layers (power law)
+# Plot 2: Model size → d_model (single power law)
+# -----------------------------------------------------------------------------
+slope_dm, inter_dm = np.polyfit(np.log(model_sizes), np.log(d_models), 1)
+A_dm, B_dm = np.exp(inter_dm), slope_dm
+xd = np.linspace(model_sizes.min(), model_sizes.max(), 300)
+plt.figure(figsize=(10,6))
+plt.scatter(model_sizes, d_models, color='C2', s=60, label='Data')
+plt.plot(xd, A_dm*xd**B_dm, 'r-', lw=2,
+        label=f'd_model = {A_dm:.2f}·x^{B_dm:.3f}')
+plt.title('Model Size → d_model (Power Law Fit)')
+plt.xlabel('Model size (M params)')
+plt.ylabel('d_model')
+plt.legend(); plt.grid(alpha=0.3); plt.tight_layout()
+plt.savefig('2_model_size_vs_d_model.png')
+
+# -----------------------------------------------------------------------------
+# Plot 3: model_size → layers (power law)
 # -----------------------------------------------------------------------------
 slope_L, inter_L = np.polyfit(np.log(model_sizes), np.log(n_layers), 1)
 A_L, B_L = np.exp(inter_L), slope_L
@@ -151,10 +168,10 @@ plt.title('Model Size vs # Layers')
 plt.xlabel('Model size (M params)')
 plt.ylabel('Layers')
 plt.legend(); plt.grid(alpha=0.3); plt.tight_layout()
-plt.savefig('2_model_size_vs_layers.png')
+plt.savefig('3_model_size_vs_layers.png')
 
 # -----------------------------------------------------------------------------
-# Plot 3: d_model → heads (piecewise quadratic)
+# Plot 4: d_model → heads (piecewise quadratic)
 # -----------------------------------------------------------------------------
 bp_q, q1, q2 = piecewise_quadratic_grid(d_models, n_heads, dmodel_breaks)
 a1_q,b1_q,c1_q = q1; a2_q,b2_q,c2_q = q2
@@ -168,10 +185,10 @@ plt.axvline(bp_q, linestyle='--', color='k', label=f'Break ≈{bp_q:.0f}')
 plt.title('d_model vs # Heads')
 plt.xlabel('d_model'); plt.ylabel('Heads')
 plt.legend(); plt.grid(alpha=0.3); plt.tight_layout()
-plt.savefig('3_dmodel_vs_heads.png')
+plt.savefig('4_dmodel_vs_heads.png')
 
 # -----------------------------------------------------------------------------
-# Plot 4: d_model → FFW size (linear)
+# Plot 5: d_model → FFW size (linear)
 # -----------------------------------------------------------------------------
 m_ffw, c_ffw = np.polyfit(d_models, ffw_sizes, 1)
 xs = np.linspace(d_models.min(), d_models.max(), 300)
@@ -184,7 +201,7 @@ plt.legend(); plt.grid(alpha=0.3); plt.tight_layout()
 plt.savefig('5_dmodel_vs_ffw.png')
 
 # -----------------------------------------------------------------------------
-# Plot 5: model_size → (FFW / d_model) ratio
+# Plot 6: model_size → (FFW / d_model) ratio
 # -----------------------------------------------------------------------------
 ratio = ffw_sizes / d_models
 plt.figure(figsize=(10,6))
