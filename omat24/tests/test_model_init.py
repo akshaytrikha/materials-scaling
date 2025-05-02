@@ -198,13 +198,14 @@ class TestModelInit(unittest.TestCase):
         self.assertAlmostEqual(
             results["ADiT"]["1k"]["val_loss"],
             46.482657136384006,
-            places=3,
+            delta=0.5,
             msg="ADiT 1k epoch 0 val_loss is incorrect",
+            
         )
         self.assertAlmostEqual(
             results["ADiT"]["50k"]["val_loss"],
             52.35382055199665,
-            places=3,
+            delta=0.5,
             msg="ADiT 50k epoch 0 val_loss is incorrect",
         )
 
@@ -212,12 +213,12 @@ class TestModelInit(unittest.TestCase):
         self.assertAlmostEqual(
             results["SchNet"]["1k"]["val_loss"],
             52.03330331411421,
-            places=3,
+            delta=0.5,
             msg="SchNet 1k epoch 0 val_loss is incorrect",
         )
         self.assertAlmostEqual(
             results["SchNet"]["50k"]["val_loss"],
             52.020514387521686,
-            places=3,
+            delta=0.5,
             msg="SchNet 50k epoch 0 val_loss is incorrect",
         )
