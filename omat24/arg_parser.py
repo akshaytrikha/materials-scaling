@@ -133,7 +133,6 @@ def get_args():
         type=int,
         nargs="+",
         default=[500],
-        required=True,
         help="Early stopping patience epochs = patience * val_every",
     )
     parser.add_argument(

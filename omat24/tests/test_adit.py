@@ -180,6 +180,8 @@ class TestADiT(unittest.TestCase):
                 "100",
                 "--vis_every",
                 "100",
+                "--name",
+                "test_adit"
             ]
             with patch.object(sys, "argv", test_args):
                 buf = io.StringIO()
