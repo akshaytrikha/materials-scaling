@@ -79,6 +79,27 @@ def cleanup_ddp():
     dist.destroy_process_group()
 
 
+def create_experiment_directory(args, timestamp):
+    """Create an organized experiment directory structure."""
+    if hasattr(args, 'name') and args.name:
+        run_name = args.name
+    else:
+        run_name = f"{args.architecture}_{'_'.join(args.datasets)}"    
+    exp_dir = Path(f"experiments/{run_name}_{timestamp}")
+    exp_dir.mkdir(parents=True, exist_ok=True)    
+    models_dir = exp_dir / "models"
+    tb_dir = exp_dir / "tensorboard"
+    models_dir.mkdir(exist_ok=True)
+    tb_dir.mkdir(exist_ok=True)    
+    
+    return {
+        "base_dir": exp_dir,
+        "models_dir": models_dir,
+        "tb_dir": tb_dir,
+        "json_path": exp_dir / "metrics.json"
+    }
+    
+
 def main(rank=None, world_size=None, args=None):
     is_main_process = rank == 0 if world_size is not None else True
     if args is None:
@@ -92,7 +113,7 @@ def main(rank=None, world_size=None, args=None):
         DEVICE = torch.device(f"cuda:{rank}")
         dist.barrier()
 
-    # Convinience for running all datasets
+    # Convenience for running all datasets
     if args.datasets[0] == "all":
         args.datasets = VALID_DATASETS
 
@@ -116,7 +137,7 @@ def main(rank=None, world_size=None, args=None):
 
     batch_size = args.batch_size[0]
     lr = args.lr[0]
-    args.epochs
+    num_epochs = args.epochs
     graph = args.architecture in ["SchNet", "EquiformerV2", "ADiT"]
     if graph:
         if DEVICE == torch.device("mps"):
@@ -138,17 +159,20 @@ def main(rank=None, world_size=None, args=None):
     elif args.architecture == "ADiT":
         meta_models = MetaADiTModels()
 
-    # Create results path and initialize file if logging is enabled
+    # Create experiment directories and paths
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    tb_logdir = os.path.join("runs", f"exp_{timestamp}")
-    writer = SummaryWriter(log_dir=tb_logdir)
+    exp_paths = create_experiment_directory(args, timestamp)
+    
+    # Initialize TensorBoard with the new path
+    tb_logdir = exp_paths["tb_dir"]
+    writer = SummaryWriter(log_dir=tb_logdir) if is_main_process else None
     if is_main_process:
         print(f"TensorBoard logs will be saved to: {tb_logdir}")
 
-    results_path = Path("results") / f"experiments_{timestamp}.json"
+    # Initialize JSON results file
+    results_path = exp_paths["json_path"]
     experiment_results = {}
     if log and is_main_process:
-        Path("results").mkdir(exist_ok=True)
         with open(results_path, "w") as f:
             json.dump({}, f)  # Initialize as empty JSON
         print(f"\nLogging enabled. Results will be saved to {results_path}")
@@ -214,7 +238,14 @@ def main(rank=None, world_size=None, args=None):
 
             # Prepare run entry etc.
             model_name = f"model_ds{dataset_size}_p{int(num_params)}"
-            checkpoint_path = f"checkpoints/{args.architecture}_ds{dataset_size}_p{int(num_params)}_{timestamp}.pth"
+            
+            # Create a specific subfolder for this model's checkpoints
+            model_checkpoint_dir = exp_paths["models_dir"] / model_name
+            model_checkpoint_dir.mkdir(exist_ok=True)
+            
+            # Set the final checkpoint path
+            final_checkpoint_path = model_checkpoint_dir / "checkpoint_final.pth"
+            
             run_entry = {
                 "model_name": model_name,
                 "config": {
@@ -223,13 +254,14 @@ def main(rank=None, world_size=None, args=None):
                     "depth": depth,
                     "num_params": num_params,
                     "dataset_size": dataset_size,
-                    "num_epochs": args.epochs,
+                    "num_epochs": num_epochs,
                     "batch_size": batch_size,
                     "learning_rate": lr,
                     "seed": SEED,
                 },
                 "losses": {},
-                "checkpoint_path": checkpoint_path,
+                "checkpoint_path": str(final_checkpoint_path),
+                "checkpoint_dir": str(model_checkpoint_dir),
             }
             ds_key = str(dataset_size)
             if ds_key not in experiment_results:
@@ -241,9 +273,9 @@ def main(rank=None, world_size=None, args=None):
 
             # Create progress bar only on main process
             if is_main_process:
-                progress_bar = tqdm(range(args.epochs + 1))
+                progress_bar = tqdm(range(num_epochs + 1))
             else:
-                progress_bar = range(args.epochs + 1)
+                progress_bar = range(num_epochs + 1)
 
             training_args = {
                 "model": model,
@@ -256,7 +288,7 @@ def main(rank=None, world_size=None, args=None):
                 "device": DEVICE,
                 "distributed": (world_size is not None),
                 "rank": rank,
-                "patience": 5,
+                "patience": args.patience[0],
                 "writer": writer if is_main_process else None,
                 "tensorboard_prefix": model_name,
                 "num_visualization_samples": args.num_visualization_samples,
@@ -264,6 +296,7 @@ def main(rank=None, world_size=None, args=None):
                 "validate_every": args.val_every,
                 "visualize_every": args.vis_every,
                 "use_mixed_precision": args.mixed_precision,
+                "checkpoint_dir": model_checkpoint_dir,  # Pass the checkpoint directory
             }
 
             if log and is_main_process:
@@ -278,9 +311,8 @@ def main(rank=None, world_size=None, args=None):
 
             trained_model, losses = train(**training_args)
 
-            # Save checkpoint
+            # Save final checkpoint
             if is_main_process:  # Only save on main process
-                Path("checkpoints").mkdir(exist_ok=True)
                 model_state = (
                     trained_model.module.state_dict()
                     if isinstance(trained_model, DDP)
@@ -310,8 +342,9 @@ def main(rank=None, world_size=None, args=None):
                         "model_config": model_config,
                         "batch_size": batch_size,
                         "lr": lr,
+                        "final": True,
                     },
-                    checkpoint_path,
+                    final_checkpoint_path,
                 )
 
             if is_main_process:
@@ -319,7 +352,7 @@ def main(rank=None, world_size=None, args=None):
 
     writer.close()
     print(
-        f"\nTraining completed. {'Results continuously saved to ' + str(results_path) if log else 'No experiment log was written.'}"
+        f"\nTraining completed. {'Results saved to ' + str(exp_paths['base_dir']) if log else 'No experiment log was written.'}"
     )
 
     # Add barrier before cleanup

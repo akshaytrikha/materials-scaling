@@ -129,6 +129,19 @@ def get_args():
         help="Use mixed precision training with FP16",
     )
     parser.add_argument(
+        "--patience",
+        type=int,
+        nargs="+",
+        default=[500],
+        help="Early stopping patience epochs = patience * val_every",
+    )
+    parser.add_argument(
+        "--name",
+        type=str,
+        required=True,
+        help="Experiment Name for logging (required)",
+    )
+    parser.add_argument(
         "--cache_data",
         action="store_true",
         help="Enable caching of loaded data in memory to speed up training",

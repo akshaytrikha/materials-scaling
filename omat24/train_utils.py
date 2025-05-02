@@ -328,6 +328,7 @@ def train(
     validate_every=500,
     visualize_every=500,
     use_mixed_precision=False,
+    checkpoint_dir=None,  # New parameter for checkpoint directory
 ):
     """
     Train model with validation at epoch 0 and every 'validate_every' epochs.
@@ -355,6 +356,7 @@ def train(
         validate_every (int, optional): Frequency (in epochs) to run validation.
         visualize_every (int, optional): Frequency (in epochs) to collect visualization samples.
         use_mixed_precision (bool, optional): Whether to use mixed precision training. Defaults to False.
+        checkpoint_dir (Path, optional): Directory to save model checkpoints. Defaults to None.
 
     Returns:
         (nn.Module, dict): The trained model and a dictionary of recorded losses.
@@ -395,6 +397,19 @@ def train(
             0,
             tensorboard_prefix,
             train=False,
+        )
+        
+    # Save initial checkpoint (epoch 0)
+    if checkpoint_dir is not None and is_main_process:
+        save_checkpoint(
+            model=model,
+            epoch=0,
+            losses=losses,
+            val_loss=val_loss,
+            optimizer=optimizer,
+            train_loader=train_loader,
+            factorize=factorize,
+            checkpoint_dir=checkpoint_dir,
         )
 
     # Write partial JSON if everything is provided
@@ -515,6 +530,35 @@ def train(
                     scheduler.step()
         if epoch == 1:
             flops_per_epoch = flop_counter.get_total_flops()
+            dataset_size = len(train_loader.dataset)
+            flops_per_sample = flops_per_epoch / dataset_size
+            
+            if writer is not None and is_main_process:
+                writer.add_scalar(
+                    f"{tensorboard_prefix}/Efficiency/flops_per_epoch", 
+                    flops_per_epoch,
+                    global_step=0
+                )
+                writer.add_scalar(
+                    f"{tensorboard_prefix}/Efficiency/flops_per_sample", 
+                    flops_per_sample,
+                    global_step=0
+                )
+                # Also log as a text value for better visibility
+                writer.add_text(
+                    f"{tensorboard_prefix}/Efficiency/flops_summary",
+                    f"FLOPs per epoch: {flops_per_epoch:,}\n"
+                    f"FLOPs per sample: {flops_per_sample:,}\n"
+                    f"Dataset size: {dataset_size:,}",
+                    global_step=0
+                )
+        
+        if writer is not None and is_main_process:
+            writer.add_scalar(
+                f"{tensorboard_prefix}/Efficiency/cumulative_flops", 
+                flops_per_epoch * epoch,
+                global_step=epoch
+            )
 
         if distributed:
             train_loss_tensor = torch.tensor(train_loss_sum, device=device)
@@ -635,6 +679,19 @@ def train(
                     train=False,
                 )
             losses[epoch]["val_loss"] = val_loss
+            
+            # Save checkpoint at validation step
+            if checkpoint_dir is not None and is_main_process:
+                save_checkpoint(
+                    model=model,
+                    epoch=epoch,
+                    losses=losses,
+                    val_loss=val_loss,
+                    optimizer=optimizer,
+                    train_loader=train_loader,
+                    factorize=factorize,
+                    checkpoint_dir=checkpoint_dir,
+                )
 
             # Early stopping check
             if val_loss < best_val_loss:
@@ -642,6 +699,19 @@ def train(
                 epochs_since_improvement = 0
                 best_val_model = copy.deepcopy(model)
                 best_val_loss_dict = copy.deepcopy(losses)
+                
+                # Save best model checkpoint
+                if checkpoint_dir is not None and is_main_process:
+                    save_checkpoint(
+                        model=model,
+                        epoch=epoch,
+                        losses=losses,
+                        val_loss=val_loss,
+                        optimizer=optimizer,
+                        train_loader=train_loader,
+                        factorize=factorize,
+                        checkpoint_dir=checkpoint_dir,
+                    )
             else:
                 epochs_since_improvement += 1
                 if epochs_since_improvement >= patience:
@@ -677,3 +747,68 @@ def train(
             pbar.update(1)
 
     return model, losses
+
+
+def save_checkpoint(
+    model, 
+    epoch, 
+    losses, 
+    val_loss, 
+    optimizer, 
+    train_loader, 
+    factorize, 
+    checkpoint_dir, 
+):
+    """
+    Save a model checkpoint.
+    
+    Args:
+        model (nn.Module): Model to save
+        epoch (int): Current epoch
+        losses (dict): Dictionary of losses
+        val_loss (float): Current validation loss
+        optimizer (Optimizer): Optimizer state
+        train_loader (DataLoader): Training data loader
+        factorize (bool): Whether factorization is used
+        checkpoint_dir (Path): Directory to save checkpoint
+    """
+    # Get model state dict
+    model_state = (
+        model.module.state_dict()
+        if hasattr(model, "module")
+        else model.state_dict()
+    )
+    
+    # Extract model configuration
+    if hasattr(model, "module"):
+        model_instance = model.module
+    else:
+        model_instance = model
+    
+    # Create a model config dictionary with all relevant parameters
+    model_config = {
+        "d_model": getattr(model_instance, "embedding_dim", None),
+        "depth": getattr(model_instance, "depth", None),
+        "n_heads": getattr(model_instance, "n_heads", None),
+        "d_ff_mult": getattr(model_instance, "d_ff_mult", None),
+        "use_factorized": getattr(model_instance, "use_factorized", factorize),
+        "num_params": getattr(model_instance, "num_params", None),
+        "architecture": getattr(model_instance, "name", None),
+    }
+    
+    # Create checkpoint data
+    checkpoint_data = {
+        "model_state_dict": model_state,
+        "optimizer_state_dict": optimizer.state_dict(),
+        "losses": losses,
+        "model_config": model_config,
+        "batch_size": train_loader.batch_size if hasattr(train_loader, "batch_size") else None,
+        "lr": optimizer.param_groups[0]["lr"],
+        "epoch": epoch,
+        "val_loss": val_loss,
+    }
+    
+    # Save epoch checkpoint
+    checkpoint_name = f"checkpoint_e{epoch}.pth"
+    checkpoint_path = checkpoint_dir / checkpoint_name
+    torch.save(checkpoint_data, checkpoint_path)

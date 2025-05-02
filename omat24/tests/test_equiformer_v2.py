@@ -354,7 +354,7 @@ class TestEquiformerV2(unittest.TestCase):
                     "EquiformerV2",
                     "--epochs",
                     "500",
-                    "--data_fraction",
+                    "--data_fractions",
                     "0.00001",
                     "--val_data_fraction",
                     "0.0001",
@@ -366,7 +366,9 @@ class TestEquiformerV2(unittest.TestCase):
                     "500",
                     "--vis_every",
                     "500",
-                    "--cache_data"
+                    "--cache_data",
+                    "--name",
+                    "test_eqv2"
                 ]
                 with patch.object(sys, "argv", test_args):
                     buf = io.StringIO()
