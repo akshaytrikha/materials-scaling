@@ -54,6 +54,7 @@ def get_dataloaders(
     graph: bool = False,
     distributed: bool = False,
     augment: bool = False,
+    cache_enabled: bool = False,
 ):
     """Creates training and validation DataLoaders from a list of dataset paths.
     Each dataset is loaded, split into training and validation subsets, and then
@@ -71,6 +72,7 @@ def get_dataloaders(
         graph (bool, optional): Whether to create PyG DataLoaders for graph datasets.
         distributed (bool, optional): Whether to use distributed training.
         augment (bool, optional): Whether to apply data augmentation (random rotations). Defaults to False.
+        cache_enabled (bool, optional): Whether to cache loaded data in memory. Defaults to False.
 
     Returns:
         tuple: (train_loader, val_loader)
@@ -89,6 +91,7 @@ def get_dataloaders(
             graph=graph,
             architecture=architecture,
             augment=augment,
+            cache_enabled=cache_enabled,
         )
         train_subset, val_subset, _, _ = split_dataset(
             dataset, train_data_fraction, val_data_fraction, seed
@@ -157,6 +160,7 @@ class OMat24Dataset(Dataset):
         config_kwargs (dict, optional): Additional configuration parameters for AseDBDataset. Defaults to {}.
         augment (bool, optional): Whether to apply data augmentation (random rotations). Defaults to False.
         graph (bool, optional): Whether to generate graph data for PyG. Defaults to False.
+        cache_enabled (bool, optional): Whether to cache loaded data in memory. Defaults to False.
     """
 
     def __init__(
@@ -169,6 +173,7 @@ class OMat24Dataset(Dataset):
         debug: bool = False,
         rank: int = None,
         world_size: int = None,
+        cache_enabled: bool = False,
     ):
         self.dataset_paths = dataset_paths
         self.config_kwargs = config_kwargs
@@ -176,10 +181,12 @@ class OMat24Dataset(Dataset):
         self.augment = augment
         self.graph = graph
         self.debug = debug
+        self.cache_enabled = cache_enabled
 
         # Shard the dataset if using DDP
         self.rank = rank
         self.world_size = world_size
+        self.cache = {}
 
         # Initialize the dataset
         self._init_dataset()
@@ -221,6 +228,9 @@ class OMat24Dataset(Dataset):
 
     def __getitem__(self, idx):
         # Retrieve atoms object for the given index
+        if self.cache_enabled and idx in self.cache:
+            return self.cache[idx]
+
         atoms: ase.atoms.Atoms = self.dataset.get_atoms(idx)
 
         # Extract atomic numbers, positions, symbols, and cell parameters
@@ -292,6 +302,10 @@ class OMat24Dataset(Dataset):
         # Add source information for verifying mutli-dataset usage
         if self.debug:
             sample["source"] = atoms.info["calc_id"]
+
+        # Only cache if enabled
+        if self.cache_enabled:
+            self.cache[idx] = sample
 
         return sample
 
