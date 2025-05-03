@@ -228,11 +228,11 @@ class MetaADiTModels:
         """
         # fmt: off
         self.configurations = [
-            {"d_model": 16, "nhead": 1, "dim_feedforward": 64, "num_layers": 2}, # 0.015 params  # Akshay
-            {"d_model": 64, "nhead": 1, "dim_feedforward": 256, "num_layers": 2}, # 0.138M params  # Kyle
+            # {"d_model": 16, "nhead": 1, "dim_feedforward": 64, "num_layers": 2}, # 0.015 params  # Akshay
+            # {"d_model": 64, "nhead": 1, "dim_feedforward": 256, "num_layers": 2}, # 0.138M params  # Kyle
             # {"d_model": 64, "nhead": 1, "dim_feedforward": 256, "num_layers": 3}, # 0.188M params
             {"d_model": 96, "nhead": 1, "dim_feedforward": 384, "num_layers": 3}, # 0.402M params  # Park
-            {"d_model": 128, "nhead": 2, "dim_feedforward": 512, "num_layers": 4}, # 0.695M params  # Advait
+            # {"d_model": 128, "nhead": 2, "dim_feedforward": 512, "num_layers": 4}, # 0.695M params  # Advait
             # {"d_model": 192, "nhead": 3, "dim_feedforward": 768, "num_layers": 5}, # 2.411M params
             # {"d_model": 192, "nhead": 4, "dim_feedforward": 768, "num_layers": 6}, # 2.856M params
             # {"d_model": 256, "nhead": 4, "dim_feedforward": 1024, "num_layers": 6}, # 5.036M params
